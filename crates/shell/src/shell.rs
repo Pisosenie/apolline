@@ -310,7 +310,12 @@ impl Shell {
     }
 
     fn sync(&mut self) {
-        fragment::sync(&self.look());
+        let theme = self
+            .current()
+            .and_then(|m| m.theme.as_deref())
+            .or(self.config.desktop.theme.as_deref())
+            .and_then(crate::themes::niri_part);
+        fragment::sync(&self.look(), theme.as_deref());
         if self.demo {
             return;
         }

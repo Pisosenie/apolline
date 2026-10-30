@@ -62,6 +62,17 @@ fn read(file: &Path) -> Option<Theme> {
     Some(theme)
 }
 
+// The looks a theme folder hands niri, from its own niri.kdl.
+pub fn niri_part(name: &str) -> Option<String> {
+    let wanted = slug(name);
+    let (_, file) = all()
+        .into_iter()
+        .find(|(theme, _)| slug(&theme.name) == wanted)?;
+    let file = file.filter(|f| f.file_name().is_some_and(|n| n == "theme.toml"))?;
+    let text = std::fs::read_to_string(file.with_file_name("niri.kdl")).ok()?;
+    (text.len() <= 64 * 1024).then(|| crate::fragment::theme_part(&text))
+}
+
 pub fn install(path: &Path) -> Result<Theme, String> {
     install_into(&dir(), path)
 }
