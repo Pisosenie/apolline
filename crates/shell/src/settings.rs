@@ -5275,12 +5275,8 @@ fn list_section(key: &str) -> &'static str {
     }
 }
 
-// A link shows only its host: a calendar's secret address is a password of sorts.
 fn chip_name(entry: &str) -> String {
-    match entry.split_once("://") {
-        Some((_, rest)) => rest.split('/').next().unwrap_or(rest).to_owned(),
-        None => entry.to_owned(),
-    }
+    crate::events::shown(entry).to_owned()
 }
 
 // What a mode puts over the everyday look while it's on.

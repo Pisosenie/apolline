@@ -141,10 +141,13 @@ fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
     })
 }
 
-// A link shows only its host in the log: a calendar's secret address is a password of sorts.
-fn shown(source: &str) -> &str {
+// A link shows only its host: a calendar's secret address, or a login in it, is a password of sorts.
+pub fn shown(source: &str) -> &str {
     match source.split_once("://") {
-        Some((_, rest)) => rest.split(['/', '?']).next().unwrap_or(rest),
+        Some((_, rest)) => {
+            let place = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+            place.rsplit('@').next().unwrap_or(place)
+        }
         None => source,
     }
 }
@@ -1119,6 +1122,19 @@ DTSTART:20261102T100000"
             agenda.on(day(2026, 11, 2))[0].summary.chars().count(),
             LONGEST
         );
+    }
+
+    #[test]
+    fn links_show_only_their_host() {
+        assert_eq!(
+            shown("https://calendar.google.com/calendar/ical/secret/basic.ics"),
+            "calendar.google.com"
+        );
+        assert_eq!(
+            shown("webcal://me:hunter2@dav.example.org/cal.ics"),
+            "dav.example.org"
+        );
+        assert_eq!(shown("~/calendars/home.ics"), "~/calendars/home.ics");
     }
 
     #[test]
