@@ -73,6 +73,7 @@ pub struct Panel<'a> {
     pub look: apolline_config::Surface,
     pub night: bool,
     pub history: &'a [Notification],
+    pub apps: &'a [crate::apps::App],
     pub detail: Option<Detail>,
     pub networks: &'a [Network],
     pub paired: &'a [Paired],
@@ -216,7 +217,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     if let Some(track) = panel.track {
         body = body.push(player(track, palette));
     }
-    body = body.push(history(panel.history));
+    body = body.push(history(panel.history, panel.apps, palette));
 
     frame(body, panel.at_bottom, panel.look)
 }
@@ -539,7 +540,11 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
     .into()
 }
 
-fn history<'a>(items: &'a [Notification]) -> Element<'a, Message> {
+fn history<'a>(
+    items: &'a [Notification],
+    apps: &'a [crate::apps::App],
+    palette: Palette,
+) -> Element<'a, Message> {
     let mut header = row![
         text("NOTIFICATIONS")
             .size(10)
@@ -562,7 +567,8 @@ fn history<'a>(items: &'a [Notification]) -> Element<'a, Message> {
             .color(style::color(style::FAINT))
             .into()
     } else {
-        let entries = Column::with_children(items.iter().map(entry)).spacing(6);
+        let entries =
+            Column::with_children(items.iter().map(|n| entry(n, apps, palette))).spacing(6);
         container(
             scrollable(entries)
                 .direction(style::thin())
@@ -574,7 +580,11 @@ fn history<'a>(items: &'a [Notification]) -> Element<'a, Message> {
     column![header, list].spacing(8).into()
 }
 
-fn entry(notification: &Notification) -> Element<'_, Message> {
+fn entry<'a>(
+    notification: &'a Notification,
+    apps: &'a [crate::apps::App],
+    palette: Palette,
+) -> Element<'a, Message> {
     let mut words = column![
         row![
             text(shorten(&notification.app, 28))
@@ -598,10 +608,14 @@ fn entry(notification: &Notification) -> Element<'_, Message> {
                 .color(style::color(style::FAINT)),
         );
     }
-    let words = button(words)
-        .padding(0)
-        .style(style::ghost(6.0))
-        .on_press(Message::Activate(notification.id));
+    let words = button(
+        row![popup::face(notification, apps, palette, 28.0), words]
+            .spacing(10)
+            .align_y(Alignment::Start),
+    )
+    .padding(0)
+    .style(style::ghost(6.0))
+    .on_press(Message::Activate(notification.id));
     container(
         row![
             words,

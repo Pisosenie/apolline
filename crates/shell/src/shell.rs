@@ -1824,6 +1824,7 @@ impl Shell {
                 look: self.config.style.panel,
                 night: self.night.1.unwrap_or(self.night.0),
                 history: &self.history,
+                apps: &self.apps,
                 detail: self.detail,
                 networks: &self.networks,
                 paired: &self.paired,

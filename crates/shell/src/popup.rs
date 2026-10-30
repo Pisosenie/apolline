@@ -44,21 +44,22 @@ pub fn stack<'a>(
 }
 
 // What the app sent along, else the app's own icon.
-fn face<'a>(
+pub fn face<'a>(
     notification: &'a Notification,
     apps: &'a [App],
     palette: Palette,
+    size: f32,
 ) -> Element<'a, Message> {
     match &notification.image {
         Some(picture) => image(picture.clone())
-            .width(FACE)
-            .height(FACE)
+            .width(size)
+            .height(size)
             .content_fit(ContentFit::Cover)
-            .border_radius(FACE / 2.0)
+            .border_radius(size / 2.0)
             .into(),
         None => {
             let app = notification.desktop.as_deref().unwrap_or(&notification.app);
-            crate::windows::picture(apps, app, FACE, palette)
+            crate::windows::picture(apps, app, size, palette)
         }
     }
 }
@@ -112,7 +113,7 @@ fn card<'a>(
             .push(space().height(6))
             .push(row(buttons).spacing(6))
     };
-    let content = row![face(notification, apps, palette), content.width(Fill)].spacing(12);
+    let content = row![face(notification, apps, palette, FACE), content.width(Fill)].spacing(12);
 
     button(
         container(content)
