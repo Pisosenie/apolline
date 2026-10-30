@@ -2,7 +2,7 @@ use std::io::{BufRead, IsTerminal};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
-use apolline_theme::{Palette, font, neutral};
+use apolline_theme::{Palette, neutral};
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
@@ -102,7 +102,7 @@ fn run(pick: Pick) -> Result<(), String> {
         text_color: theme.palette().text,
     })
     .settings(Settings {
-        default_font: Font::with_name(font::UI),
+        default_font: Font::with_name(crate::style::family()),
         layer_settings: LayerShellSettings {
             anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
             layer: Layer::Overlay,
@@ -138,7 +138,7 @@ fn run(pick: Pick) -> Result<(), String> {
     .title("Apolline")
     .subscription(Pick::subscription)
     .theme(Theme::Dark)
-    .default_font(Font::with_name(font::UI))
+    .default_font(Font::with_name(crate::style::family()))
     .window_size((900.0, 640.0));
     fonts::ALL
         .into_iter()

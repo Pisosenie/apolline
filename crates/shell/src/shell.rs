@@ -150,6 +150,7 @@ pub struct Shell {
     plain: Config,
     cursor: Option<(Option<String>, Option<u16>)>,
     icons: Option<Option<String>>,
+    font: Option<Option<String>>,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -262,6 +263,7 @@ impl Shell {
             plain: config.clone(),
             cursor: None,
             icons: None,
+            font: None,
             config,
             wallpapers: Vec::new(),
             fade: None,
@@ -300,6 +302,12 @@ impl Shell {
         fragment::sync(&self.look());
         if self.demo {
             return;
+        }
+        if self.font.as_ref() != Some(&self.config.desktop.font) {
+            if let Some(family) = &self.config.desktop.font {
+                paint::gsettings("font-name", &format!("{family} 11"));
+            }
+            self.font = Some(self.config.desktop.font.clone());
         }
         if self.icons.as_ref() != Some(&self.config.desktop.icons) {
             if let Some(theme) = &self.config.desktop.icons {

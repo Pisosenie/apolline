@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use apolline_theme::{Palette, Rgba, font, neutral};
+use apolline_theme::{Palette, Rgba, neutral};
 use chrono::{DateTime, Local};
 use iced::widget::operation::focus;
 use iced::widget::{
@@ -145,7 +145,7 @@ pub fn main(args: &[String]) -> ExitCode {
     .title("Apolline")
     .subscription(Greet::subscription)
     .theme(Theme::Dark)
-    .default_font(Font::with_name(font::UI))
+    .default_font(Font::with_name(crate::style::family()))
     .window(window::Settings {
         size: iced::Size::new(1440.0, 900.0),
         decorations: false,

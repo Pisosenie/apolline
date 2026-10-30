@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use apolline_theme::{font, metrics};
+use apolline_theme::metrics;
 use iced::widget::{container, stack};
 use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, window};
 
@@ -36,7 +36,7 @@ pub fn run(mode: Option<String>, screenshot: Option<PathBuf>, open: Vec<Message>
     .title("Apolline")
     .subscription(Preview::subscription)
     .theme(Theme::Dark)
-    .default_font(Font::with_name(font::UI))
+    .default_font(Font::with_name(crate::style::family()))
     .window_size((1440.0, 900.0));
     fonts::ALL
         .into_iter()

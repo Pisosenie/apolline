@@ -302,7 +302,7 @@ fn card<'a>(
 fn semibold() -> Font {
     Font {
         weight: iced::font::Weight::Semibold,
-        ..Font::with_name(font::UI)
+        ..Font::with_name(crate::style::family())
     }
 }
 

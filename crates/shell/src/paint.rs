@@ -97,6 +97,24 @@ pub fn files() -> Vec<String> {
     ]
 }
 
+pub fn font_families() -> Vec<String> {
+    let Ok(out) = std::process::Command::new("fc-list")
+        .args([":", "family"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    let mut families: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| line.split(',').next())
+        .map(|name| name.trim().replace('\\', ""))
+        .filter(|name| !name.is_empty() && !name.starts_with('.'))
+        .collect();
+    families.sort();
+    families.dedup();
+    families
+}
+
 pub fn cursors() -> Vec<String> {
     let mut dirs = vec![PathBuf::from("/usr/share/icons")];
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {

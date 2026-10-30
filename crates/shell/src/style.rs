@@ -51,24 +51,36 @@ fn lifted(depth: f32) -> Shadow {
     }
 }
 
+static FAMILY: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+pub fn family() -> &'static str {
+    FAMILY.get().copied().unwrap_or(font::UI)
+}
+
+pub fn choose_family(name: Option<String>) {
+    if let Some(name) = name {
+        let _ = FAMILY.set(Box::leak(name.into_boxed_str()));
+    }
+}
+
 pub fn semibold() -> Font {
     Font {
         weight: Weight::Semibold,
-        ..Font::with_name(font::UI)
+        ..Font::with_name(family())
     }
 }
 
 pub fn medium() -> Font {
     Font {
         weight: Weight::Medium,
-        ..Font::with_name(font::UI)
+        ..Font::with_name(family())
     }
 }
 
 pub fn light() -> Font {
     Font {
         weight: Weight::ExtraLight,
-        ..Font::with_name(font::UI)
+        ..Font::with_name(family())
     }
 }
 

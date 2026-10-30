@@ -802,6 +802,11 @@ impl Reader<'_> {
                         desktop.icons = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
+                "font" => {
+                    if let Some(v) = self.string(key, value) {
+                        desktop.font = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
+                    }
+                }
                 "outputs" => {
                     let DeValue::Table(table) = value.get_ref() else {
                         self.wrong::<()>(
@@ -833,6 +838,7 @@ impl Reader<'_> {
                         "cursor",
                         "cursor_size",
                         "icons",
+                        "font",
                     ],
                 ),
             }

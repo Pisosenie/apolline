@@ -6,7 +6,7 @@ use apolline_config::{
     Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Trigger, Width, Workspaces,
     auto_accent,
 };
-use apolline_theme::{ACCENTS, Palette, Rgba, font, neutral};
+use apolline_theme::{ACCENTS, Palette, Rgba, neutral};
 use iced::keyboard;
 use iced::widget::text::Span;
 use iced::widget::{
@@ -29,6 +29,7 @@ const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
 const HISTORY: usize = 100;
 const SYSTEM_CURSOR: &str = "System's";
+const BUILT_IN_FONT: &str = "Geist, built in";
 const WALLS: usize = 11;
 const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
@@ -71,7 +72,7 @@ pub fn run(screenshot: Option<PathBuf>, page: Option<String>) -> iced::Result {
     .title("Apolline Settings")
     .subscription(Settings::subscription)
     .theme(Theme::Dark)
-    .default_font(Font::with_name(font::UI))
+    .default_font(Font::with_name(crate::style::family()))
     .window(window::Settings {
         size: iced::Size::new(1280.0, 820.0),
         min_size: Some(iced::Size::new(560.0, 480.0)),
@@ -244,6 +245,7 @@ enum Message {
     ColorApps(bool),
     Cursor(String),
     Icons(String),
+    FontFamily(String),
     CursorSize(u16),
     DisplayMode(String, String),
     DisplayScale(String, u16),
@@ -396,6 +398,7 @@ struct Settings {
     outputs: Vec<apolline_niri::Output>,
     cursors: Vec<String>,
     icon_themes: Vec<String>,
+    families: Vec<String>,
     place: (String, String, String),
     revert: Option<(std::time::Instant, String)>,
     hours_draft: String,
@@ -473,6 +476,7 @@ impl Settings {
             outputs: crate::niri::outputs(),
             cursors: crate::paint::cursors(),
             icon_themes: apps::icon_themes(),
+            families: crate::paint::font_families(),
             place: (String::new(), String::new(), String::new()),
             revert: None,
             hours_draft: String::new(),
@@ -700,6 +704,13 @@ impl Settings {
                 });
                 return Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps);
             }
+            Message::FontFamily(family) => self.edit(|e| {
+                if family == BUILT_IN_FONT {
+                    e.unset("desktop", "font");
+                } else {
+                    e.set("desktop", "font", family.as_str());
+                }
+            }),
             Message::CursorSize(size) => {
                 self.edit(|e| e.set("desktop", "cursor_size", i64::from(size)))
             }
@@ -1523,7 +1534,7 @@ impl Settings {
                 label = label.push(text(page.title()).size(14).font(if on {
                     style::medium()
                 } else {
-                    Font::with_name(font::UI)
+                    Font::with_name(crate::style::family())
                 }));
             }
             button(label)
@@ -2574,6 +2585,25 @@ impl Settings {
                     ]
                     .spacing(8)
                     .align_y(Alignment::Center),
+                ),
+                setting(
+                    "Font",
+                    "For Apolline from its next start, and for GTK apps right away",
+                    iced::widget::pick_list(
+                        std::iter::once(BUILT_IN_FONT.to_owned())
+                            .chain(self.families.iter().cloned())
+                            .collect::<Vec<_>>(),
+                        Some(
+                            self.config
+                                .desktop
+                                .font
+                                .clone()
+                                .unwrap_or_else(|| BUILT_IN_FONT.to_owned()),
+                        ),
+                        Message::FontFamily,
+                    )
+                    .text_size(13)
+                    .padding([7, 12]),
                 ),
                 setting(
                     "Icons",

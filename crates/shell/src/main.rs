@@ -81,6 +81,12 @@ struct Options {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    style::choose_family(
+        Config::load(&apolline_config::default_path())
+            .0
+            .desktop
+            .font,
+    );
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {

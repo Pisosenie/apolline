@@ -50,7 +50,7 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
             .size(14)
             .font(iced::Font {
                 weight: iced::font::Weight::Semibold,
-                ..iced::Font::with_name(font::UI)
+                ..iced::Font::with_name(crate::style::family())
             }),
         text(shorten(&notification.body, 52))
             .size(font::SMALL)

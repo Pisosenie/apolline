@@ -30,7 +30,7 @@ pub fn run(mode: Option<String>) -> Result<(), String> {
         background_color: Color::TRANSPARENT,
         text_color: theme.palette().text,
     })
-    .default_font(Font::with_name(font::UI))
+    .default_font(Font::with_name(crate::style::family()))
     .settings(Settings {
         layer_settings: LayerShellSettings {
             start_mode: StartMode::Background,

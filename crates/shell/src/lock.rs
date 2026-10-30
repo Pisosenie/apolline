@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use apolline_config::Config;
-use apolline_theme::{Palette, Rgba, font, neutral};
+use apolline_theme::{Palette, Rgba, neutral};
 use chrono::{DateTime, Local};
 use iced::gradient::Linear;
 use iced::keyboard::{self, Key, key::Named};
@@ -35,7 +35,7 @@ pub fn run(preview: bool, mode: Option<String>, screenshot: Option<PathBuf>) -> 
         .title("Apolline Lock")
         .subscription(Lock::subscription)
         .theme(Theme::Dark)
-        .default_font(Font::with_name(font::UI))
+        .default_font(Font::with_name(crate::style::family()))
         .window_size((1440.0, 900.0));
         return fonts::ALL
             .into_iter()
@@ -60,7 +60,7 @@ fn session(mode: Option<String>) -> Result<(), String> {
     )
     .subscription(Lock::subscription)
     .theme(|_: &Lock| Theme::Dark)
-    .default_font(Font::with_name(font::UI));
+    .default_font(Font::with_name(crate::style::family()));
     fonts::ALL
         .into_iter()
         .fold(app, |app, font| app.font(font))
