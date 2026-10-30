@@ -1,9 +1,8 @@
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use apolline_theme::{Palette, Rgba, neutral};
-use iced::widget::canvas::{self, Frame, Geometry, LineCap, LineJoin, Stroke};
+use iced::widget::canvas::{self, Frame, Geometry, Stroke};
 use iced::widget::image::Handle;
 use iced::widget::{button, canvas as board, column, container, image, row, space, stack, text};
 use iced::{Alignment, ContentFit, Element, Fill, Point, Rectangle, Renderer, Size, Theme, mouse};
@@ -61,7 +60,6 @@ pub struct Marks {
     width: u32,
     height: u32,
     picture: Handle,
-    hidden: Handle,
     marks: Vec<Mark>,
     tool: Tool,
     ink: usize,
@@ -84,6 +82,10 @@ pub async fn open(file: PathBuf) -> Result<Arc<Marks>, String> {
 
 // The newest picture in the screenshot folder, for marking one taken earlier.
 pub fn latest() -> Option<PathBuf> {
+    let marked = |path: &Path| {
+        path.file_stem()
+            .is_some_and(|stem| stem.to_string_lossy().ends_with(" marked"))
+    };
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
     let pictures = std::env::var_os("XDG_PICTURES_DIR")
         .map(PathBuf::from)
@@ -91,7 +93,10 @@ pub fn latest() -> Option<PathBuf> {
     std::fs::read_dir(pictures.join("Screenshots"))
         .ok()?
         .flatten()
-        .filter(|entry| entry.path().extension().is_some_and(|e| e == "png"))
+        .filter(|entry| {
+            let path = entry.path();
+            path.extension().is_some_and(|e| e == "png") && !marked(&path)
+        })
         .max_by_key(|entry| entry.metadata().and_then(|m| m.modified()).ok())
         .map(|entry| entry.path())
 }
@@ -102,14 +107,11 @@ impl Marks {
             .map_err(|err| format!("{}: {err}", file.display()))?
             .into_rgba8();
         let (width, height) = picture.dimensions();
-        let pixels = picture.into_raw();
-        let hidden = pixelate(&pixels, width, height);
         Ok(Self {
             file,
             width,
             height,
-            picture: Handle::from_rgba(width, height, pixels),
-            hidden: Handle::from_rgba(width, height, hidden),
+            picture: Handle::from_rgba(width, height, picture.into_raw()),
             marks: Vec::new(),
             tool: Tool::Arrow,
             ink: 0,
@@ -118,7 +120,12 @@ impl Marks {
 
     pub fn update(&mut self, event: Event) {
         match event {
-            Event::Drawn(mark) => {
+            Event::Drawn(mut mark) => {
+                if mark.tool == Tool::Hide
+                    && let Some(Shape::Hide(rect, _)) = shapes(&mark, 1.0).first()
+                {
+                    mark.ink = self.tone(*rect);
+                }
                 if !shapes(&mark, self.base()).is_empty() {
                     self.marks.push(mark);
                 }
@@ -130,6 +137,39 @@ impl Marks {
             }
             Event::Copy | Event::Save | Event::Both => {}
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.marks.is_empty()
+    }
+
+    pub fn hides(&self) -> bool {
+        self.marks.iter().any(|mark| mark.tool == Tool::Hide)
+    }
+
+    // The average color inside the rectangle, and nothing from outside it,
+    // so the patch says no more about what's under it than its overall tone.
+    fn tone(&self, rect: Rectangle) -> Rgba {
+        let pixels = rgba(&self.picture);
+        let (w, h) = (self.width as usize, self.height as usize);
+        let left = (rect.x.max(0.0) as usize).min(w);
+        let right = ((rect.x + rect.width).ceil().max(0.0) as usize).min(w);
+        let top = (rect.y.max(0.0) as usize).min(h);
+        let bottom = ((rect.y + rect.height).ceil().max(0.0) as usize).min(h);
+        let mut sum = [0u64; 3];
+        for y in top..bottom {
+            for px in pixels[(y * w + left) * 4..(y * w + right) * 4]
+                .as_chunks::<4>()
+                .0
+            {
+                for (total, value) in sum.iter_mut().zip(px) {
+                    *total += u64::from(*value);
+                }
+            }
+        }
+        let count = ((right - left) * (bottom - top)).max(1) as u64;
+        let [r, g, b] = sum.map(|total| (total / count) as u8);
+        Rgba { r, g, b, a: 1.0 }
     }
 
     pub fn marked(&self) -> PathBuf {
@@ -162,26 +202,31 @@ impl Marks {
     pub fn render(&self) -> Result<Vec<u8>, String> {
         let size =
             tiny_skia::IntSize::from_wh(self.width, self.height).ok_or("an empty picture")?;
-        let mut pixmap = tiny_skia::Pixmap::from_vec(rgba(&self.picture).to_vec(), size)
-            .ok_or("the picture has an odd size")?;
-        let hidden = rgba(&self.hidden);
-        // Hidden parts go under every stroke, as on screen.
+        // tiny-skia works on premultiplied pixels; window shots have see-through corners.
+        let mut pixels = rgba(&self.picture).to_vec();
+        for px in pixels.as_chunks_mut::<4>().0 {
+            let alpha = u16::from(px[3]);
+            for channel in &mut px[..3] {
+                *channel = ((u16::from(*channel) * alpha + 127) / 255) as u8;
+            }
+        }
+        let mut pixmap =
+            tiny_skia::Pixmap::from_vec(pixels, size).ok_or("the picture has an odd size")?;
+        for shape in self.shapes() {
+            paint(&mut pixmap, &shape);
+        }
+        pixmap.encode_png().map_err(|err| err.to_string())
+    }
+
+    // Hidden parts go under every stroke, on screen and in the file.
+    fn shapes(&self) -> Vec<Shape> {
         let mut all: Vec<Shape> = self
             .marks
             .iter()
             .flat_map(|mark| shapes(mark, self.base()))
             .collect();
-        all.sort_by_key(|shape| !matches!(shape, Shape::Hide(_)));
-        for shape in &all {
-            paint(&mut pixmap, shape, hidden);
-        }
-        let picture = ::image::RgbaImage::from_raw(self.width, self.height, pixmap.take())
-            .ok_or("the picture has an odd size")?;
-        let mut png = Cursor::new(Vec::new());
-        picture
-            .write_to(&mut png, ::image::ImageFormat::Png)
-            .map_err(|err| err.to_string())?;
-        Ok(png.into_inner())
+        all.sort_by_key(|shape| !matches!(shape, Shape::Hide(..)));
+        all
     }
 }
 
@@ -192,43 +237,13 @@ fn rgba(handle: &Handle) -> &[u8] {
     }
 }
 
-// Big blocks, so hidden text can't be read back out of them.
-fn pixelate(pixels: &[u8], width: u32, height: u32) -> Vec<u8> {
-    let (w, h) = (width as usize, height as usize);
-    let block = (w.max(h) / 80).max(12);
-    let mut out = vec![0u8; pixels.len()];
-    for top in (0..h).step_by(block) {
-        for left in (0..w).step_by(block) {
-            let (right, bottom) = ((left + block).min(w), (top + block).min(h));
-            let mut sum = [0u64; 4];
-            for y in top..bottom {
-                for x in left..right {
-                    let at = (y * w + x) * 4;
-                    for (total, value) in sum.iter_mut().zip(&pixels[at..at + 4]) {
-                        *total += u64::from(*value);
-                    }
-                }
-            }
-            let count = ((right - left) * (bottom - top)) as u64;
-            let average = sum.map(|total| (total / count) as u8);
-            for y in top..bottom {
-                for x in left..right {
-                    let at = (y * w + x) * 4;
-                    out[at..at + 4].copy_from_slice(&average);
-                }
-            }
-        }
-    }
-    out
-}
-
 #[derive(Clone, Debug, PartialEq)]
 enum Shape {
     Line(Vec<Point>, f32, Rgba),
     Dot(Point, f32, Rgba),
     Fill(Vec<Point>, Rgba),
     Frame(Rectangle, f32, Rgba),
-    Hide(Rectangle),
+    Hide(Rectangle, Rgba),
 }
 
 // Both the screen and the saved file draw from these, so what you see is what you get.
@@ -272,121 +287,86 @@ fn shapes(mark: &Mark, base: f32) -> Vec<Shape> {
             ]
         }
         Tool::Box if !small => vec![Shape::Frame(span, 4.0 * base, mark.ink)],
-        Tool::Hide if !small => vec![Shape::Hide(span)],
+        // Whole pixels, so no edge is half the original.
+        Tool::Hide if !small => {
+            let (left, top) = (span.x.floor(), span.y.floor());
+            let size = Size::new(
+                (span.x + span.width).ceil() - left,
+                (span.y + span.height).ceil() - top,
+            );
+            vec![Shape::Hide(
+                Rectangle::new(Point::new(left, top), size),
+                mark.ink,
+            )]
+        }
         Tool::Box | Tool::Hide => Vec::new(),
     }
 }
 
-fn paint(pixmap: &mut tiny_skia::Pixmap, shape: &Shape, hidden: &[u8]) {
-    let ink = |color: Rgba| {
-        let mut paint = tiny_skia::Paint::default();
-        paint.set_color_rgba8(color.r, color.g, color.b, (color.a * 255.0).round() as u8);
-        paint.anti_alias = true;
-        paint
+fn polyline(points: &[Point]) -> tiny_skia::PathBuilder {
+    let mut builder = tiny_skia::PathBuilder::new();
+    builder.move_to(points[0].x, points[0].y);
+    for point in &points[1..] {
+        builder.line_to(point.x, point.y);
+    }
+    builder
+}
+
+// Every shape as a filled outline. The screen fills the very outline the file does,
+// so a see-through marker doesn't darken where its stroke overlaps itself.
+fn outline(shape: &Shape) -> Option<(tiny_skia::Path, Rgba)> {
+    let stroked = |path: tiny_skia::Path, width: f32| {
+        path.stroke(
+            &tiny_skia::Stroke {
+                width,
+                line_cap: tiny_skia::LineCap::Round,
+                line_join: tiny_skia::LineJoin::Round,
+                ..tiny_skia::Stroke::default()
+            },
+            1.0,
+        )
     };
-    let path = |points: &[Point]| {
-        let mut builder = tiny_skia::PathBuilder::new();
-        builder.move_to(points[0].x, points[0].y);
-        for point in &points[1..] {
-            builder.line_to(point.x, point.y);
-        }
-        builder
-    };
-    let stroke = |width: f32| tiny_skia::Stroke {
-        width,
-        line_cap: tiny_skia::LineCap::Round,
-        line_join: tiny_skia::LineJoin::Round,
-        ..tiny_skia::Stroke::default()
-    };
-    let identity = tiny_skia::Transform::identity();
+    let rect = |r: &Rectangle| tiny_skia::Rect::from_xywh(r.x, r.y, r.width, r.height);
     match shape {
         Shape::Line(points, width, color) => {
-            if let Some(line) = path(points).finish() {
-                pixmap.stroke_path(&line, &ink(*color), &stroke(*width), identity, None);
-            }
+            Some((stroked(polyline(points).finish()?, *width)?, *color))
         }
-        Shape::Dot(at, radius, color) => {
-            if let Some(dot) = tiny_skia::PathBuilder::from_circle(at.x, at.y, *radius) {
-                pixmap.fill_path(
-                    &dot,
-                    &ink(*color),
-                    tiny_skia::FillRule::Winding,
-                    identity,
-                    None,
-                );
-            }
-        }
+        Shape::Dot(at, radius, color) => Some((
+            tiny_skia::PathBuilder::from_circle(at.x, at.y, *radius)?,
+            *color,
+        )),
         Shape::Fill(points, color) => {
-            let mut outline = path(points);
-            outline.close();
-            if let Some(outline) = outline.finish() {
-                pixmap.fill_path(
-                    &outline,
-                    &ink(*color),
-                    tiny_skia::FillRule::Winding,
-                    identity,
-                    None,
-                );
-            }
+            let mut path = polyline(points);
+            path.close();
+            Some((path.finish()?, *color))
         }
-        Shape::Frame(rect, width, color) => {
-            if let Some(rect) = tiny_skia::Rect::from_xywh(rect.x, rect.y, rect.width, rect.height)
-            {
-                let outline = tiny_skia::PathBuilder::from_rect(rect);
-                pixmap.stroke_path(&outline, &ink(*color), &stroke(*width), identity, None);
-            }
-        }
-        Shape::Hide(rect) => {
-            let width = pixmap.width() as usize;
-            let height = pixmap.height() as usize;
-            let left = (rect.x.max(0.0) as usize).min(width);
-            let right = ((rect.x + rect.width).ceil().max(0.0) as usize).min(width);
-            let top = (rect.y.max(0.0) as usize).min(height);
-            let bottom = ((rect.y + rect.height).ceil().max(0.0) as usize).min(height);
-            let data = pixmap.data_mut();
-            for y in top..bottom {
-                let row = (y * width + left) * 4..(y * width + right) * 4;
-                data[row.clone()].copy_from_slice(&hidden[row]);
-            }
-        }
+        Shape::Frame(r, width, color) => Some((
+            stroked(tiny_skia::PathBuilder::from_rect(rect(r)?), *width)?,
+            *color,
+        )),
+        Shape::Hide(r, color) => Some((tiny_skia::PathBuilder::from_rect(rect(r)?), *color)),
     }
+}
+
+fn paint(pixmap: &mut tiny_skia::Pixmap, shape: &Shape) {
+    let Some((path, color)) = outline(shape) else {
+        return;
+    };
+    let mut paint = tiny_skia::Paint::default();
+    paint.set_color_rgba8(color.r, color.g, color.b, (color.a * 255.0).round() as u8);
+    paint.anti_alias = true;
+    pixmap.fill_path(
+        &path,
+        &paint,
+        tiny_skia::FillRule::Winding,
+        tiny_skia::Transform::identity(),
+        None,
+    );
 }
 
 struct Board<'a> {
     marks: &'a Marks,
     ink: Rgba,
-}
-
-// The blocks for hidden parts, in a layer of their own: iced draws a canvas' images above its strokes.
-struct Hidden<'a>(&'a Marks);
-
-impl canvas::Program<Message> for Hidden<'_> {
-    type State = ();
-
-    fn draw(
-        &self,
-        _: &(),
-        renderer: &Renderer,
-        _: &Theme,
-        bounds: Rectangle,
-        _: mouse::Cursor,
-    ) -> Vec<Geometry> {
-        let marks = self.0;
-        let mut frame = Frame::new(renderer, bounds.size());
-        let fit = marks.fit(bounds.size());
-        let scale = fit.width / marks.width as f32;
-        for mark in &marks.marks {
-            for shape in shapes(mark, marks.base()) {
-                let Shape::Hide(rect) = shape else { continue };
-                let region = Rectangle::new(
-                    Point::new(fit.x + rect.x * scale, fit.y + rect.y * scale),
-                    rect.size() * scale,
-                );
-                frame.with_clip(region, |inside| inside.draw_image(fit, &marks.hidden));
-            }
-        }
-        vec![frame.into_geometry()]
-    }
 }
 
 impl canvas::Program<Message> for Board<'_> {
@@ -451,57 +431,52 @@ impl canvas::Program<Message> for Board<'_> {
         let fit = self.marks.fit(bounds.size());
         let scale = fit.width / self.marks.width as f32;
         let on_screen = |p: &Point| Point::new(fit.x + p.x * scale, fit.y + p.y * scale);
-        let base = self.marks.base();
-        for mark in self.marks.marks.iter().chain(drawing.iter()) {
-            for shape in shapes(mark, base) {
-                match shape {
-                    Shape::Line(points, width, color) => {
-                        let line = canvas::Path::new(|path| {
-                            path.move_to(on_screen(&points[0]));
-                            for point in &points[1..] {
-                                path.line_to(on_screen(point));
-                            }
-                        });
-                        frame.stroke(
-                            &line,
-                            Stroke::default()
-                                .with_color(style::color(color))
-                                .with_width(width * scale)
-                                .with_line_cap(LineCap::Round)
-                                .with_line_join(LineJoin::Round),
-                        );
-                    }
-                    Shape::Dot(at, radius, color) => frame.fill(
-                        &canvas::Path::circle(on_screen(&at), radius * scale),
-                        style::color(color),
+        let on_screen = |p: tiny_skia::Point| on_screen(&Point::new(p.x, p.y));
+        let live = drawing
+            .as_ref()
+            .map_or_else(Vec::new, |mark| shapes(mark, self.marks.base()));
+        for shape in self.marks.shapes().iter().chain(&live) {
+            // The hidden part being drawn shows as a frame until it's let go.
+            if let Shape::Hide(rect, _) = shape
+                && drawing.is_some()
+                && live.contains(shape)
+            {
+                frame.stroke(
+                    &canvas::Path::rectangle(
+                        on_screen(tiny_skia::Point::from_xy(rect.x, rect.y)),
+                        rect.size() * scale,
                     ),
-                    Shape::Fill(points, color) => {
-                        let outline = canvas::Path::new(|path| {
-                            path.move_to(on_screen(&points[0]));
-                            for point in &points[1..] {
-                                path.line_to(on_screen(point));
-                            }
-                            path.close();
-                        });
-                        frame.fill(&outline, style::color(color));
-                    }
-                    Shape::Frame(rect, width, color) => frame.stroke(
-                        &canvas::Path::rectangle(on_screen(&rect.position()), rect.size() * scale),
-                        Stroke::default()
-                            .with_color(style::color(color))
-                            .with_width(width * scale)
-                            .with_line_join(LineJoin::Round),
-                    ),
-                    // Only the one being drawn; the rest are under the strokes.
-                    Shape::Hide(rect) if drawing.as_ref() == Some(mark) => frame.stroke(
-                        &canvas::Path::rectangle(on_screen(&rect.position()), rect.size() * scale),
-                        Stroke::default()
-                            .with_color(style::color(neutral::TEXT.alpha(0.9)))
-                            .with_width(1.5),
-                    ),
-                    Shape::Hide(_) => {}
-                }
+                    Stroke::default()
+                        .with_color(style::color(neutral::TEXT.alpha(0.9)))
+                        .with_width(1.5),
+                );
+                continue;
             }
+            let Some((outline, color)) = outline(shape) else {
+                continue;
+            };
+            let path = canvas::Path::new(|path| {
+                for segment in outline.segments() {
+                    match segment {
+                        tiny_skia::PathSegment::MoveTo(p) => path.move_to(on_screen(p)),
+                        tiny_skia::PathSegment::LineTo(p) => path.line_to(on_screen(p)),
+                        tiny_skia::PathSegment::QuadTo(c, p) => {
+                            path.quadratic_curve_to(on_screen(c), on_screen(p))
+                        }
+                        tiny_skia::PathSegment::CubicTo(a, b, p) => {
+                            path.bezier_curve_to(on_screen(a), on_screen(b), on_screen(p))
+                        }
+                        tiny_skia::PathSegment::Close => path.close(),
+                    }
+                }
+            });
+            frame.fill(
+                &path,
+                canvas::Fill {
+                    style: canvas::Style::Solid(style::color(color)),
+                    rule: canvas::fill::Rule::NonZero,
+                },
+            );
         }
         vec![frame.into_geometry()]
     }
@@ -527,7 +502,6 @@ pub fn view(marks: &Marks, palette: Palette) -> Element<'_, Message> {
             .width(Fill)
             .height(Fill)
             .content_fit(ContentFit::ScaleDown),
-        board(Hidden(marks)).width(Fill).height(Fill),
         board(Board { marks, ink }).width(Fill).height(Fill),
     ];
 
@@ -636,34 +610,41 @@ mod tests {
         for (i, px) in pixels.chunks_mut(4).enumerate() {
             px[0] = (i % 251) as u8;
         }
-        let hidden = pixelate(&pixels, width, height);
-        let marks = Marks {
+        // A see-through corner, as window shots have.
+        pixels[3] = 0;
+        let mut marks = Marks {
             file: PathBuf::from("/tmp/shot.png"),
             width,
             height,
             picture: Handle::from_rgba(width, height, pixels.clone()),
-            hidden: Handle::from_rgba(width, height, hidden.clone()),
-            marks: vec![
-                mark(Tool::Box, &[(4.0, 4.0), (30.0, 30.0)]),
-                mark(Tool::Hide, &[(40.0, 4.0), (60.0, 40.0)]),
-            ],
+            marks: Vec::new(),
             tool: Tool::Box,
             ink: 0,
         };
+        marks.update(Event::Drawn(mark(Tool::Box, &[(4.0, 4.0), (30.0, 30.0)])));
+        marks.update(Event::Drawn(mark(Tool::Hide, &[(40.0, 4.0), (60.0, 40.0)])));
         let png = marks.render().unwrap();
         let saved = ::image::load_from_memory(&png).unwrap().into_rgba8();
         assert_eq!(saved.get_pixel(4, 15).0, [255, 0, 0, 255], "the box's edge");
+        let inside = ((15 * 64 + 15) * 4) as usize;
         assert_eq!(
-            saved.get_pixel(15, 15).0[0],
-            pixels[(15 * 64 + 15) * 4],
+            saved.get_pixel(15, 15).0,
+            pixels[inside..inside + 4],
             "inside is untouched"
         );
-        let at = ((20 * 64 + 50) * 4) as usize;
         assert_eq!(
-            saved.get_pixel(50, 20).0,
-            hidden[at..at + 4],
-            "the hidden part is blocks"
+            saved.get_pixel(0, 0).0[3],
+            0,
+            "the corner stays see-through"
         );
+        let patch = saved.get_pixel(50, 20).0;
+        assert_eq!(
+            patch,
+            saved.get_pixel(41, 39).0,
+            "the hidden part is one flat tone"
+        );
+        assert_ne!(patch[0], pixels[((20 * 64 + 50) * 4) as usize]);
+        assert!(marks.hides());
         assert_eq!(marks.marked(), PathBuf::from("/tmp/shot marked.png"));
     }
 }

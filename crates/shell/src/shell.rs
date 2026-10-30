@@ -876,15 +876,20 @@ impl Shell {
             Message::Idle(stage, true) => return self.idle(stage),
             Message::Dismiss(notify::SHOT_CARD) => {
                 self.forget(notify::SHOT_CARD);
-                if let Some(path) = self.shot.take() {
-                    return self.open_marks(Some(path.into()));
-                }
+                return self.open_marks();
             }
             Message::Dismiss(id) => {
                 self.forget(id);
                 return notify::closed(id, Closed::Dismissed);
             }
             Message::MarksOpened(Ok(marks)) => {
+                // Never over a password prompt, nor over marks not saved yet.
+                if self.overlay == Some(Overlay::Polkit) {
+                    return Task::none();
+                }
+                if self.marks.as_ref().is_some_and(|m| !m.is_empty()) {
+                    return self.show(Osd::Note("Save or close these marks first".into()));
+                }
                 self.marks = Some(std::sync::Arc::unwrap_or_clone(marks));
                 return self.set_overlay(Some(Overlay::Marks));
             }
@@ -1148,7 +1153,7 @@ impl Shell {
                     Task::perform(crate::capture::pick_color(), Message::Picked)
                 }
                 None if capture == crate::capture::Capture::Mark => {
-                    return Task::batch([close, self.open_marks(None)]);
+                    return Task::batch([close, self.open_marks()]);
                 }
                 None => return Task::batch([close, self.toggle_recording()]),
             },
@@ -1445,8 +1450,12 @@ impl Shell {
         self.load_wallpaper()
     }
 
-    fn open_marks(&mut self, file: Option<std::path::PathBuf>) -> Task<Message> {
-        match file.or_else(crate::marks::latest) {
+    fn open_marks(&mut self) -> Task<Message> {
+        let last = self.shot.as_ref().map(std::path::PathBuf::from);
+        match last
+            .filter(|file| file.is_file())
+            .or_else(crate::marks::latest)
+        {
             Some(file) => Task::perform(crate::marks::open(file), Message::MarksOpened),
             None => self.show(Osd::Note("No screenshot to mark yet".into())),
         }
@@ -1480,6 +1489,13 @@ impl Shell {
             return Task::none();
         }
         let marks = marks.clone();
+        // niri copied the shot as it was; with parts hidden, that copy must not stay around.
+        let hides = marks.hides();
+        if hides && let Ok(original) = std::fs::read(&marks.file) {
+            self.clips.retain(
+                |clip| !matches!(&clip.content, clipboard::Content::Png(png) if **png == original),
+            );
+        }
         let close = if matches!(event, Event::Both) {
             self.set_overlay(None)
         } else {
@@ -1491,7 +1507,7 @@ impl Shell {
                     let png = marks.render()?;
                     let file = marks.marked();
                     let mut said = Vec::new();
-                    if matches!(event, Event::Copy | Event::Both) {
+                    if hides || matches!(event, Event::Copy | Event::Both) {
                         let content = clipboard::Content::Png(std::sync::Arc::new(png.clone()));
                         clipboard::copy(&content);
                         said.push("Copied".to_owned());

@@ -54,7 +54,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 
 Change them in settings → Shortcuts, which also tells you what each one replaces in your niri config. Quick settings use `wpctl` (PipeWire), `brightnessctl`, `nmcli` (NetworkManager) and `bluetoothctl`; whatever is missing just isn't shown.
 
-After any screenshot, niri's own Print keys included, a card offers to mark it: arrows, boxes, a pen, a marker, and blocks over what shouldn't show (big enough that hidden text can't be read back). Enter copies the result and saves it next to the original as `… marked.png`; Ctrl+C and Ctrl+S do one or the other, Ctrl+Z takes back the last mark, and P, A, B, M, H pick the tool. "Mark the last screenshot" in the launcher opens the newest one in `~/Pictures/Screenshots`.
+After any screenshot, niri's own Print keys included, a card offers to mark it: arrows, boxes, a pen, a marker, and a patch over what shouldn't show, in that part's average tone so nothing under it can be read back; with a part hidden, the marked picture also replaces niri's copy of the original on the clipboard. Enter copies the result and saves it next to the original as `… marked.png`; Ctrl+C and Ctrl+S do one or the other, Ctrl+Z takes back the last mark, and P, A, B, M, H pick the tool. "Mark the last screenshot" in the launcher opens the last one niri told Apolline about, or the newest in `~/Pictures/Screenshots`.
 
 ## Windows
 
