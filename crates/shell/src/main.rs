@@ -74,12 +74,6 @@ struct Options {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if std::env::var_os("ICED_BACKEND").is_none() && args.first().is_some_and(|a| a == "lock") {
-        // The lock screen must come up even when the GPU driver doesn't; it is opaque,
-        // so the CPU renderer's lack of transparency on Wayland doesn't show.
-        // SAFETY: nothing else runs yet, so no other thread reads the environment.
-        unsafe { std::env::set_var("ICED_BACKEND", "tiny-skia") };
-    }
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {

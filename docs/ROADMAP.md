@@ -43,7 +43,7 @@ Apolline doesn't race them on widgets:
 - **No surprise writes.** Coloring apps is opt-in, every file it writes is listed next to the switch,
   and turning it off removes exactly that. A gtk.css that is a dotfiles link is never touched.
 - **Quiet at rest.** The shell wakes once a minute for the clock and repaints nothing else until something
-  changes; the lock screen draws on the CPU, so a GPU driver problem can't keep you out.
+  changes; if the GPU renderer can't start, it falls back to the CPU, so a driver problem can't keep you out.
 
 ## Principles
 
