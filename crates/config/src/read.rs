@@ -597,7 +597,12 @@ impl Reader<'_> {
                         desktop.theme = Some(v.to_owned())
                     }
                 }
-                _ => self.unknown(key, "option", &["wallpaper", "accent", "theme"]),
+                "folders" => {
+                    if let Some(v) = self.strings(key, value) {
+                        desktop.folders = v
+                    }
+                }
+                _ => self.unknown(key, "option", &["wallpaper", "accent", "theme", "folders"]),
             }
         }
     }

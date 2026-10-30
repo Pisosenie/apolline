@@ -27,12 +27,64 @@ pub enum Source {
     Bundled(&'static str, &'static [u8]),
 }
 
-pub fn resolve(name: &str) -> Source {
+pub fn expand(name: &str) -> Option<PathBuf> {
     let path = Path::new(name);
-    let file = if path.is_absolute() {
+    if path.is_absolute() {
         Some(path.to_path_buf())
     } else if let (Some(rest), Some(home)) = (name.strip_prefix("~/"), std::env::var_os("HOME")) {
         Some(PathBuf::from(home).join(rest))
+    } else {
+        None
+    }
+}
+
+pub fn shorten(path: &Path) -> String {
+    match std::env::var_os("HOME").and_then(|home| path.strip_prefix(home).ok().map(PathBuf::from))
+    {
+        Some(rest) => format!("~/{}", rest.display()),
+        None => path.display().to_string(),
+    }
+}
+
+pub fn library(folders: &[String]) -> Vec<String> {
+    let mut dirs = search_dirs();
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join("Pictures/Wallpapers"));
+        dirs.push(home.join("Pictures/wallpapers"));
+    }
+    dirs.extend(folders.iter().filter_map(|folder| expand(folder)));
+    let mut found = Vec::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut files: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    matches!(e.to_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp")
+                })
+            })
+            .collect();
+        files.sort();
+        for file in files {
+            let name = shorten(&file);
+            if !found.contains(&name) {
+                found.push(name);
+            }
+        }
+    }
+    found.truncate(LIBRARY);
+    found
+}
+
+const LIBRARY: usize = 300;
+
+pub fn resolve(name: &str) -> Source {
+    let path = Path::new(name);
+    let file = if let Some(file) = expand(name) {
+        Some(file)
     } else {
         search_dirs()
             .into_iter()

@@ -27,6 +27,8 @@ use crate::{bar, fonts, keys, notify, shot, style, themes, wallpaper};
 const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
 const HISTORY: usize = 100;
+const WALLS: usize = 11;
+const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
 const NARROW: f32 = 860.0;
 const STRING: Rgba = Rgba::hex(0xa8d8a0);
@@ -222,6 +224,8 @@ enum Message {
     DesktopAccent(Accent),
     WallpaperDraft(String),
     UseWallpaper,
+    AllWallpapers,
+    RemoveFolder(usize),
     Notifications(usize, Notifications),
     Performance(bool),
     KeepAwake(bool),
@@ -331,6 +335,9 @@ struct Settings {
     theme_note: Option<Result<String, String>>,
     draft: String,
     wallpaper_draft: String,
+    library: Vec<String>,
+    queue: Vec<String>,
+    all_walls: bool,
     typing: String,
     thumbs: Vec<(String, image::Handle)>,
     recording: Option<Shortcut>,
@@ -386,6 +393,9 @@ impl Settings {
             page: Page::Modes,
             draft: String::new(),
             wallpaper_draft: String::new(),
+            library: Vec::new(),
+            queue: Vec::new(),
+            all_walls: false,
             typing: String::new(),
             thumbs: Vec::new(),
             recording: None,
@@ -399,10 +409,16 @@ impl Settings {
             screenshot,
             shooting: false,
         };
+        let mut settings = settings;
         let custom = settings.custom_thumb();
+        let library = settings.scan_library();
         (
             settings,
-            Task::batch([Task::perform(thumbnails(), Message::Thumbs), custom]),
+            Task::batch([
+                Task::perform(thumbnails(), Message::Thumbs),
+                custom,
+                library,
+            ]),
         )
     }
 
@@ -509,10 +525,30 @@ impl Settings {
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
+            Message::AllWallpapers => self.all_walls = !self.all_walls,
+            Message::RemoveFolder(index) => {
+                let mut folders = self.config.desktop.folders.clone();
+                if index < folders.len() {
+                    folders.remove(index);
+                    self.edit(|e| e.set_list("desktop", "folders", &folders));
+                    return self.scan_library();
+                }
+            }
             Message::UseWallpaper => {
                 let path = self.wallpaper_draft.trim().to_owned();
+                let folder = wallpaper::expand(&path).filter(|p| p.is_dir());
                 match wallpaper::resolve(&path) {
                     _ if path.is_empty() => {}
+                    _ if folder.is_some() => {
+                        let mut folders = self.config.desktop.folders.clone();
+                        let name = wallpaper::shorten(&folder.unwrap_or_default());
+                        if !folders.contains(&name) {
+                            folders.push(name);
+                            self.edit(|e| e.set_list("desktop", "folders", &folders));
+                        }
+                        self.wallpaper_draft.clear();
+                        return self.scan_library();
+                    }
                     wallpaper::Source::File(file) if !file.exists() => {
                         self.error = Some(format!("{} does not exist", file.display()));
                     }
@@ -882,16 +918,29 @@ impl Settings {
                 .discard();
             }
             Message::Commit => self.save(),
-            Message::Thumbs(thumbs) => self.thumbs = thumbs,
+            Message::Thumbs(thumbs) => {
+                for (name, handle) in thumbs {
+                    self.thumbs.retain(|(n, _)| *n != name);
+                    self.thumbs.push((name, handle));
+                }
+            }
             Message::Thumb(name, Some(handle)) => {
                 self.thumbs.retain(|(n, _)| *n != name);
                 self.thumbs.push((name, handle));
+                return self.next_thumb();
             }
+            Message::Thumb(_, None) => return self.next_thumb(),
             Message::Tick => {
                 if stamp(&self.path) != self.stamp {
                     self.reload();
                 }
-                if self.screenshot.is_some() && !self.shooting && self.thumbs.len() >= 3 {
+                if self.screenshot.is_some()
+                    && !self.shooting
+                    && self.queue.is_empty()
+                    && wallpaper::bundled()
+                        .iter()
+                        .all(|(name, _)| self.thumb(name).is_some())
+                {
                     self.shooting = true;
                     return window::latest()
                         .and_then(window::screenshot)
@@ -906,7 +955,7 @@ impl Settings {
                 }
                 return iced::exit();
             }
-            Message::Thumb(_, None) | Message::Key(_) | Message::Noop => {}
+            Message::Key(_) | Message::Noop => {}
         }
         Task::none()
     }
@@ -948,6 +997,27 @@ impl Settings {
                     })
                 }),
         )
+    }
+
+    fn scan_library(&mut self) -> Task<Message> {
+        self.library = wallpaper::library(&self.config.desktop.folders);
+        self.queue = self
+            .library
+            .iter()
+            .rev()
+            .filter(|name| self.thumb(name).is_none())
+            .cloned()
+            .collect();
+        Task::batch([self.next_thumb(), self.next_thumb()])
+    }
+
+    fn next_thumb(&mut self) -> Task<Message> {
+        let Some(name) = self.queue.pop() else {
+            return Task::none();
+        };
+        Task::perform(wallpaper::thumbnail(name.clone()), move |thumb| {
+            Message::Thumb(name.clone(), thumb)
+        })
     }
 
     fn thumb(&self, name: &str) -> Option<&image::Handle> {
@@ -1714,7 +1784,7 @@ impl Settings {
                 ..button::Style::default()
             }
         };
-        let mut walls = Row::new().spacing(12);
+        let mut tiles: Vec<Element<'a, Message>> = Vec::new();
         if inherit {
             let picture: Element<'a, Message> = match self.thumb(&self.config.desktop.wallpaper) {
                 Some(handle) => stack![
@@ -1733,47 +1803,115 @@ impl Settings {
                     .center_y(88)
                     .into(),
             };
-            walls = walls.push(
+            tiles.push(
                 button(picture)
                     .width(Fill)
                     .padding(3)
                     .style(ring(current.is_none()))
-                    .on_press(on(None)),
+                    .on_press(on(None))
+                    .into(),
             );
         }
-        for (name, _) in wallpaper::bundled() {
-            let Some(handle) = self.thumb(name) else {
-                continue;
+        let names: Vec<&str> = wallpaper::bundled()
+            .iter()
+            .map(|(name, _)| *name)
+            .chain(self.library.iter().map(String::as_str))
+            .collect();
+        let limit = if self.all_walls { names.len() } else { WALLS };
+        for name in names.iter().take(limit) {
+            let picture: Element<'a, Message> = match self.thumb(name) {
+                Some(handle) => image(handle.clone())
+                    .width(Fill)
+                    .height(88)
+                    .content_fit(ContentFit::Cover)
+                    .border_radius(9.0)
+                    .into(),
+                None => container(space())
+                    .width(Fill)
+                    .height(88)
+                    .style(|_| container::background(style::color(style::SUNKEN)))
+                    .into(),
             };
-            walls = walls.push(
-                button(
-                    image(handle.clone())
-                        .width(Fill)
-                        .height(88)
-                        .content_fit(ContentFit::Cover)
-                        .border_radius(9.0),
-                )
-                .width(Fill)
-                .padding(3)
-                .style(ring(current == Some(*name)))
-                .on_press(on(Some((*name).to_owned()))),
+            tiles.push(
+                button(picture)
+                    .width(Fill)
+                    .padding(3)
+                    .style(ring(current == Some(*name)))
+                    .on_press(on(Some((*name).to_owned())))
+                    .into(),
             );
         }
+        if names.len() > WALLS {
+            let label = if self.all_walls {
+                "Fewer".to_owned()
+            } else {
+                format!("+{} more", names.len() - WALLS)
+            };
+            tiles.push(
+                button(container(text(label).size(13)).center_x(Fill).center_y(88))
+                    .width(Fill)
+                    .padding(3)
+                    .style(ring(false))
+                    .on_press(Message::AllWallpapers)
+                    .into(),
+            );
+        }
+        let mut grid = Column::new().spacing(12);
+        let mut tiles = tiles.into_iter().peekable();
+        while tiles.peek().is_some() {
+            let mut line = Row::new().spacing(12);
+            let mut count = 0;
+            for tile in tiles.by_ref().take(PER_ROW) {
+                line = line.push(tile);
+                count += 1;
+            }
+            for _ in count..PER_ROW {
+                line = line.push(Space::new().width(Fill));
+            }
+            grid = grid.push(line);
+        }
+        let walls = grid;
         let own = row![
-            text_input("~/Pictures/my-wallpaper.jpg", &self.wallpaper_draft)
+            text_input("A picture or a folder of them", &self.wallpaper_draft)
                 .on_input(Message::WallpaperDraft)
                 .on_submit(Message::UseWallpaper)
                 .padding([8, 12])
                 .size(13)
                 .style(style::field(palette)),
-            button(text("Use").size(13))
+            button(text("Add").size(13))
                 .padding([8, 16])
                 .style(style::secondary)
                 .on_press(Message::UseWallpaper),
         ]
         .spacing(8);
         let mut column = column![walls, own].spacing(14);
-        if let Some(name) = current.filter(|name| !is_bundled(name)) {
+        if !self.config.desktop.folders.is_empty() {
+            let folders = Row::with_children(self.config.desktop.folders.iter().enumerate().map(
+                |(index, folder)| {
+                    container(
+                        row![
+                            icon(Icon::Folder, 13.0, style::FAINT),
+                            text(folder.as_str()).size(12),
+                            button(icon(Icon::X, 12.0, style::FAINT))
+                                .padding(2)
+                                .style(style::ghost(6.0))
+                                .on_press(Message::RemoveFolder(index)),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                    )
+                    .padding([4, 10])
+                    .style(style::pill(Rgba::hex(0xffffff).alpha(0.06)))
+                    .into()
+                },
+            ))
+            .spacing(6)
+            .wrap();
+            column = column.push(folders);
+        }
+        if let Some(name) =
+            current.filter(|name| !is_bundled(name) && !self.library.iter().any(|n| n == name))
+        {
             column = column.push(
                 row![
                     icon(Icon::Image, 14.0, style::FAINT),

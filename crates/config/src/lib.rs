@@ -174,6 +174,7 @@ pub struct Desktop {
     pub wallpaper: String,
     pub accent: Accent,
     pub theme: Option<String>,
+    pub folders: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -458,6 +459,7 @@ impl Default for Config {
                 wallpaper: "fog.jpg".into(),
                 accent: Accent::Auto,
                 theme: None,
+                folders: Vec::new(),
             },
             layout: Layout {
                 gaps: 10,
