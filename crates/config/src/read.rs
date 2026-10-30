@@ -5,7 +5,7 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Appear, Bar, Blur, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard,
+    Accent, Alerts, Appear, Blur, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard,
     Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch,
     Touchpad, Trigger, Width, Windows, Workspaces, slug,
 };
@@ -125,7 +125,7 @@ impl Reader<'_> {
                 }
                 "bar" => {
                     if let Some(t) = self.section(key, value) {
-                        self.bar(t, &mut config.bar, &mut config.pinned)
+                        self.bar(t, config)
                     }
                 }
                 "keyboard" => {
@@ -259,7 +259,8 @@ impl Reader<'_> {
         }
     }
 
-    fn bar(&mut self, table: &DeTable, bar: &mut Bar, pinned: &mut Vec<String>) {
+    fn bar(&mut self, table: &DeTable, config: &mut Config) {
+        let bar = &mut config.bar;
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
                 "workspaces" => {
@@ -305,7 +306,12 @@ impl Reader<'_> {
                 }
                 "pinned" => {
                     if let Some(v) = self.strings(key, value) {
-                        *pinned = v
+                        config.pinned = v
+                    }
+                }
+                "weather" => {
+                    if let Some(v) = self.string(key, value) {
+                        config.weather = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
                 _ => self.unknown(
@@ -321,6 +327,7 @@ impl Reader<'_> {
                         "opacity",
                         "blur",
                         "pinned",
+                        "weather",
                     ],
                 ),
             }

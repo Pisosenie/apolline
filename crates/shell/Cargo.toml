@@ -18,6 +18,8 @@ chrono.workspace = true
 image.workspace = true
 png.workspace = true
 zbus.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = "0.19"

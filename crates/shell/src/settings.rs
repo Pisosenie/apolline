@@ -236,6 +236,8 @@ enum Message {
     ColorApps(bool),
     Apps(Vec<App>),
     PinQuery(String),
+    WeatherDraft(String),
+    SetWeather,
     PinApp(String),
     UnpinApp(usize),
     RemoveFolder(usize),
@@ -359,6 +361,7 @@ struct Settings {
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
+    weather_draft: Option<String>,
     hours_draft: String,
     monitor_draft: String,
     queue: Vec<String>,
@@ -426,6 +429,7 @@ impl Settings {
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
+            weather_draft: None,
             hours_draft: String::new(),
             monitor_draft: String::new(),
             queue: Vec::new(),
@@ -570,6 +574,19 @@ impl Settings {
             }),
             Message::Apps(apps) => self.apps = apps,
             Message::PinQuery(query) => self.pin_query = query,
+            Message::WeatherDraft(draft) => self.weather_draft = Some(draft),
+            Message::SetWeather => {
+                if let Some(place) = self.weather_draft.take() {
+                    let place = place.trim().to_owned();
+                    self.edit(|e| {
+                        if place.is_empty() {
+                            e.unset("bar", "weather");
+                        } else {
+                            e.set("bar", "weather", place.as_str());
+                        }
+                    });
+                }
+            }
             Message::PinApp(id) => {
                 let mut pinned = self.config.pinned.clone();
                 if !pinned.contains(&id) {
@@ -2855,6 +2872,36 @@ impl Settings {
                 ]
             ),
             group("Pinned apps", self.pinned_apps(palette)),
+            group(
+                "Calendar",
+                vec![
+                    setting(
+                        "Weather",
+                        "A city, or latitude,longitude. Open-Meteo is asked every 30 minutes; nothing is sent until you set one",
+                        row![
+                            text_input(
+                                "Lisbon",
+                                self.weather_draft
+                                    .as_deref()
+                                    .or(self.config.weather.as_deref())
+                                    .unwrap_or(""),
+                            )
+                            .on_input(Message::WeatherDraft)
+                            .on_submit(Message::SetWeather)
+                            .padding([8, 12])
+                            .size(13)
+                            .width(180)
+                            .style(style::field(palette)),
+                            button(text("Save").size(13))
+                                .padding([8, 14])
+                                .style(style::secondary)
+                                .on_press_maybe(self.weather_draft.is_some().then_some(Message::SetWeather)),
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                    ),
+                ]
+            ),
             group(
                 "Workspaces",
                 vec![setting(

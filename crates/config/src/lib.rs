@@ -30,6 +30,7 @@ pub struct Config {
     pub windows: Windows,
     pub rules: Vec<Rule>,
     pub pinned: Vec<String>,
+    pub weather: Option<String>,
     pub modes: Vec<ModeSettings>,
 }
 
@@ -576,6 +577,7 @@ impl Default for Config {
             },
             rules: Vec::new(),
             pinned: Vec::new(),
+            weather: None,
             modes: Vec::new(),
         }
     }

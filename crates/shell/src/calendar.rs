@@ -6,6 +6,7 @@ use iced::{Alignment, Element, Fill, Length, Padding};
 use crate::icon::{Icon, icon};
 use crate::shell::Message;
 use crate::style;
+use crate::weather::{self, Weather};
 
 const CELL: f32 = 38.0;
 
@@ -28,6 +29,7 @@ pub fn days(first: NaiveDate) -> Vec<NaiveDate> {
 pub fn view<'a>(
     now: DateTime<Local>,
     offset: i32,
+    weather: Option<&'a Weather>,
     palette: Palette,
     at_bottom: bool,
 ) -> Element<'a, Message> {
@@ -89,17 +91,21 @@ pub fn view<'a>(
         })));
     }
 
+    let mut top = column![
+        text(now.format("%A").to_string())
+            .size(12)
+            .color(style::color(palette.accent)),
+        text(now.format("%-d %B").to_string())
+            .size(22)
+            .font(style::semibold()),
+    ]
+    .spacing(2);
+    if let Some(weather) = weather {
+        top = top.push(forecast(weather, palette)).spacing(12);
+    }
     let card = container(
         column![
-            column![
-                text(now.format("%A").to_string())
-                    .size(12)
-                    .color(style::color(palette.accent)),
-                text(now.format("%-d %B").to_string())
-                    .size(22)
-                    .font(style::semibold()),
-            ]
-            .spacing(2),
+            top,
             container(space()).width(Fill).height(1).style(|_| {
                 iced::widget::container::background(style::color(neutral::HAIRLINE))
             }),
@@ -131,6 +137,45 @@ pub fn view<'a>(
     )
     .on_press(Message::Overlay(None))
     .into()
+}
+
+fn forecast(weather: &Weather, palette: Palette) -> Element<'_, Message> {
+    let (glyph, words) = weather::describe(weather.code);
+    let today = row![
+        icon(glyph, 24.0, palette.accent),
+        text(format!("{:.0}°", weather.now))
+            .size(22)
+            .font(style::semibold()),
+        column![
+            text(words).size(13),
+            row![
+                icon(Icon::MapPin, 11.0, style::FAINT),
+                text(weather.place.as_str())
+                    .size(11)
+                    .color(style::color(style::FAINT)),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(1),
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center);
+    let days = Row::with_children(weather.days.iter().skip(1).take(3).map(|day| {
+        let (glyph, _) = weather::describe(day.code);
+        column![
+            text(day.date.format("%a").to_string())
+                .size(11)
+                .color(style::color(style::FAINT)),
+            icon(glyph, 16.0, neutral::TEXT),
+            text(format!("{:.0}° {:.0}°", day.high, day.low)).size(11),
+        ]
+        .spacing(4)
+        .align_x(Alignment::Center)
+        .width(Fill)
+        .into()
+    }));
+    column![today, days].spacing(12).into()
 }
 
 #[cfg(test)]

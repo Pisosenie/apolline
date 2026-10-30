@@ -74,6 +74,7 @@ pub enum Message {
     Opened,
     ConfigChanged,
     CalendarMonth(i32),
+    Weather(Option<crate::weather::Weather>),
     Thumb(String, Option<image::Handle>),
     Polkit(polkit::Request),
     PolkitGone(String),
@@ -141,6 +142,7 @@ pub struct Shell {
     polkit: Option<polkit::Dialog>,
     painted: Option<Option<apolline_theme::Rgba>>,
     month: i32,
+    weather: Option<crate::weather::Weather>,
     apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
@@ -201,6 +203,7 @@ impl Shell {
             polkit: None,
             painted: None,
             month: 0,
+            weather: None,
             apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
@@ -362,6 +365,11 @@ impl Shell {
                 return Task::batch([self.expire(), controls, triggers]);
             }
             Message::CalendarMonth(month) => self.month = month,
+            Message::Weather(weather) => {
+                if weather.is_some() || self.config.weather.is_none() {
+                    self.weather = weather;
+                }
+            }
             Message::ConfigChanged => {
                 let now = stamp(&self.config_path);
                 if now != self.config_stamp {
@@ -1192,6 +1200,7 @@ impl Shell {
             Some(Overlay::Calendar) => crate::calendar::view(
                 self.now,
                 self.month,
+                self.weather.as_ref(),
                 palette,
                 self.config.bar.position == Edge::Bottom,
             ),
@@ -1359,6 +1368,7 @@ impl Shell {
         } else {
             iced::Subscription::batch([
                 iced::Subscription::run(watch_config),
+                crate::weather::subscription(self.config.weather.clone()),
                 controls::watch().map(Message::Controls),
             ])
         };

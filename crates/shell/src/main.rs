@@ -35,6 +35,7 @@ mod style;
 mod switcher;
 mod themes;
 mod wallpaper;
+mod weather;
 mod windows;
 
 #[cfg(target_os = "linux")]
