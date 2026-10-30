@@ -45,9 +45,13 @@ const UNITS: [(&str, &str, f64); 30] = [
 
 fn convert(input: &str) -> Option<String> {
     let lower = input.to_lowercase();
-    let (from, to) = lower
-        .split_once(" in ")
-        .or_else(|| lower.split_once(" to "))?;
+    [" in ", " to "]
+        .iter()
+        .flat_map(|word| lower.match_indices(word))
+        .find_map(|(at, word)| between(&lower[..at], &lower[at + word.len()..]))
+}
+
+fn between(from: &str, to: &str) -> Option<String> {
     let from = from.trim();
     let split = from.find(|c: char| c.is_alphabetic() || c == '°')?;
     let (number, unit) = from.split_at(split);
@@ -268,6 +272,8 @@ mod tests {
         assert_eq!(answer("1 GiB in MB").as_deref(), Some("1073.7418 MB"));
         assert_eq!(answer("90 min in h").as_deref(), Some("1.5 h"));
         assert_eq!(answer("2*3 kg to lb").as_deref(), Some("13.2277 lb"));
+        assert_eq!(answer("12 in to cm").as_deref(), Some("30.48 cm"));
+        assert_eq!(answer("3 ft in in").as_deref(), Some("36 in"));
         assert_eq!(answer("10 km in kg"), None, "length isn't mass");
     }
 
