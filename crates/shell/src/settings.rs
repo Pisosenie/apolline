@@ -744,7 +744,7 @@ impl Settings {
                 let mut list = self.app_list_of(key).to_vec();
                 if !name.is_empty() && !list.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
                     list.push(name);
-                    self.edit(|e| e.set_list("notifications", key, &list));
+                    self.edit(|e| e.set_list(list_section(key), key, &list));
                 }
                 self.app_draft = ("", String::new());
             }
@@ -755,9 +755,9 @@ impl Settings {
                     list.remove(index);
                     self.edit(|e| {
                         if list.is_empty() {
-                            e.unset("notifications", key);
+                            e.unset(list_section(key), key);
                         } else {
-                            e.set_list("notifications", key, &list);
+                            e.set_list(list_section(key), key, &list);
                         }
                     });
                 }
@@ -3170,6 +3170,7 @@ impl Settings {
     fn app_list_of(&self, key: &str) -> &[String] {
         match key {
             "mute" => &self.config.alerts.mute,
+            "calendars" => &self.config.calendars,
             _ => &self.config.alerts.always,
         }
     }
@@ -3418,6 +3419,14 @@ impl Settings {
                         .spacing(8)
                         .align_y(Alignment::Center),
                     ),
+                    self.app_list(
+                        "Events",
+                        "ICS files or https and webcal links, read every ten minutes. No sign-in",
+                        "calendars",
+                        &self.config.calendars,
+                        "~/calendar.ics or a link",
+                        palette,
+                    ),
                 ]
             ),
             group(
@@ -3665,8 +3674,8 @@ impl Settings {
             group(
                 "Apps",
                 vec![
-                    self.app_list("Never pop up", "Kept in the history only", "mute", &alerts.mute, palette),
-                    self.app_list("Always show", "Even with do not disturb or a mode that holds them", "always", &alerts.always, palette),
+                    self.app_list("Never pop up", "Kept in the history only", "mute", &alerts.mute, "App name", palette),
+                    self.app_list("Always show", "Even with do not disturb or a mode that holds them", "always", &alerts.always, "App name", palette),
                     note("Use the name an app signs its notifications with, as the history in quick settings shows it."),
                 ]
             ),
@@ -3681,6 +3690,7 @@ impl Settings {
         about: &'a str,
         key: &'static str,
         apps: &'a [String],
+        hint: &'static str,
         palette: Palette,
     ) -> Element<'a, Message> {
         let mut chips = Row::new().spacing(6).align_y(Alignment::Center);
@@ -3688,7 +3698,7 @@ impl Settings {
             chips = chips.push(
                 container(
                     row![
-                        text(app.as_str()).size(12),
+                        text(chip_name(app)).size(12),
                         button(icon(Icon::X, 12.0, style::FAINT))
                             .padding(2)
                             .style(style::ghost(6.0))
@@ -3707,12 +3717,12 @@ impl Settings {
             ""
         };
         chips = chips.push(
-            text_input("App name", draft)
+            text_input(hint, draft)
                 .on_input(move |name| Message::AppDraft(key, name))
                 .on_submit(Message::AppListAdd(key))
                 .padding([6, 10])
                 .size(12)
-                .width(150)
+                .width(if key == "calendars" { 260 } else { 150 })
                 .style(style::field(palette)),
         );
         setting(title, about, chips.wrap())
@@ -5254,6 +5264,22 @@ fn broken(err: &str) -> Element<'_, Message> {
 
 fn stamp(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+fn list_section(key: &str) -> &'static str {
+    if key == "calendars" {
+        "bar"
+    } else {
+        "notifications"
+    }
+}
+
+// A link shows only its host: a calendar's secret address is a password of sorts.
+fn chip_name(entry: &str) -> String {
+    match entry.split_once("://") {
+        Some((_, rest)) => rest.split('/').next().unwrap_or(rest).to_owned(),
+        None => entry.to_owned(),
+    }
 }
 
 // What a mode puts over the everyday look while it's on.
