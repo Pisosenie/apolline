@@ -7,18 +7,19 @@ use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, w
 use crate::shell::{Message, Shell};
 use crate::{fonts, shot};
 
-pub fn run(
-    mode: Option<String>,
-    screenshot: Option<PathBuf>,
-    open: Option<Message>,
-) -> iced::Result {
+pub fn run(mode: Option<String>, screenshot: Option<PathBuf>, open: Vec<Message>) -> iced::Result {
     let app = iced::application(
         move || {
             let (mut shell, load) = Shell::new(mode.clone(), true);
             let mut start = open.clone();
-            let load = match start.take_if(|_| screenshot.is_none()) {
-                Some(message) => Task::batch([load, shell.update(message)]),
-                None => load,
+            let load = if screenshot.is_none() {
+                let opened: Vec<Task<Message>> = start
+                    .drain(..)
+                    .map(|message| shell.update(message))
+                    .collect();
+                Task::batch(std::iter::once(load).chain(opened))
+            } else {
+                load
             };
             let preview = Preview {
                 shell,
@@ -46,7 +47,7 @@ pub fn run(
 struct Preview {
     shell: Shell,
     screenshot: Option<PathBuf>,
-    start: Option<Message>,
+    start: Vec<Message>,
     ticks: u32,
     shooting: bool,
 }
@@ -57,8 +58,13 @@ impl Preview {
             Message::Tick if self.screenshot.is_some() => {
                 self.ticks += 1;
                 let ready = self.ticks >= 2 && self.shell.is_ready();
-                if ready && let Some(message) = self.start.take() {
-                    return self.shell.update(message);
+                if ready && !self.start.is_empty() {
+                    let start = std::mem::take(&mut self.start);
+                    let tasks: Vec<Task<Message>> = start
+                        .into_iter()
+                        .map(|message| self.shell.update(message))
+                        .collect();
+                    return Task::batch(tasks);
                 }
                 if !self.shooting && ready {
                     self.shooting = true;

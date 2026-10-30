@@ -50,7 +50,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|polkit|osd] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
@@ -65,7 +65,7 @@ struct Options {
     mode: Option<String>,
     preview: bool,
     screenshot: Option<PathBuf>,
-    open: Option<shell::Message>,
+    open: Vec<shell::Message>,
 }
 
 fn main() -> ExitCode {
@@ -127,7 +127,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--preview" => options.preview = true,
             "--open" => {
                 let overlay = |overlay| shell::Message::Overlay(Some(overlay));
-                options.open = Some(match args.next().map(String::as_str) {
+                options.open.push(match args.next().map(String::as_str) {
                     Some("launcher") => overlay(shell::Overlay::Launcher),
                     Some("panel") => overlay(shell::Overlay::Panel),
                     Some("switch") => overlay(shell::Overlay::Switcher),
@@ -143,6 +143,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
                         );
                     }
                 })
+            }
+            "--query" => {
+                let query = args.next().ok_or("--query needs some text")?.clone();
+                options
+                    .open
+                    .push(shell::Message::Overlay(Some(shell::Overlay::Launcher)));
+                options.open.push(shell::Message::Query(query));
             }
             "--screenshot" => {
                 options.screenshot = Some(args.next().ok_or("--screenshot needs a file")?.into())

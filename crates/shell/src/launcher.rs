@@ -58,6 +58,16 @@ struct Entry<'a> {
 enum Pic<'a> {
     App(Option<&'a Picture>),
     Icon(Icon),
+    Glyph(&'a str),
+}
+
+const EMOJI: &str = include_str!("../../../assets/emoji.txt");
+
+fn emoji() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EMOJI
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(' '))
 }
 
 const ACTIONS: [(&str, &str, Icon, Target); 5] = [
@@ -146,6 +156,25 @@ impl Launcher {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
+        if let Some(wanted) = query.strip_prefix(':') {
+            let mut found: Vec<(u32, Entry)> = emoji()
+                .filter_map(|(glyph, name)| {
+                    let score = apps::rank(wanted, name, "")?;
+                    Some((
+                        score,
+                        Entry {
+                            title: name.to_owned(),
+                            about: String::new(),
+                            picture: Pic::Glyph(glyph),
+                            target: Target::Copy(glyph.to_owned()),
+                            game: false,
+                        },
+                    ))
+                })
+                .collect();
+            found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+            return found.into_iter().take(60).map(|(_, entry)| entry).collect();
+        }
         if let Some(result) = calc::answer(query) {
             ranked.push((
                 u32::MAX,
@@ -321,6 +350,7 @@ impl Launcher {
         let footer = row![
             text(caption).size(12).color(style::color(style::FAINT)),
             space::horizontal(),
+            hint(":", "emoji"),
             hint("↑↓", "move"),
             hint("↵", "open"),
             hint("esc", "close"),
@@ -365,6 +395,7 @@ impl Launcher {
                 .height(32)
                 .into(),
             Pic::App(None) => letter(&entry.title, palette),
+            Pic::Glyph(glyph) => container(text(glyph).size(22)).center(32).into(),
             Pic::Icon(glyph) => container(icon(glyph, 17.0, neutral::TEXT))
                 .center(32)
                 .style(move |_| {
@@ -476,6 +507,16 @@ mod tests {
         assert!(entries[..3].iter().all(|e| e.game));
         assert!(entries[3..].iter().all(|e| !e.game));
         assert!(entries.iter().all(|e| !matches!(e.target, Target::Mode(_))));
+    }
+
+    #[test]
+    fn a_colon_searches_emoji_and_enter_copies_one() {
+        let mut launcher = launcher();
+        let _ = launcher.search(":fire".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("🔥".into())));
+        let _ = launcher.search(":thumbs up".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("👍".into())));
+        assert!(emoji().count() > 1500);
     }
 
     #[test]
