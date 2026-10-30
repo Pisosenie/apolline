@@ -1,8 +1,9 @@
 use apolline_theme::Mode;
 
+use crate::media::Track;
 use crate::power::Battery;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Status {
     pub workspaces: usize,
     pub active: usize,
@@ -10,15 +11,15 @@ pub struct Status {
     pub ids: Vec<u64>,
     pub keyboard: String,
     pub battery: Option<Battery>,
-    pub media: Option<String>,
+    pub media: Option<Track>,
 }
 
 impl Status {
     pub fn sample(mode: Mode) -> Self {
         let (active, busy, media) = match mode {
-            Mode::Work => (0, vec![0, 1, 2], Some("Harbor Lights — Low Tide")),
+            Mode::Work => (0, vec![0, 1, 2], Some(("Harbor Lights", "Low Tide"))),
             Mode::Play => (2, vec![0, 2], None),
-            Mode::Evening => (3, vec![3], Some("Night Drive — Low Tide")),
+            Mode::Evening => (3, vec![3], Some(("Night Drive", "Low Tide"))),
         };
         Self {
             workspaces: 5,
@@ -30,12 +31,15 @@ impl Status {
                 percent: 82,
                 charging: false,
             }),
-            media: media.map(Into::into),
+            media: media.map(|(title, artist)| Track::sample(title, artist)),
         }
     }
 
-    pub fn from_niri(state: &apolline_niri::State) -> Self {
-        let workspaces = state.workspaces();
+    pub fn from_niri(state: &apolline_niri::State, output: Option<&str>) -> Self {
+        let workspaces = match output {
+            Some(_) => state.workspaces_on(output),
+            None => state.workspaces(),
+        };
         Self {
             workspaces: workspaces.len(),
             active: workspaces.iter().position(|w| w.is_active).unwrap_or(0),

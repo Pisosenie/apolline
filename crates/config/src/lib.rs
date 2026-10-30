@@ -1,15 +1,23 @@
 mod diagnostic;
+mod edit;
 mod read;
 
 use std::path::{Path, PathBuf};
 
 use apolline_theme::{Mode, Palette, Rgba};
 pub use diagnostic::Diagnostic;
+pub use edit::Editor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     pub mode: Mode,
     pub layout: Layout,
+    pub bar: Bar,
+    pub keyboard: Keyboard,
+    pub touchpad: Option<Touchpad>,
+    pub mouse: Option<Mouse>,
+    pub alerts: Alerts,
+    pub shortcuts: Shortcuts,
     modes: [ModeSettings; 3],
 }
 
@@ -18,6 +26,112 @@ pub struct Layout {
     pub gaps: u16,
     pub radius: u16,
     pub borders: bool,
+    pub shadows: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bar {
+    pub workspaces: Workspaces,
+    pub seconds: bool,
+    pub date: bool,
+    pub battery_percent: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Workspaces {
+    Dots,
+    Numbers,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Keyboard {
+    pub layouts: Vec<String>,
+    pub switch: Option<Switch>,
+    pub repeat_delay: Option<u16>,
+    pub repeat_rate: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Switch {
+    AltShift,
+    CtrlShift,
+    SuperSpace,
+    Caps,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Touchpad {
+    pub tap: bool,
+    pub natural_scroll: bool,
+    pub disable_while_typing: bool,
+    pub speed: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mouse {
+    pub natural_scroll: bool,
+    pub acceleration: bool,
+    pub speed: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Shortcuts {
+    pub launcher: String,
+    pub panel: String,
+    pub switch: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shortcut {
+    Launcher,
+    Panel,
+    Switch,
+}
+
+impl Shortcut {
+    pub const ALL: [Shortcut; 3] = [Shortcut::Launcher, Shortcut::Panel, Shortcut::Switch];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Shortcut::Launcher => "launcher",
+            Shortcut::Panel => "panel",
+            Shortcut::Switch => "switch",
+        }
+    }
+}
+
+impl Shortcuts {
+    pub fn get(&self, shortcut: Shortcut) -> &str {
+        match shortcut {
+            Shortcut::Launcher => &self.launcher,
+            Shortcut::Panel => &self.panel,
+            Shortcut::Switch => &self.switch,
+        }
+    }
+
+    pub fn get_mut(&mut self, shortcut: Shortcut) -> &mut String {
+        match shortcut {
+            Shortcut::Launcher => &mut self.launcher,
+            Shortcut::Panel => &mut self.panel,
+            Shortcut::Switch => &mut self.switch,
+        }
+    }
+}
+
+impl Default for Shortcuts {
+    fn default() -> Self {
+        Self {
+            launcher: "Mod+Space".into(),
+            panel: "Mod+A".into(),
+            switch: "Mod+Shift+M".into(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Alerts {
+    pub do_not_disturb: bool,
+    pub seconds: u16,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -84,8 +198,71 @@ impl Default for Config {
                 gaps: 10,
                 radius: 12,
                 borders: true,
+                shadows: true,
             },
+            bar: Bar {
+                workspaces: Workspaces::Dots,
+                seconds: false,
+                date: true,
+                battery_percent: true,
+            },
+            keyboard: Keyboard::default(),
+            touchpad: None,
+            mouse: None,
+            alerts: Alerts {
+                do_not_disturb: false,
+                seconds: 5,
+            },
+            shortcuts: Shortcuts::default(),
             modes: Mode::ALL.map(ModeSettings::default_for),
+        }
+    }
+}
+
+impl Switch {
+    pub const ALL: [Switch; 4] = [
+        Switch::AltShift,
+        Switch::CtrlShift,
+        Switch::SuperSpace,
+        Switch::Caps,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Switch::AltShift => "alt-shift",
+            Switch::CtrlShift => "ctrl-shift",
+            Switch::SuperSpace => "super-space",
+            Switch::Caps => "caps",
+        }
+    }
+
+    pub fn xkb(self) -> &'static str {
+        match self {
+            Switch::AltShift => "grp:alt_shift_toggle",
+            Switch::CtrlShift => "grp:ctrl_shift_toggle",
+            Switch::SuperSpace => "grp:win_space_toggle",
+            Switch::Caps => "grp:caps_toggle",
+        }
+    }
+}
+
+impl Default for Touchpad {
+    fn default() -> Self {
+        Self {
+            tap: true,
+            natural_scroll: true,
+            disable_while_typing: true,
+            speed: 0.0,
+        }
+    }
+}
+
+impl Default for Mouse {
+    fn default() -> Self {
+        Self {
+            natural_scroll: false,
+            acceleration: true,
+            speed: 0.0,
         }
     }
 }
@@ -199,6 +376,35 @@ mod tests {
         assert_eq!(config.mode(Mode::Work).accent, Accent::Auto);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].line, 5);
+    }
+
+    #[test]
+    fn input_sections_only_exist_when_written() {
+        let (config, diagnostics) = parse(
+            "[keyboard]\nlayouts = [\"us\", \"ru\"]\nswitch = \"alt-shif\"\n\n[touchpad]\ntap = false\nspeed = 1.5\n",
+        );
+        assert_eq!(config.keyboard.layouts, ["us", "ru"]);
+        assert_eq!(config.keyboard.switch, None);
+        assert_eq!(config.keyboard.repeat_delay, None);
+        assert_eq!(
+            config.touchpad,
+            Some(Touchpad {
+                tap: false,
+                ..Touchpad::default()
+            })
+        );
+        assert_eq!(config.mouse, None);
+        assert_eq!(
+            diagnostics[0].hint.as_deref(),
+            Some("did you mean “alt-shift”?")
+        );
+        assert_eq!(diagnostics[1].line, 7);
+
+        let (_, diagnostics) = parse("[keyboard]\nlayouts = [\"English\"]\n");
+        assert_eq!(
+            diagnostics[0].message,
+            "“English” is not a keyboard layout code"
+        );
     }
 
     #[test]

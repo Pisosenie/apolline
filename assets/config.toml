@@ -9,6 +9,42 @@ mode = "work"              # work, play or evening
 gaps = 10
 radius = 12
 borders = true
+shadows = true
+
+[bar]
+workspaces = "dots"        # dots or numbers
+seconds = false
+date = true
+battery_percent = true
+
+[notifications]
+do_not_disturb = false     # hold everything but urgent, in every mode
+seconds = 5                # how long a popup stays
+
+[shortcuts]
+launcher = "Mod+Space"     # Mod is Super, or Alt when niri runs in a window
+panel = "Mod+A"
+switch = "Mod+Shift+M"
+
+# Keyboard, touchpad and mouse are left to your niri config until you set
+# them here or in apolline settings.
+#
+# [keyboard]
+# layouts = ["us", "ru"]
+# switch = "alt-shift"     # alt-shift, ctrl-shift, super-space or caps
+# repeat_delay = 600       # ms before a held key repeats
+# repeat_rate = 25         # repeats per second
+#
+# [touchpad]
+# tap = true
+# natural_scroll = true
+# disable_while_typing = true
+# speed = 0.0              # -1.0 slow … 1.0 fast
+#
+# [mouse]
+# natural_scroll = false
+# acceleration = true
+# speed = 0.0
 
 [mode.work]
 wallpaper = "fog.jpg"

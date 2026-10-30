@@ -1,6 +1,6 @@
 // Apolline for niri. `apolline setup` copies this to ~/.config/apolline/niri.kdl
 // and includes it at the end of your niri config, so it wins over niri's stock
-// defaults. The copy is rewritten on every mode switch to follow the accent;
+// defaults. Apolline rewrites the copy when you switch modes or change settings;
 // to change something for good, put it after the include line in your own config.
 
 spawn-at-startup "apolline"
@@ -11,41 +11,7 @@ hotkey-overlay {
     skip-at-startup
 }
 
-layout {
-    gaps 10
-    background-color "transparent"
-
-    focus-ring {
-        off
-    }
-
-    border {
-        on
-        width 1
-        active-color "#86bdf0"
-        inactive-color "#ffffff14"
-        urgent-color "#ff6a3d"
-    }
-
-    shadow {
-        on
-        softness 40
-        spread 0
-        offset x=0 y=12
-        color "#00000059"
-    }
-}
-
-window-rule {
-    geometry-corner-radius 12
-    clip-to-geometry true
-}
-
 layer-rule {
     match namespace="^apolline-wallpaper$"
     place-within-backdrop true
-}
-
-binds {
-    Mod+Shift+M hotkey-overlay-title="Next mode" { spawn "apolline" "mode" "next"; }
 }

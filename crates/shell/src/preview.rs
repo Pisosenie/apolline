@@ -1,18 +1,17 @@
-use std::error::Error;
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use apolline_theme::{Mode, font};
-use iced::widget::stack;
-use iced::{Element, Font, Subscription, Task, Theme, window};
+use apolline_theme::{Mode, font, metrics};
+use iced::widget::{container, stack};
+use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, window};
 
-use crate::shell::{self, Message, Shell};
+use crate::shell::{self, Message, Overlay, Shell};
+use crate::{fonts, shot};
 
-pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>) -> iced::Result {
-    iced::application(
+pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>, open: Option<Overlay>) -> iced::Result {
+    let app = iced::application(
         move || {
-            let (shell, load) = Shell::new(mode);
+            let (mut shell, load) = Shell::new(mode, true);
+            let load = Task::batch([load, shell.update(Message::Overlay(open))]);
             let preview = Preview {
                 shell,
                 screenshot: screenshot.clone(),
@@ -28,8 +27,11 @@ pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>) -> iced::Result {
     .subscription(Preview::subscription)
     .theme(Theme::Dark)
     .default_font(Font::with_name(font::UI))
-    .window_size((1440.0, 900.0))
-    .run()
+    .window_size((1440.0, 900.0));
+    fonts::ALL
+        .into_iter()
+        .fold(app, |app, font| app.font(font))
+        .run()
 }
 
 struct Preview {
@@ -54,7 +56,7 @@ impl Preview {
             }
             Message::Captured(shot) => {
                 if let Some(path) = self.screenshot.take()
-                    && let Err(err) = save_png(&path, &shot)
+                    && let Err(err) = shot::save(&path, &shot)
                 {
                     eprintln!("apolline: could not save {}: {err}", path.display());
                 }
@@ -65,22 +67,18 @@ impl Preview {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        stack![self.shell.wallpaper(), self.shell.bar()].into()
+        let popups = container(self.shell.popups())
+            .width(Fill)
+            .align_x(Alignment::End)
+            .padding(Padding::new(12.0).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0));
+        let mut layers = stack![self.shell.wallpaper(), self.shell.bar(None), popups];
+        if self.shell.overlay().is_some() {
+            layers = layers.push(self.shell.overlay_view());
+        }
+        layers.into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
         shell::subscription()
     }
-}
-
-fn save_png(path: &Path, shot: &window::Screenshot) -> Result<(), Box<dyn Error>> {
-    let mut encoder = png::Encoder::new(
-        BufWriter::new(File::create(path)?),
-        shot.size.width,
-        shot.size.height,
-    );
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header()?.write_image_data(&shot.rgba)?;
-    Ok(())
 }

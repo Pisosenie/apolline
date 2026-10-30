@@ -4,7 +4,10 @@ use apolline_theme::{Mode, Rgba};
 use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
-use crate::{Accent, Config, Diagnostic, Layout, ModeSettings, Notifications};
+use crate::{
+    Accent, Alerts, Bar, Config, Diagnostic, Keyboard, Layout, ModeSettings, Mouse, Notifications,
+    Shortcut, Shortcuts, Switch, Touchpad, Workspaces,
+};
 
 type Key<'i> = Spanned<DeString<'i>>;
 type Value<'i> = Spanned<DeValue<'i>>;
@@ -13,6 +16,21 @@ const MODES: [(&str, Mode); 3] = [
     ("work", Mode::Work),
     ("play", Mode::Play),
     ("evening", Mode::Evening),
+];
+
+const WORKSPACES: [(&str, Workspaces); 2] =
+    [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
+
+const SECTIONS: [&str; 9] = [
+    "general",
+    "layout",
+    "bar",
+    "keyboard",
+    "touchpad",
+    "mouse",
+    "notifications",
+    "shortcuts",
+    "mode",
 ];
 
 const NOTIFICATIONS: [(&str, Notifications); 3] = [
@@ -58,12 +76,42 @@ impl Reader<'_> {
                         self.layout(t, &mut config.layout)
                     }
                 }
+                "bar" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.bar(t, &mut config.bar)
+                    }
+                }
+                "keyboard" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.keyboard(t, &mut config.keyboard)
+                    }
+                }
+                "touchpad" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.touchpad(t, config.touchpad.get_or_insert_default())
+                    }
+                }
+                "mouse" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.mouse(t, config.mouse.get_or_insert_default())
+                    }
+                }
+                "notifications" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.alerts(t, &mut config.alerts)
+                    }
+                }
+                "shortcuts" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.shortcuts(t, &mut config.shortcuts)
+                    }
+                }
                 "mode" => {
                     if let Some(t) = self.section(key, value) {
                         self.modes(t, config)
                     }
                 }
-                _ => self.unknown(key, "section", &["general", "layout", "mode"]),
+                _ => self.unknown(key, "section", &SECTIONS),
             }
         }
     }
@@ -99,7 +147,177 @@ impl Reader<'_> {
                         layout.borders = v
                     }
                 }
-                _ => self.unknown(key, "option", &["gaps", "radius", "borders"]),
+                "shadows" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        layout.shadows = v
+                    }
+                }
+                _ => self.unknown(key, "option", &["gaps", "radius", "borders", "shadows"]),
+            }
+        }
+    }
+
+    fn bar(&mut self, table: &DeTable, bar: &mut Bar) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "workspaces" => {
+                    if let Some(v) = self.choice(key, value, &WORKSPACES) {
+                        bar.workspaces = v
+                    }
+                }
+                "seconds" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.seconds = v
+                    }
+                }
+                "date" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.date = v
+                    }
+                }
+                "battery_percent" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.battery_percent = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["workspaces", "seconds", "date", "battery_percent"],
+                ),
+            }
+        }
+    }
+
+    fn keyboard(&mut self, table: &DeTable, keyboard: &mut Keyboard) {
+        let switches = Switch::ALL.map(|s| (s.key(), s));
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "layouts" => {
+                    if let Some(v) = self.layouts(key, value) {
+                        keyboard.layouts = v
+                    }
+                }
+                "switch" => {
+                    if let Some(v) = self.choice(key, value, &switches) {
+                        keyboard.switch = Some(v)
+                    }
+                }
+                "repeat_delay" => {
+                    if let Some(v) = self.number(key, value, 150..=2000) {
+                        keyboard.repeat_delay = Some(v)
+                    }
+                }
+                "repeat_rate" => {
+                    if let Some(v) = self.number(key, value, 5..=80) {
+                        keyboard.repeat_rate = Some(v)
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["layouts", "switch", "repeat_delay", "repeat_rate"],
+                ),
+            }
+        }
+    }
+
+    fn touchpad(&mut self, table: &DeTable, touchpad: &mut Touchpad) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "tap" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        touchpad.tap = v
+                    }
+                }
+                "natural_scroll" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        touchpad.natural_scroll = v
+                    }
+                }
+                "disable_while_typing" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        touchpad.disable_while_typing = v
+                    }
+                }
+                "speed" => {
+                    if let Some(v) = self.speed(key, value) {
+                        touchpad.speed = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["tap", "natural_scroll", "disable_while_typing", "speed"],
+                ),
+            }
+        }
+    }
+
+    fn mouse(&mut self, table: &DeTable, mouse: &mut Mouse) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "natural_scroll" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        mouse.natural_scroll = v
+                    }
+                }
+                "acceleration" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        mouse.acceleration = v
+                    }
+                }
+                "speed" => {
+                    if let Some(v) = self.speed(key, value) {
+                        mouse.speed = v
+                    }
+                }
+                _ => self.unknown(key, "option", &["natural_scroll", "acceleration", "speed"]),
+            }
+        }
+    }
+
+    fn shortcuts(&mut self, table: &DeTable, shortcuts: &mut Shortcuts) {
+        let known = Shortcut::ALL.map(Shortcut::key);
+        for (key, value) in table.iter() {
+            let Some(shortcut) = Shortcut::ALL
+                .into_iter()
+                .find(|s| s.key() == key.get_ref().as_ref())
+            else {
+                self.unknown(key, "shortcut", &known);
+                continue;
+            };
+            let Some(combo) = self.string(key, value) else {
+                continue;
+            };
+            let valid = !combo.is_empty()
+                && !combo.starts_with('+')
+                && !combo.ends_with('+')
+                && combo
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '_');
+            if valid {
+                *shortcuts.get_mut(shortcut) = combo.to_owned();
+            } else {
+                self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);
+            }
+        }
+    }
+
+    fn alerts(&mut self, table: &DeTable, alerts: &mut Alerts) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "do_not_disturb" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        alerts.do_not_disturb = v
+                    }
+                }
+                "seconds" => {
+                    if let Some(v) = self.number(key, value, 2..=30) {
+                        alerts.seconds = v
+                    }
+                }
+                _ => self.unknown(key, "option", &["do_not_disturb", "seconds"]),
             }
         }
     }
@@ -179,6 +397,39 @@ impl Reader<'_> {
         match parsed {
             Some(n) if (i64::from(low)..=i64::from(high)).contains(&n) => Some(n as u16),
             _ => self.wrong(key, value, &format!("a whole number from {low} to {high}")),
+        }
+    }
+
+    fn speed(&mut self, key: &Key, value: &Value) -> Option<f32> {
+        let parsed = match value.get_ref() {
+            DeValue::Float(f) => f.as_str().parse::<f32>().ok(),
+            DeValue::Integer(n) => n.as_str().parse::<f32>().ok(),
+            _ => None,
+        };
+        match parsed {
+            Some(v) if (-1.0..=1.0).contains(&v) => Some(v),
+            _ => self.wrong(key, value, "a number from -1.0 (slow) to 1.0 (fast)"),
+        }
+    }
+
+    fn layouts(&mut self, key: &Key, value: &Value) -> Option<Vec<String>> {
+        let list = self.strings(key, value)?;
+        let valid = |code: &String| {
+            !code.is_empty()
+                && code
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        };
+        match list.iter().find(|code| !valid(code)) {
+            None => Some(list),
+            Some(bad) => {
+                let message = format!("“{bad}” is not a keyboard layout code");
+                self.diagnostics.push(
+                    Diagnostic::new(self.line(value.span()), message)
+                        .hint("use short codes like \"us\", \"ru\" or \"de\""),
+                );
+                None
+            }
         }
     }
 

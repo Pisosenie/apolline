@@ -132,18 +132,33 @@ impl State {
     }
 
     pub fn workspaces(&self) -> Vec<&Workspace> {
-        let output = self
+        let focused = self
             .workspaces
             .iter()
             .find(|w| w.is_focused)
-            .map(|w| &w.output);
+            .and_then(|w| w.output.as_deref());
+        self.workspaces_on(focused)
+    }
+
+    pub fn workspaces_on(&self, output: Option<&str>) -> Vec<&Workspace> {
         let mut list: Vec<_> = self
             .workspaces
             .iter()
-            .filter(|w| output.is_none_or(|o| &w.output == o))
+            .filter(|w| output.is_none() || w.output.as_deref() == output)
             .collect();
         list.sort_by_key(|w| w.idx);
         list
+    }
+
+    pub fn outputs(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .workspaces
+            .iter()
+            .filter_map(|w| w.output.clone())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     pub fn is_busy(&self, workspace: u64) -> bool {
@@ -230,10 +245,26 @@ mod tests {
         assert!(!state.is_busy(workspaces[2].id));
         assert_eq!(state.focused_window().map(|w| w.id), Some(2));
         assert_eq!(state.layout(), Some("English (US)"));
+        assert_eq!(state.outputs(), ["winit"]);
         assert!(state.is_running("foot"));
         assert!(state.is_running("/usr/bin/foot --server"));
         assert!(!state.is_running("steam"));
         assert!(!state.is_running("  "));
+    }
+
+    #[test]
+    fn each_output_has_its_own_workspaces() {
+        let state = replay(concat!(
+            r#"{"WorkspacesChanged":{"workspaces":["#,
+            r#"{"id":1,"idx":1,"name":null,"output":"DP-1","is_active":true,"is_focused":false},"#,
+            r#"{"id":2,"idx":2,"name":null,"output":"DP-1","is_active":false,"is_focused":false},"#,
+            r#"{"id":3,"idx":1,"name":null,"output":"eDP-1","is_active":true,"is_focused":true}]}}"#,
+        ));
+        let ids = |list: Vec<&Workspace>| list.iter().map(|w| w.id).collect::<Vec<_>>();
+        assert_eq!(ids(state.workspaces_on(Some("DP-1"))), [1, 2]);
+        assert_eq!(ids(state.workspaces_on(Some("eDP-1"))), [3]);
+        assert_eq!(ids(state.workspaces()), [3]);
+        assert_eq!(state.outputs(), ["DP-1", "eDP-1"]);
     }
 
     #[test]

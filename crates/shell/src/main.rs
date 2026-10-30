@@ -1,13 +1,26 @@
+mod apps;
 mod bar;
 mod control;
+mod controls;
+mod fonts;
 mod fragment;
+mod icon;
+mod keys;
+mod launcher;
 mod media;
 mod niri;
+mod notify;
+mod panel;
+mod popup;
 mod power;
 mod preview;
+mod profile;
+mod settings;
 mod shell;
+mod shot;
 mod status;
 mod style;
+mod switcher;
 mod wallpaper;
 
 #[cfg(target_os = "linux")]
@@ -26,9 +39,11 @@ use std::process::ExitCode;
 use apolline_config::Config;
 use apolline_theme::Mode;
 
-const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--open launcher|panel|switch] [--screenshot FILE]
        apolline mode work|play|evening|next
+       apolline switch | launcher | panel
        apolline setup
+       apolline settings [--page NAME]
        apolline check [FILE]";
 
 #[derive(Default)]
@@ -36,14 +51,16 @@ struct Options {
     mode: Option<Mode>,
     preview: bool,
     screenshot: Option<PathBuf>,
+    open: Option<shell::Overlay>,
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
-        Some("mode") => return mode(&args.join(" ")),
+        Some("mode" | "switch" | "launcher" | "panel") => return command(&args.join(" ")),
         Some("setup") => return setup(),
+        Some("settings") => return open_settings(&args[1..]),
         _ => {}
     }
 
@@ -70,7 +87,7 @@ fn run(options: Options) -> Result<(), String> {
     if layered {
         layers::run(options.mode)
     } else {
-        preview::run(options.mode, options.screenshot).map_err(|err| err.to_string())
+        preview::run(options.mode, options.screenshot, options.open).map_err(|err| err.to_string())
     }
 }
 
@@ -85,6 +102,14 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     Some(Mode::from_key(value).ok_or_else(|| format!("unknown mode “{value}”"))?);
             }
             "--preview" => options.preview = true,
+            "--open" => {
+                options.open = Some(match args.next().map(String::as_str) {
+                    Some("launcher") => shell::Overlay::Launcher,
+                    Some("panel") => shell::Overlay::Panel,
+                    Some("switch") => shell::Overlay::Switcher,
+                    _ => return Err("--open needs launcher, panel or switch".into()),
+                })
+            }
             "--screenshot" => {
                 options.screenshot = Some(args.next().ok_or("--screenshot needs a file")?.into())
             }
@@ -94,8 +119,31 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
-fn mode(line: &str) -> ExitCode {
+fn command(line: &str) -> ExitCode {
     match control::Command::parse(line).and_then(|_| control::send(line)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn open_settings(args: &[String]) -> ExitCode {
+    let mut screenshot = None;
+    let mut page = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match (arg.as_str(), args.next()) {
+            ("--screenshot", Some(path)) => screenshot = Some(PathBuf::from(path)),
+            ("--page", Some(name)) => page = Some(name.clone()),
+            _ => {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    match settings::run(screenshot, page) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("apolline: {err}");
@@ -106,8 +154,12 @@ fn mode(line: &str) -> ExitCode {
 
 fn setup() -> ExitCode {
     let (config, _) = Config::load(&apolline_config::default_path());
-    let accent = config.palette(config.mode).accent;
-    match fragment::setup(&fragment::path(), &fragment::niri_config(), accent) {
+    let look = fragment::Fragment {
+        config: &config,
+        mode: config.mode,
+        outputs: &[],
+    };
+    match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
         Ok(done) => {
             done.iter().for_each(|line| println!("{line}"));
             ExitCode::SUCCESS

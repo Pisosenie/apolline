@@ -18,10 +18,65 @@ const LONGEST: usize = 48;
     default_path = "/org/mpris/MediaPlayer2"
 )]
 trait Player {
+    fn play_pause(&self) -> zbus::Result<()>;
+    fn next(&self) -> zbus::Result<()>;
+    fn previous(&self) -> zbus::Result<()>;
     #[zbus(property)]
     fn playback_status(&self) -> zbus::Result<String>;
     #[zbus(property)]
     fn metadata(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Track {
+    pub player: String,
+    pub title: String,
+    pub artist: Option<String>,
+    pub playing: bool,
+}
+
+impl Track {
+    pub fn sample(title: &str, artist: &str) -> Self {
+        Self {
+            player: String::new(),
+            title: title.to_owned(),
+            artist: Some(artist.to_owned()),
+            playing: true,
+        }
+    }
+
+    pub fn line(&self) -> String {
+        let line = match &self.artist {
+            Some(artist) => format!("{} — {artist}", self.title),
+            None => self.title.clone(),
+        };
+        shorten(&line, LONGEST)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Toggle,
+    Next,
+    Previous,
+}
+
+pub async fn control(player: String, action: Action) {
+    let call = async {
+        let connection = Connection::session().await?;
+        let proxy = PlayerProxy::builder(&connection)
+            .destination(player.as_str())
+            .build()
+            .await?;
+        match action {
+            Action::Toggle => proxy.play_pause().await,
+            Action::Next => proxy.next().await,
+            Action::Previous => proxy.previous().await,
+        }
+    };
+    if let Err(err) = call.await {
+        eprintln!("apolline: media: {err}");
+    }
 }
 
 pub fn subscription() -> Subscription<Message> {
@@ -76,7 +131,8 @@ fn watch() -> impl Stream<Item = Message> {
     })
 }
 
-async fn playing(connection: &Connection, dbus: &DBusProxy<'_>) -> Option<String> {
+async fn playing(connection: &Connection, dbus: &DBusProxy<'_>) -> Option<Track> {
+    let mut paused = None;
     for name in dbus.list_names().await.ok()? {
         if !name.starts_with(PLAYERS) {
             continue;
@@ -89,13 +145,24 @@ async fn playing(connection: &Connection, dbus: &DBusProxy<'_>) -> Option<String
         else {
             continue;
         };
-        if player.playback_status().await.ok().as_deref() != Some("Playing") {
-            continue;
-        }
+        let playing = match player.playback_status().await.ok().as_deref() {
+            Some("Playing") => true,
+            Some("Paused") => false,
+            _ => continue,
+        };
         let metadata = player.metadata().await.unwrap_or_default();
-        return track(title(&metadata), artists(&metadata));
+        let found = track(
+            name.to_string(),
+            title(&metadata),
+            artists(&metadata),
+            playing,
+        );
+        if playing && found.is_some() {
+            return found;
+        }
+        paused = paused.or(found);
     }
-    None
+    paused
 }
 
 fn title(metadata: &HashMap<String, OwnedVariant>) -> Option<String> {
@@ -114,16 +181,23 @@ fn artists(metadata: &HashMap<String, OwnedVariant>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn track(title: Option<String>, artists: Vec<String>) -> Option<String> {
+fn track(
+    player: String,
+    title: Option<String>,
+    artists: Vec<String>,
+    playing: bool,
+) -> Option<Track> {
     let title = title.filter(|t| !t.trim().is_empty())?;
-    let line = match artists.first().filter(|a| !a.trim().is_empty()) {
-        Some(artist) => format!("{title} — {artist}"),
-        None => title,
-    };
-    Some(shorten(&line, LONGEST))
+    let artist = artists.into_iter().find(|a| !a.trim().is_empty());
+    Some(Track {
+        player,
+        title,
+        artist,
+        playing,
+    })
 }
 
-fn shorten(text: &str, max: usize) -> String {
+pub fn shorten(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_owned();
     }
@@ -138,17 +212,17 @@ mod tests {
 
     #[test]
     fn track_reads_title_and_first_artist() {
-        let artists = vec!["Low Tide".to_owned(), "Guest".to_owned()];
+        let at = |title: Option<&str>, artists: &[&str]| {
+            let artists = artists.iter().map(|a| a.to_string()).collect();
+            track("p".into(), title.map(Into::into), artists, true).map(|t| t.line())
+        };
         assert_eq!(
-            track(Some("Night Drive".into()), artists),
-            Some("Night Drive — Low Tide".into())
+            at(Some("Night Drive"), &["Low Tide", "Guest"]).as_deref(),
+            Some("Night Drive — Low Tide")
         );
-        assert_eq!(
-            track(Some("Night Drive".into()), vec![]),
-            Some("Night Drive".into())
-        );
-        assert_eq!(track(Some("  ".into()), vec!["Low Tide".into()]), None);
-        assert_eq!(track(None, vec![]), None);
+        assert_eq!(at(Some("Night Drive"), &[]).as_deref(), Some("Night Drive"));
+        assert_eq!(at(Some("  "), &["Low Tide"]), None);
+        assert_eq!(at(None, &[]), None);
     }
 
     #[test]

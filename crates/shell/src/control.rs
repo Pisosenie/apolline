@@ -14,12 +14,18 @@ use crate::shell::Message;
 pub enum Command {
     Mode(Mode),
     NextMode,
+    Switcher,
+    Launcher,
+    Panel,
 }
 
 impl Command {
     pub fn parse(line: &str) -> Result<Self, String> {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.as_slice() {
+            ["switch"] => Ok(Command::Switcher),
+            ["launcher"] => Ok(Command::Launcher),
+            ["panel"] => Ok(Command::Panel),
             ["mode", "next"] => Ok(Command::NextMode),
             ["mode", name] => Mode::from_key(name)
                 .map(Command::Mode)
