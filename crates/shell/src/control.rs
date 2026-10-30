@@ -71,6 +71,9 @@ pub struct Shared {
     pub reason: Option<String>,
     pub back: Option<String>,
     pub wallpaper: Option<String>,
+    // For the lock screen: the weather code and a line about it, and what's on soon.
+    pub weather: Option<(u8, String)>,
+    pub next: Option<String>,
 }
 
 impl Shared {
@@ -79,6 +82,12 @@ impl Shared {
         let mut text = format!("mode {mode}\nwaiting {}\n", self.waiting);
         if let Some(wallpaper) = &self.wallpaper {
             text.push_str(&format!("wallpaper {wallpaper}\n"));
+        }
+        if let Some((code, line)) = &self.weather {
+            text.push_str(&format!("weather {code} {line}\n"));
+        }
+        if let Some(next) = &self.next {
+            text.push_str(&format!("next {next}\n"));
         }
         if let Some(reason) = &self.reason {
             let back = self.back.as_deref().unwrap_or_default();
@@ -96,6 +105,12 @@ impl Shared {
                 Some(("reason", why)) => shared.reason = Some(why.to_owned()),
                 Some(("back", key)) if !key.is_empty() => shared.back = Some(key.to_owned()),
                 Some(("wallpaper", name)) => shared.wallpaper = Some(name.to_owned()),
+                Some(("weather", rest)) => {
+                    shared.weather = rest
+                        .split_once(' ')
+                        .and_then(|(code, line)| Some((code.parse().ok()?, line.to_owned())))
+                }
+                Some(("next", what)) => shared.next = Some(what.to_owned()),
                 _ => {}
             }
         }
@@ -195,6 +210,8 @@ mod tests {
             reason: Some("20:00-07:00".into()),
             back: Some("work".into()),
             wallpaper: Some("~/Pictures/Wallpapers/two words.jpg".into()),
+            weather: Some((2, "17° Partly cloudy · Lisbon".into())),
+            next: Some("Design review · in 10 min".into()),
         };
         assert_eq!(Shared::parse(&shared.text()), shared);
         assert_eq!(Shared::parse("garbage"), Shared::default());

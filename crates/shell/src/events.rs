@@ -109,6 +109,14 @@ fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
     })
 }
 
+// "Standup · in 10 min", or "· now" while it's on.
+pub fn when(summary: &str, wait: Option<i64>) -> String {
+    match wait {
+        None => format!("{summary} · now"),
+        Some(minutes) => format!("{summary} · in {minutes} min"),
+    }
+}
+
 // A file, or a subscription link (webcal:// is https://). No accounts, no sign-in.
 fn read(source: &str) -> Result<String, String> {
     let link = source

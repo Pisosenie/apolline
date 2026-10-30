@@ -118,6 +118,8 @@ struct Lock {
     niri: apolline_niri::State,
     network: Option<String>,
     waiting: usize,
+    weather: Option<(u8, String)>,
+    next: Option<String>,
     now: DateTime<Local>,
     ticks: u64,
     preview: bool,
@@ -155,6 +157,16 @@ impl Lock {
             niri: apolline_niri::State::default(),
             network: sample.then(|| "Polina".to_owned()),
             waiting: if sample { 2 } else { shared.waiting },
+            weather: if sample {
+                Some((2, "17° Partly cloudy · Lisbon".to_owned()))
+            } else {
+                shared.weather
+            },
+            next: if sample {
+                Some("Design review · in 10 min".to_owned())
+            } else {
+                shared.next
+            },
             now: Local::now(),
             ticks: 0,
             preview,
@@ -178,8 +190,15 @@ impl Lock {
                 self.now = Local::now();
                 self.ticks += 1;
                 if !self.preview {
-                    let Shared { waiting, .. } = control::shared();
+                    let Shared {
+                        waiting,
+                        weather,
+                        next,
+                        ..
+                    } = control::shared();
                     self.waiting = waiting;
+                    self.weather = weather;
+                    self.next = next;
                 }
                 if self.screenshot.is_some() && !self.shooting && self.wallpaper.is_some() {
                     self.shooting = true;
@@ -355,6 +374,23 @@ impl Lock {
             .max_width(560);
 
         let mut right = column![].spacing(14).align_x(Alignment::End);
+        let line = |glyph: Option<Icon>, words: &str| {
+            let tint = neutral::TEXT.alpha(0.86);
+            let mut line = row![].spacing(8).align_y(Alignment::Center);
+            line = match glyph {
+                Some(glyph) => line.push(icon(glyph, 15.0, tint)),
+                None => line.push(
+                    container(Space::new().width(6).height(6)).style(style::dot(palette.accent)),
+                ),
+            };
+            line.push(text(words.to_owned()).size(13).color(style::color(tint)))
+        };
+        if let Some((code, words)) = &self.weather {
+            right = right.push(line(Some(crate::weather::describe(*code).0), words));
+        }
+        if let Some(next) = &self.next {
+            right = right.push(line(None, next));
+        }
         if self.config.lock.show_media
             && let Some(track) = &self.track
         {

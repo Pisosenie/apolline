@@ -102,14 +102,10 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .font(style::semibold()),
     );
     if let Some((what, wait)) = bar.next {
-        let when = match wait {
-            None => "now".to_owned(),
-            Some(minutes) => format!("in {minutes} min"),
-        };
         clock = clock.push(
             row![
                 container(space().width(6).height(6)).style(style::pill(palette.accent)),
-                text(format!("{} · {when}", crate::media::shorten(what, 22)))
+                text(crate::events::when(&crate::media::shorten(what, 22), wait))
                     .size(12)
                     .color(style::color(neutral::MUTED)),
             ]

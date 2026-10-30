@@ -1403,6 +1403,14 @@ impl Shell {
             reason: auto.and(self.reason.as_ref()).map(Trigger::text),
             back: auto.and_then(|(_, back)| back.clone()),
             wallpaper: self.rotated.as_ref().map(|(name, _)| name.clone()),
+            weather: self.weather.as_ref().map(|w| {
+                let (_, words) = crate::weather::describe(w.code);
+                (w.code, format!("{:.0}° {words} · {}", w.now, w.place))
+            }),
+            next: self
+                .agenda
+                .soon(self.now.naive_local())
+                .map(|(o, wait)| crate::events::when(&o.summary, wait)),
         };
         if self.published.as_ref() != Some(&shared) {
             control::publish(&shared);
