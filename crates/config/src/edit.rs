@@ -330,9 +330,17 @@ fn list<'a>(parent: &'a mut Table, key: &str) -> &'a mut ArrayOfTables {
         .entry(key)
         .or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
     if !item.is_array_of_tables() {
-        let tables = std::mem::take(item)
-            .into_array_of_tables()
-            .unwrap_or_default();
+        // An inline list keeps its tables; entries the reader skips anyway don't survive.
+        let tables = match std::mem::take(item) {
+            Item::Value(Value::Array(array)) => array
+                .into_iter()
+                .filter_map(|value| match value {
+                    Value::InlineTable(table) => Some(table.into_table()),
+                    _ => None,
+                })
+                .collect(),
+            _ => ArrayOfTables::new(),
+        };
         *item = Item::ArrayOfTables(tables);
     }
     item.as_array_of_tables_mut().expect("just made a list")
@@ -407,7 +415,8 @@ mod tests {
         let left: Vec<&str> = config.modules.iter().map(|m| m.command.as_str()).collect();
         assert_eq!(left, ["date"]);
 
-        let mut editor = Editor::parse("rule = [{ app = \"foot\" }, { app = \"mpv\" }]\n").unwrap();
+        let mut editor =
+            Editor::parse("rule = [{ app = \"foot\" }, 5, { app = \"mpv\" }]\n").unwrap();
         editor.remove_rule(0);
         let (config, problems) = Config::parse(&editor.text());
         assert_eq!(problems, vec![]);

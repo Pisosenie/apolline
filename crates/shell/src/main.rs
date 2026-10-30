@@ -99,7 +99,7 @@ fn main() -> ExitCode {
         Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
         Some("theme") if args.get(1).is_some_and(|a| a == "install") => {
             let install = |what: &String| {
-                if what.starts_with("http") {
+                if what.starts_with("https://") || what.starts_with("http://") {
                     themes::install_from(what)
                 } else {
                     themes::install(std::path::Path::new(what))

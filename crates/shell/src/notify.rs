@@ -191,7 +191,8 @@ impl Server {
         hints: HashMap<String, OwnedVariant>,
         expire_timeout: i32,
     ) -> u32 {
-        let id = if replaces_id == 0 {
+        // Apolline's own cards aren't anyone else's to replace.
+        let id = if replaces_id == 0 || replaces_id >= CONFIG_CARD {
             self.last += 1;
             self.last
         } else {

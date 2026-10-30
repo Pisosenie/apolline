@@ -186,17 +186,35 @@ pub fn main(args: &[String]) -> ExitCode {
     }
 }
 
+// More than this and the screen asks for a name instead of listing everyone.
+const LISTED: usize = 12;
+
 fn system_accounts() -> Vec<Account> {
-    // getent also sees people from LDAP, sssd or systemd-homed, not just /etc/passwd.
-    let passwd = std::process::Command::new("getent")
-        .arg("passwd")
-        .output()
+    // getent also sees people from LDAP, sssd or systemd-homed, not just /etc/passwd;
+    // a directory that doesn't answer in two seconds isn't waited for.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let listed = std::process::Command::new("getent")
+            .arg("passwd")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned());
+        let _ = tx.send(listed);
+    });
+    let passwd = rx
+        .recv_timeout(Duration::from_secs(2))
         .ok()
-        .filter(|out| out.status.success())
-        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .flatten()
         .unwrap_or_else(|| std::fs::read_to_string("/etc/passwd").unwrap_or_default());
     let defs = std::fs::read_to_string("/etc/login.defs").unwrap_or_default();
-    accounts(&passwd, people(&defs))
+    let people = accounts(&passwd, people(&defs));
+    if people.len() > LISTED {
+        Vec::new()
+    } else {
+        people
+    }
 }
 
 pub fn people(login_defs: &str) -> (u32, u32) {
@@ -319,7 +337,8 @@ pub fn session(desktop: &str) -> Option<Session> {
 impl Greet {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::User(_) | Message::Login(_) if self.state == State::Checking => {}
+            Message::User(_) | Message::Login(_) | Message::Session(_)
+                if self.state == State::Checking => {}
             Message::User(index) => {
                 self.user = index;
                 self.state = State::Typing;

@@ -844,7 +844,8 @@ impl Shell {
                     self.history.truncate(50);
                 }
                 if self.config.alerts.muted(&notification.app) {
-                    return notify::closed(notification.id, Closed::Dismissed);
+                    // Expired, not dismissed: some apps take a dismissal as "read".
+                    return notify::closed(notification.id, Closed::Expired);
                 }
                 if self.config.alerts.always(&notification.app)
                     || notify::lets_through(self.rule(), notification.urgency)
