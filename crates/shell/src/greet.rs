@@ -17,6 +17,7 @@ use crate::icon::{Icon, icon};
 use crate::{fonts, greetd, shot, style, wallpaper};
 
 const FIELD: &str = "greet-password";
+const LOGIN: &str = "greet-login";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Account {
@@ -39,6 +40,8 @@ impl std::fmt::Display for Session {
 #[derive(Debug, Clone)]
 enum Message {
     User(usize),
+    Login(String),
+    ToPassword,
     Session(Session),
     Password(String),
     Submit,
@@ -61,6 +64,7 @@ struct Greet {
     user: usize,
     sessions: Vec<Session>,
     session: Option<Session>,
+    login: String,
     password: String,
     state: State,
     wallpaper: Option<image::Handle>,
@@ -106,10 +110,7 @@ pub fn main(args: &[String]) -> ExitCode {
             ],
         )
     } else {
-        (
-            accounts(&std::fs::read_to_string("/etc/passwd").unwrap_or_default()),
-            sessions(),
-        )
+        (system_accounts(), sessions())
     };
     let session = sessions
         .iter()
@@ -121,6 +122,7 @@ pub fn main(args: &[String]) -> ExitCode {
         user: 0,
         sessions,
         session,
+        login: String::new(),
         password: String::new(),
         state: State::Typing,
         wallpaper: None,
@@ -137,7 +139,8 @@ pub fn main(args: &[String]) -> ExitCode {
                 .and_then(|mut g| g.take())
                 .expect("booted once");
             let load = Task::perform(wallpaper::load("fog.jpg".into()), Message::Wallpaper);
-            (greet, Task::batch([load, focus(FIELD)]))
+            let first = if greet.users.is_empty() { LOGIN } else { FIELD };
+            (greet, Task::batch([load, focus(first)]))
         },
         Greet::update,
         Greet::view,
@@ -164,19 +167,49 @@ pub fn main(args: &[String]) -> ExitCode {
     }
 }
 
-pub fn accounts(passwd: &str) -> Vec<Account> {
+fn system_accounts() -> Vec<Account> {
+    // getent also sees people from LDAP, sssd or systemd-homed, not just /etc/passwd.
+    let passwd = std::process::Command::new("getent")
+        .arg("passwd")
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_else(|| std::fs::read_to_string("/etc/passwd").unwrap_or_default());
+    let defs = std::fs::read_to_string("/etc/login.defs").unwrap_or_default();
+    accounts(&passwd, people(&defs))
+}
+
+pub fn people(login_defs: &str) -> (u32, u32) {
+    let value = |key: &str| {
+        login_defs.lines().find_map(|line| {
+            let mut words = line.split_whitespace();
+            (words.next() == Some(key)).then(|| words.next()?.parse().ok())?
+        })
+    };
+    (
+        value("UID_MIN").unwrap_or(1000),
+        value("UID_MAX").unwrap_or(60000),
+    )
+}
+
+pub fn accounts(passwd: &str, (first, last): (u32, u32)) -> Vec<Account> {
+    const HOMED: std::ops::RangeInclusive<u32> = 60001..=60513;
+    let mut seen = Vec::new();
     passwd
         .lines()
         .filter_map(|line| {
             let f: Vec<&str> = line.split(':').collect();
             let uid: u32 = f.get(2)?.parse().ok()?;
             let shell = f.get(6)?;
-            if !(1000..60000).contains(&uid)
+            if !((first..=last).contains(&uid) || HOMED.contains(&uid))
+                || seen.contains(&f[0])
                 || shell.ends_with("nologin")
                 || shell.ends_with("false")
             {
                 return None;
             }
+            seen.push(f[0]);
             let gecos = f
                 .get(4)
                 .and_then(|g| g.split(',').next())
@@ -237,11 +270,19 @@ pub fn session(desktop: &str) -> Option<Session> {
 impl Greet {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::User(_) | Message::Login(_) if self.state == State::Checking => {}
             Message::User(index) => {
                 self.user = index;
                 self.state = State::Typing;
                 return focus(FIELD);
             }
+            Message::Login(login) => {
+                self.login = login;
+                if matches!(self.state, State::Wrong(_)) {
+                    self.state = State::Typing;
+                }
+            }
+            Message::ToPassword => return focus(FIELD),
             Message::Session(session) => self.session = Some(session),
             Message::Password(password) => {
                 self.password = password;
@@ -250,19 +291,25 @@ impl Greet {
                 }
             }
             Message::Submit if self.state != State::Checking && !self.password.is_empty() => {
-                let (Some(user), Some(session)) = (self.users.get(self.user), &self.session) else {
+                let Some(session) = &self.session else {
+                    self.state = State::Wrong("No sessions in /usr/share/wayland-sessions".into());
                     return Task::none();
+                };
+                let login = match self.users.get(self.user) {
+                    Some(user) => user.login.clone(),
+                    None if !self.login.trim().is_empty() => self.login.trim().to_owned(),
+                    None => {
+                        self.state = State::Wrong("Type your username".into());
+                        return focus(LOGIN);
+                    }
                 };
                 let Some(socket) = self.socket.clone() else {
                     self.state = State::Wrong("This is a preview: greetd isn't here".into());
                     return Task::none();
                 };
                 self.state = State::Checking;
-                let (login, password, command) = (
-                    user.login.clone(),
-                    std::mem::take(&mut self.password),
-                    session.command.clone(),
-                );
+                let (password, command) =
+                    (std::mem::take(&mut self.password), session.command.clone());
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
@@ -370,7 +417,9 @@ impl Greet {
                     button(text(user.name.as_str()).size(13))
                         .padding([6, 14])
                         .style(style::choice(index == self.user))
-                        .on_press(Message::User(index))
+                        .on_press_maybe(
+                            (self.state != State::Checking).then_some(Message::User(index)),
+                        )
                         .into()
                 }))
                 .spacing(6),
@@ -400,13 +449,32 @@ impl Greet {
     }
 
     fn field(&self, palette: Palette) -> Element<'_, Message> {
-        let name = self.users.get(self.user).map_or("", |u| u.name.as_str());
+        let name = self
+            .users
+            .get(self.user)
+            .map_or(self.login.as_str(), |u| u.name.as_str());
         let initial: String = name
             .chars()
             .next()
             .map(|c| c.to_uppercase().collect())
             .unwrap_or_default();
         let checking = self.state == State::Checking;
+        let who: Element<'_, Message> = if self.users.is_empty() {
+            let mut login = text_input("Username", &self.login)
+                .id(LOGIN)
+                .width(120)
+                .size(14)
+                .padding(0)
+                .style(style::bare_field(palette));
+            if !checking {
+                login = login
+                    .on_input(Message::Login)
+                    .on_submit(Message::ToPassword);
+            }
+            login.into()
+        } else {
+            text(name).size(14).font(style::medium()).into()
+        };
         let mut input = text_input(
             if checking { "Checking…" } else { "Password" },
             &self.password,
@@ -436,7 +504,7 @@ impl Greet {
             _ => Rgba::hex(0xffffff).alpha(0.12),
         };
         container(
-            row![avatar, text(name).size(14).font(style::medium()), input, go]
+            row![avatar, who, input, go]
                 .spacing(12)
                 .align_y(Alignment::Center),
         )
@@ -466,10 +534,14 @@ mod tests {
     #[test]
     fn people_and_sessions_come_from_the_system_files() {
         let passwd = "root:x:0:0::/root:/bin/bash\nnobody:x:65534:65534::/:/usr/bin/nologin\npolina:x:1000:1000:Polina,,,:/home/polina:/bin/zsh\ngreeter:x:964:964::/var/lib/greetd:/usr/bin/nologin\ndanil:x:1001:1001::/home/danil:/bin/bash\n";
-        let found = accounts(passwd);
+        let found = accounts(passwd, people(""));
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].name, "Polina");
         assert_eq!(found[1].name, "danil");
+        let defs = "# comment\nUID_MIN\t\t\t 500\nUID_MAX 60000\n";
+        assert_eq!(people(defs), (500, 60000));
+        let homed = "lena:x:60100:60100:Lena:/home/lena:/bin/bash\nlena:x:60100:60100:Lena:/home/lena:/bin/bash\n";
+        assert_eq!(accounts(homed, people(defs)).len(), 1, "homed, once");
 
         let niri = session("[Desktop Entry]\nName=Niri\nComment=A scrollable-tiling compositor\nExec=niri-session\nType=Application\n[Desktop Action x]\nName=Other\n").unwrap();
         assert_eq!(niri.name, "Niri");
