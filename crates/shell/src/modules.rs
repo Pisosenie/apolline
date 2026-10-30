@@ -26,7 +26,7 @@ fn run((index, module): &(usize, Module)) -> impl Stream<Item = Message> + use<>
         loop {
             let mut command = tokio::process::Command::new("sh");
             command
-                .args(["-c", &module.command])
+                .args(["-c", &grouped(&module.command)])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
@@ -59,6 +59,12 @@ fn run((index, module): &(usize, Module)) -> impl Stream<Item = Message> + use<>
             tokio::time::sleep(Duration::from_secs(wait)).await;
         }
     })
+}
+
+// sh passes its own end on to the whole group, pipelines and loops included,
+// since the death signal from the shell reaches only sh itself.
+fn grouped(command: &str) -> String {
+    format!("trap 'trap - TERM; kill 0' TERM\n{{ {command}\n}} &\nwait")
 }
 
 pub fn tidy(line: &str) -> String {
