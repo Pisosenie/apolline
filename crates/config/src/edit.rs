@@ -149,6 +149,43 @@ impl Editor {
         list(self.doc.as_table_mut(), "rule").push(table);
     }
 
+    pub fn set_display(&mut self, name: &str, key: &str, value: impl Into<Value>) {
+        let displays = list(self.doc.as_table_mut(), "display");
+        let at = displays
+            .iter()
+            .position(|t| t.get("name").and_then(Item::as_str) == Some(name));
+        let at = at.unwrap_or_else(|| {
+            let mut table = Table::new();
+            table.insert("name", name.into());
+            displays.push(table);
+            displays.len() - 1
+        });
+        if let Some(table) = displays.get_mut(at) {
+            put(table, key, value.into());
+        }
+    }
+
+    pub fn set_display_position(&mut self, name: &str, x: i64, y: i64) {
+        let xy: Array = [x, y].into_iter().collect();
+        self.set_display(name, "position", xy);
+    }
+
+    pub fn unset_display(&mut self, name: &str, key: &str) {
+        let displays = list(self.doc.as_table_mut(), "display");
+        let Some(at) = displays
+            .iter()
+            .position(|t| t.get("name").and_then(Item::as_str) == Some(name))
+        else {
+            return;
+        };
+        if let Some(table) = displays.get_mut(at) {
+            table.remove(key);
+            if table.len() <= 1 {
+                displays.remove(at);
+            }
+        }
+    }
+
     pub fn remove_rule(&mut self, index: usize) {
         let rules = list(self.doc.as_table_mut(), "rule");
         if index < rules.len() {

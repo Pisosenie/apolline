@@ -32,6 +32,47 @@ impl Request {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Output {
+    pub name: String,
+    #[serde(default)]
+    pub make: String,
+    #[serde(default)]
+    pub model: String,
+    pub modes: Vec<OutputMode>,
+    pub current_mode: Option<usize>,
+    #[serde(default)]
+    pub vrr_supported: bool,
+    #[serde(default)]
+    pub vrr_enabled: bool,
+    pub logical: Option<Logical>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct OutputMode {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_rate: u32,
+    #[serde(default)]
+    pub is_preferred: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Logical {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
+    pub transform: String,
+}
+
+pub fn outputs(json: &str) -> Vec<Output> {
+    serde_json::from_str::<BTreeMap<String, Output>>(json)
+        .map(|outputs| outputs.into_values().collect())
+        .unwrap_or_default()
+}
+
 pub fn output_names(outputs: &str) -> Vec<String> {
     serde_json::from_str::<BTreeMap<String, serde_json::Value>>(outputs)
         .map(|outputs| outputs.into_keys().collect())
@@ -306,6 +347,15 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outputs_read_modes_and_where_they_sit() {
+        let reply = r#"{"winit":{"name":"winit","make":"Smithay","model":"Winit","serial":null,"physical_size":null,"modes":[{"width":1440,"height":900,"refresh_rate":60000,"is_preferred":true}],"current_mode":0,"is_custom_mode":true,"vrr_supported":false,"vrr_enabled":false,"logical":{"x":0,"y":0,"width":1440,"height":900,"scale":1.0,"transform":"Flipped180"}}}"#;
+        let found = outputs(reply);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].modes[0].refresh_rate, 60000);
+        assert_eq!(found[0].logical.as_ref().unwrap().transform, "Flipped180");
+    }
 
     #[test]
     fn the_largest_screen_wins() {

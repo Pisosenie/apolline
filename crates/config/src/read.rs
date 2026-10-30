@@ -5,9 +5,9 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Appear, Blur, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard,
-    Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch,
-    Touchpad, Trigger, Width, Windows, Workspaces, slug,
+    Accent, Alerts, Appear, Blur, Center, Config, Desktop, Diagnostic, Display, Edge, Idle,
+    Keyboard, Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts,
+    Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -16,7 +16,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 16] = [
+const SECTIONS: [&str; 17] = [
     "general",
     "theme",
     "desktop",
@@ -32,6 +32,7 @@ const SECTIONS: [&str; 16] = [
     "apps",
     "windows",
     "rule",
+    "display",
     "mode",
 ];
 
@@ -202,6 +203,7 @@ impl Reader<'_> {
                     }
                 }
                 "rule" => self.rules(key, value, config),
+                "display" => self.displays(key, value, config),
                 "mode" => self.modes(key, value, config),
                 _ => self.unknown(key, "section", &SECTIONS),
             }
@@ -564,6 +566,86 @@ impl Reader<'_> {
                 "appear" => windows.appear = self.choice(key, value, &appears).or(windows.appear),
                 "blur" => windows.blur = self.choice(key, value, &blurs).or(windows.blur),
                 _ => self.unknown(key, "option", &WINDOW_OPTIONS),
+            }
+        }
+    }
+
+    fn displays(&mut self, key: &Key, value: &Value, config: &mut Config) {
+        let DeValue::Array(items) = value.get_ref() else {
+            self.wrong::<()>(key, value, "a list of [[display]] sections");
+            return;
+        };
+        for item in items {
+            let DeValue::Table(table) = item.get_ref() else {
+                continue;
+            };
+            let mut display = Display {
+                name: String::new(),
+                mode: None,
+                scale: None,
+                transform: None,
+                position: None,
+                vrr: None,
+            };
+            for (key, value) in table.iter() {
+                match key.get_ref().as_ref() {
+                    "name" => {
+                        if let Some(v) = self.string(key, value) {
+                            display.name = v.trim().to_owned()
+                        }
+                    }
+                    "mode" => match self.string(key, value) {
+                        Some(v) if mode_is_valid(v) => display.mode = Some(v.to_owned()),
+                        Some(_) => {
+                            self.wrong::<()>(
+                                key,
+                                value,
+                                r#"a mode like "2560x1440" or "2560x1440@143.912""#,
+                            );
+                        }
+                        None => {}
+                    },
+                    "scale" => {
+                        display.scale = self
+                            .fraction(key, value, 0.5..=4.0)
+                            .map(|s| (f64::from(s) * 1000.0).round() / 1000.0);
+                    }
+                    "transform" => match self.string(key, value) {
+                        Some(v) if TRANSFORMS.contains(&v) => {
+                            display.transform = Some(v.to_owned())
+                        }
+                        Some(_) => {
+                            self.wrong::<()>(key, value, r#"one of "normal", "90", "180", "270", or "flipped" and its turns"#);
+                        }
+                        None => {}
+                    },
+                    "position" => match value.get_ref() {
+                        DeValue::Array(xy) if xy.len() == 2 => {
+                            let number = |v: &Spanned<DeValue>| match v.get_ref() {
+                                DeValue::Integer(i) => i.as_str().parse::<i32>().ok(),
+                                _ => None,
+                            };
+                            display.position = number(&xy[0]).zip(number(&xy[1]));
+                        }
+                        _ => {
+                            self.wrong::<()>(key, value, "two numbers, like [1920, 0]");
+                        }
+                    },
+                    "vrr" => display.vrr = self.boolean(key, value),
+                    _ => self.unknown(
+                        key,
+                        "option",
+                        &["name", "mode", "scale", "transform", "position", "vrr"],
+                    ),
+                }
+            }
+            if display.name.is_empty() {
+                self.diagnostics.push(
+                    Diagnostic::new(self.line(item.span()), "a display needs a name")
+                        .hint("add name = \"HDMI-A-1\", as niri msg outputs shows it"),
+                );
+            } else {
+                config.displays.push(display);
             }
         }
     }
@@ -989,4 +1071,14 @@ fn quoted(names: &[&str]) -> String {
         .map(|name| format!("“{name}”"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn mode_is_valid(mode: &str) -> bool {
+    let (size, rate) = mode
+        .split_once('@')
+        .map_or((mode, None), |(s, r)| (s, Some(r)));
+    let size_ok = size
+        .split_once('x')
+        .is_some_and(|(w, h)| w.parse::<u32>().is_ok() && h.parse::<u32>().is_ok());
+    size_ok && rate.is_none_or(|r| r.parse::<f64>().is_ok())
 }

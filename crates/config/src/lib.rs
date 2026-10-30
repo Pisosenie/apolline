@@ -29,6 +29,7 @@ pub struct Config {
     pub apps: Apps,
     pub windows: Windows,
     pub rules: Vec<Rule>,
+    pub displays: Vec<Display>,
     pub pinned: Vec<String>,
     pub weather: Option<String>,
     pub modes: Vec<ModeSettings>,
@@ -168,6 +169,27 @@ impl Center {
 pub struct Apps {
     pub colors: bool,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Display {
+    pub name: String,
+    pub mode: Option<String>,
+    pub scale: Option<f64>,
+    pub transform: Option<String>,
+    pub position: Option<(i32, i32)>,
+    pub vrr: Option<bool>,
+}
+
+pub const TRANSFORMS: [&str; 8] = [
+    "normal",
+    "90",
+    "180",
+    "270",
+    "flipped",
+    "flipped-90",
+    "flipped-180",
+    "flipped-270",
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rule {
@@ -582,6 +604,7 @@ impl Default for Config {
                 switcher: true,
             },
             rules: Vec::new(),
+            displays: Vec::new(),
             pinned: Vec::new(),
             weather: None,
             modes: Vec::new(),

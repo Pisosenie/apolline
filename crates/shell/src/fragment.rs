@@ -165,10 +165,18 @@ window-rule {{
     if !devices.is_empty() {
         text.push_str(&format!("\n{}", block("input", &devices)));
     }
-    for output in fragment.outputs {
-        let name = quote(output);
+    let mut names: Vec<&str> = fragment.outputs.iter().map(String::as_str).collect();
+    names.extend(config.displays.iter().map(|d| d.name.as_str()));
+    names.sort();
+    names.dedup();
+    for name in names {
+        let display = config.displays.iter().find(|d| d.name == name);
         text.push_str(&format!(
-            "\noutput \"{name}\" {{\n    variable-refresh-rate on-demand=true\n}}\n"
+            "\n{}",
+            block(
+                &format!("output \"{}\"", quote(name)),
+                &output_lines(display)
+            )
         ));
     }
     if let Some(animations) = animations(windows, play) {
@@ -344,6 +352,30 @@ fn mouse(mouse: Mouse) -> String {
     }
     lines.push(format!("accel-speed {:.2}", mouse.speed));
     block("mouse", &lines)
+}
+
+fn output_lines(display: Option<&apolline_config::Display>) -> Vec<String> {
+    let mut lines = Vec::new();
+    if let Some(display) = display {
+        if let Some(mode) = &display.mode {
+            lines.push(format!("mode \"{mode}\""));
+        }
+        if let Some(scale) = display.scale {
+            lines.push(format!("scale {scale}"));
+        }
+        if let Some(transform) = &display.transform {
+            lines.push(format!("transform \"{transform}\""));
+        }
+        if let Some((x, y)) = display.position {
+            lines.push(format!("position x={x} y={y}"));
+        }
+    }
+    match display.and_then(|d| d.vrr) {
+        Some(true) => lines.push("variable-refresh-rate".to_owned()),
+        Some(false) => {}
+        None => lines.push("variable-refresh-rate on-demand=true".to_owned()),
+    }
+    lines
 }
 
 const MOVES: [&str; 5] = [

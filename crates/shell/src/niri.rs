@@ -9,6 +9,17 @@ use tokio::net::UnixStream;
 
 use crate::shell::Message;
 
+pub fn outputs() -> Vec<apolline_niri::Output> {
+    if std::env::var_os("NIRI_SOCKET").is_none() {
+        return Vec::new();
+    }
+    std::process::Command::new("niri")
+        .args(["msg", "-j", "outputs"])
+        .output()
+        .map(|out| apolline_niri::outputs(&String::from_utf8_lossy(&out.stdout)))
+        .unwrap_or_default()
+}
+
 pub fn connected() -> bool {
     apolline_niri::socket().is_some()
 }

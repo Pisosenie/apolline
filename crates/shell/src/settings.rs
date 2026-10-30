@@ -93,6 +93,7 @@ enum Page {
     Themes,
     Appearance,
     Windows,
+    Displays,
     Bar,
     Lock,
     Notifications,
@@ -104,11 +105,12 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 11] = [
+    const ALL: [Page; 12] = [
         Page::Modes,
         Page::Themes,
         Page::Appearance,
         Page::Windows,
+        Page::Displays,
         Page::Bar,
         Page::Lock,
         Page::Notifications,
@@ -124,6 +126,7 @@ impl Page {
             Page::Themes => "themes",
             Page::Appearance => "appearance",
             Page::Windows => "windows",
+            Page::Displays => "displays",
             Page::Bar => "bar",
             Page::Lock => "lock",
             Page::Notifications => "notifications",
@@ -141,6 +144,7 @@ impl Page {
             Page::Themes => "Themes",
             Page::Appearance => "Appearance",
             Page::Windows => "Windows",
+            Page::Displays => "Displays",
             Page::Bar => "Bar",
             Page::Lock => "Lock screen",
             Page::Notifications => "Notifications",
@@ -160,6 +164,7 @@ impl Page {
             Page::Windows => {
                 "How windows open, move, fade and animate, for all of them or one app."
             }
+            Page::Displays => "Resolution, refresh rate, scale and where each screen sits.",
             Page::Bar => "What the bar at the top shows.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
@@ -179,6 +184,7 @@ impl Page {
             Page::Themes => Icon::Brush,
             Page::Appearance => Icon::Palette,
             Page::Windows => Icon::AppWindow,
+            Page::Displays => Icon::Monitor,
             Page::Bar => Icon::PanelTop,
             Page::Lock => Icon::Lock,
             Page::Notifications => Icon::Bell,
@@ -196,6 +202,7 @@ impl Page {
             Page::Themes => &["desktop", "layout", "windows", "bar"],
             Page::Appearance => &["desktop", "layout", "apps"],
             Page::Windows => &["windows"],
+            Page::Displays => &[],
             Page::Bar => &["bar"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
@@ -234,6 +241,14 @@ enum Message {
     UseWallpaper,
     AllWallpapers,
     ColorApps(bool),
+    DisplayMode(String, String),
+    DisplayScale(String, u16),
+    DisplayTurn(String, &'static str),
+    DisplayVrr(String, bool),
+    DisplayX(String),
+    DisplayY(String),
+    DisplayMove(String),
+    KeepDisplays,
     ForMonitor(Option<String>),
     Rotate(u32),
     Shuffle(bool),
@@ -368,6 +383,9 @@ struct Settings {
     live: crate::control::Shared,
     monitors: Vec<String>,
     monitor: Option<String>,
+    outputs: Vec<apolline_niri::Output>,
+    place: (String, String),
+    revert: Option<std::time::Instant>,
     hours_draft: String,
     monitor_draft: String,
     queue: Vec<String>,
@@ -439,6 +457,9 @@ impl Settings {
             live: crate::control::shared(),
             monitors: wallpaper::monitors(),
             monitor: None,
+            outputs: crate::niri::outputs(),
+            place: (String::new(), String::new()),
+            revert: None,
             hours_draft: String::new(),
             monitor_draft: String::new(),
             queue: Vec::new(),
@@ -568,6 +589,33 @@ impl Settings {
             }
             Message::ModeAccent(accent) => self.edit(|e| e.set_mode_accent(index, accent)),
             Message::ForMonitor(monitor) => self.monitor = monitor,
+            Message::DisplayMode(name, mode) => {
+                self.change_display(|e| e.set_display(&name, "mode", mode.as_str()))
+            }
+            Message::DisplayScale(name, percent) => {
+                let scale = f64::from(percent) / 100.0;
+                self.change_display(|e| e.set_display(&name, "scale", scale))
+            }
+            Message::DisplayTurn(name, turn) => self.change_display(|e| {
+                if turn == "normal" {
+                    e.unset_display(&name, "transform");
+                } else {
+                    e.set_display(&name, "transform", turn);
+                }
+            }),
+            Message::DisplayVrr(name, on) => self.edit(|e| e.set_display(&name, "vrr", on)),
+            Message::DisplayX(x) => self.place.0 = x,
+            Message::DisplayY(y) => self.place.1 = y,
+            Message::DisplayMove(name) => {
+                if let (Ok(x), Ok(y)) = (
+                    self.place.0.trim().parse::<i64>(),
+                    self.place.1.trim().parse::<i64>(),
+                ) {
+                    self.change_display(|e| e.set_display_position(&name, x, y));
+                    self.place = (String::new(), String::new());
+                }
+            }
+            Message::KeepDisplays => self.revert = None,
             Message::DesktopWallpaper(name) if self.monitor.is_some() => {
                 let monitor = self.monitor.clone().unwrap_or_default();
                 let mut outputs = self.config.desktop.outputs.clone();
@@ -1069,6 +1117,16 @@ impl Settings {
             Message::Thumb(_, None) => return self.next_thumb(),
             Message::Tick => {
                 self.live = crate::control::shared();
+                if self
+                    .revert
+                    .is_some_and(|at| std::time::Instant::now() >= at)
+                {
+                    self.revert = None;
+                    self.step(true);
+                }
+                if self.page == Page::Displays && self.outputs_may_change() {
+                    self.outputs = crate::niri::outputs();
+                }
                 if stamp(&self.path) != self.stamp {
                     self.reload();
                 }
@@ -1281,6 +1339,7 @@ impl Settings {
             Page::Themes => self.themes(),
             Page::Appearance => self.appearance(),
             Page::Windows => self.windows(),
+            Page::Displays => self.displays(),
             Page::Bar => self.bar(),
             Page::Lock => self.lock(),
             Page::Notifications => self.notifications(),
@@ -1296,6 +1355,7 @@ impl Settings {
                 Some(editor.mode_section(self.selected))
             }
             (Ok(_), Page::Modes) => Some(String::new()),
+            (Ok(editor), Page::Displays) => Some(editor.lists("display")),
             (Ok(editor), Page::Windows) => Some(format!(
                 "{}\n{}",
                 editor.sections(page.sections()),
@@ -3528,6 +3588,201 @@ impl Settings {
         )
     }
 
+    fn change_display(&mut self, change: impl FnOnce(&mut Editor)) {
+        self.edit(change);
+        self.revert = Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
+    }
+
+    fn outputs_may_change(&self) -> bool {
+        self.revert.is_some()
+    }
+
+    fn displays(&self) -> Element<'_, Message> {
+        let palette = self.palette();
+        let mut page = Column::new().spacing(22);
+        if let Some(at) = self.revert {
+            let left = at
+                .saturating_duration_since(std::time::Instant::now())
+                .as_secs();
+            page = page.push(
+                container(
+                    row![
+                        icon(Icon::Monitor, 16.0, palette.accent),
+                        text(format!(
+                            "Keep these display settings? Going back in {left} s"
+                        ))
+                        .size(13)
+                        .width(Fill),
+                        button(text("Go back").size(13))
+                            .padding([7, 14])
+                            .style(style::secondary)
+                            .on_press(Message::Undo),
+                        button(text("Keep").size(13))
+                            .padding([7, 16])
+                            .style(style::primary(palette))
+                            .on_press(Message::KeepDisplays),
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center),
+                )
+                .padding([10, 14])
+                .style(style::pill(palette.accent_soft)),
+            );
+        }
+        if self.outputs.is_empty() {
+            page = page.push(note(
+                "No screens to show: this works inside a niri session, where niri msg outputs lists them.",
+            ));
+        }
+        let niri = std::fs::read_to_string(fragment::niri_config()).unwrap_or_default();
+        for output in &self.outputs {
+            let name = output.name.clone();
+            let mine = self.config.displays.iter().find(|d| d.name == output.name);
+            let logical = output.logical.as_ref();
+            let mode_label = |m: &apolline_niri::OutputMode| {
+                format!(
+                    "{} × {} · {:.0} Hz",
+                    m.width,
+                    m.height,
+                    f64::from(m.refresh_rate) / 1000.0
+                )
+            };
+            let modes: Vec<String> = output.modes.iter().map(mode_label).collect();
+            let current = output
+                .current_mode
+                .and_then(|i| output.modes.get(i))
+                .map(mode_label);
+            let raw: Vec<(String, String)> = output
+                .modes
+                .iter()
+                .map(|m| {
+                    (
+                        mode_label(m),
+                        format!(
+                            "{}x{}@{:.3}",
+                            m.width,
+                            m.height,
+                            f64::from(m.refresh_rate) / 1000.0
+                        ),
+                    )
+                })
+                .collect();
+            let scale = (logical.map_or(1.0, |l| l.scale) * 100.0).round() as u16;
+            let turn = mine
+                .and_then(|d| d.transform.as_deref())
+                .unwrap_or("normal");
+            let turn: &'static str = apolline_config::TRANSFORMS
+                .into_iter()
+                .find(|t| *t == turn)
+                .unwrap_or("normal");
+            let mut rows = vec![
+                setting(
+                    "Resolution",
+                    "",
+                    iced::widget::pick_list(modes, current, {
+                        let name = name.clone();
+                        move |label: String| {
+                            let mode = raw
+                                .iter()
+                                .find(|(l, _)| *l == label)
+                                .map(|(_, m)| m.clone())
+                                .unwrap_or_default();
+                            Message::DisplayMode(name.clone(), mode)
+                        }
+                    })
+                    .text_size(13)
+                    .padding([7, 12]),
+                ),
+                setting(
+                    "Scale",
+                    "Bigger text and controls on sharp screens",
+                    segmented(
+                        [
+                            (100u16, "100%", None),
+                            (125, "125%", None),
+                            (150, "150%", None),
+                            (175, "175%", None),
+                            (200, "200%", None),
+                        ],
+                        scale,
+                        {
+                            let name = name.clone();
+                            move |s| Message::DisplayScale(name.clone(), s)
+                        },
+                    ),
+                ),
+                setting(
+                    "Rotation",
+                    "",
+                    segmented(
+                        [
+                            ("normal", "None", None),
+                            ("90", "90°", None),
+                            ("180", "180°", None),
+                            ("270", "270°", None),
+                        ],
+                        turn,
+                        {
+                            let name = name.clone();
+                            move |t| Message::DisplayTurn(name.clone(), t)
+                        },
+                    ),
+                ),
+                setting_owned(
+                    "Position",
+                    Some(format!(
+                        "Now at {}, {} in the shared space of all screens",
+                        logical.map_or(0, |l| l.x),
+                        logical.map_or(0, |l| l.y)
+                    )),
+                    row![
+                        text_input("x", &self.place.0)
+                            .on_input(Message::DisplayX)
+                            .padding([7, 10])
+                            .size(13)
+                            .width(70)
+                            .style(style::field(palette)),
+                        text_input("y", &self.place.1)
+                            .on_input(Message::DisplayY)
+                            .on_submit(Message::DisplayMove(name.clone()))
+                            .padding([7, 10])
+                            .size(13)
+                            .width(70)
+                            .style(style::field(palette)),
+                        button(text("Move").size(13))
+                            .padding([7, 14])
+                            .style(style::secondary)
+                            .on_press(Message::DisplayMove(name.clone())),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                ),
+            ];
+            if output.vrr_supported {
+                rows.push(setting(
+                    "Variable refresh rate",
+                    "Always on; off lets only games in a performance mode use it",
+                    switch(
+                        mine.and_then(|d| d.vrr).unwrap_or(false),
+                        {
+                            let name = name.clone();
+                            move |on| Message::DisplayVrr(name.clone(), on)
+                        },
+                        palette,
+                    ),
+                ));
+            }
+            if niri.contains(&format!("output \"{}\"", output.name)) {
+                rows.push(note(
+                    "Your niri config already describes this screen, and niri keeps the first description it reads, so change it there.",
+                ));
+            }
+            let title = format!("{} {} · {}", output.make, output.model, output.name);
+            page = page.push(group(title, rows));
+        }
+        page.into()
+    }
+
     fn set_trigger(&mut self, index: usize, trigger: Trigger, on: bool) {
         let Some(mode) = self.config.modes.get(index) else {
             return;
@@ -4132,7 +4387,7 @@ fn mode_accent(accent: Option<Accent>) -> Message {
     Message::ModeAccent(accent)
 }
 
-fn group<'a>(title: &'a str, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+fn group<'a>(title: impl AsRef<str>, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     let mut body = Column::new();
     let count = rows.len();
     for (index, row) in rows.into_iter().enumerate() {
@@ -4146,7 +4401,7 @@ fn group<'a>(title: &'a str, rows: Vec<Element<'a, Message>>) -> Element<'a, Mes
         }
     }
     column![
-        text(title.to_uppercase())
+        text(title.as_ref().to_uppercase())
             .size(11)
             .font(style::semibold())
             .color(style::color(style::FAINT)),
@@ -4252,7 +4507,7 @@ fn warning<'a>(line: &str) -> Element<'a, Message> {
 fn segmented<'a, T: Copy + PartialEq + 'a, const N: usize>(
     options: [(T, &'a str, Option<Icon>); N],
     current: impl Into<Option<T>>,
-    on: fn(T) -> Message,
+    on: impl Fn(T) -> Message,
 ) -> Element<'a, Message> {
     let current = current.into();
     let buttons = Row::with_children(options.map(|(value, label, glyph)| {
@@ -4296,7 +4551,11 @@ fn rules<'a>(index: usize, current: Notifications) -> Element<'a, Message> {
     container(buttons).padding(3).style(style::segments).into()
 }
 
-fn switch<'a>(on: bool, message: fn(bool) -> Message, palette: Palette) -> Element<'a, Message> {
+fn switch<'a>(
+    on: bool,
+    message: impl Fn(bool) -> Message + 'a,
+    palette: Palette,
+) -> Element<'a, Message> {
     toggler(on)
         .on_toggle(message)
         .size(22)
@@ -4557,7 +4816,10 @@ mod tests {
         assert_eq!(settings.config.desktop.wallpaper, "fog.jpg");
 
         let _ = settings.update(Message::DesktopWallpaper("fog.jpg".into()));
-        assert!(settings.config.desktop.outputs.is_empty(), "same as everywhere drops the line");
+        assert!(
+            settings.config.desktop.outputs.is_empty(),
+            "same as everywhere drops the line"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 
