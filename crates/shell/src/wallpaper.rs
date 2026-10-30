@@ -144,11 +144,28 @@ pub async fn load(name: String) -> Result<Handle, String> {
 pub async fn thumbnail(name: String) -> Option<Handle> {
     let decode = move || {
         let source = resolve(&name);
-        let image = match &source {
-            Source::File(path) => ::image::open(path).ok()?,
-            Source::Bundled(_, bytes) => ::image::load_from_memory(bytes).ok()?,
+        let cached = match &source {
+            Source::File(path) => cache_file(path),
+            Source::Bundled(..) => None,
         };
-        let thumb = image.thumbnail(THUMB.0, THUMB.1).to_rgba8();
+        let thumb = match cached.as_ref().and_then(|file| ::image::open(file).ok()) {
+            Some(image) => image.to_rgba8(),
+            None => {
+                let image = match &source {
+                    Source::File(path) => ::image::open(path).ok()?,
+                    Source::Bundled(_, bytes) => ::image::load_from_memory(bytes).ok()?,
+                };
+                let thumb = image.thumbnail(THUMB.0, THUMB.1).to_rgba8();
+                if let Some(file) = &cached {
+                    let _ = file
+                        .parent()
+                        .map(std::fs::create_dir_all)
+                        .transpose()
+                        .map(|_| thumb.save(file));
+                }
+                thumb
+            }
+        };
         if matches!(source, Source::File(_)) {
             learn(&name, &thumb);
         }
@@ -159,6 +176,23 @@ pub async fn thumbnail(name: String) -> Option<Handle> {
 }
 
 const THUMB: (u32, u32) = (760, 475);
+
+fn cache_file(path: &Path) -> Option<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let meta = std::fs::metadata(path).ok()?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hasher);
+    meta.len().hash(&mut hasher);
+    meta.modified().ok()?.hash(&mut hasher);
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+    Some(
+        cache
+            .join("apolline/thumbs")
+            .join(format!("{:016x}.png", hasher.finish())),
+    )
+}
 
 fn screen() -> Option<(u32, u32)> {
     apolline_niri::largest_mode(&outputs()?)
