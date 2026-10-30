@@ -28,6 +28,7 @@ pub struct Config {
     pub idle: Idle,
     pub windows: Windows,
     pub rules: Vec<Rule>,
+    pub pinned: Vec<String>,
     pub modes: Vec<ModeSettings>,
 }
 
@@ -511,6 +512,7 @@ impl Default for Config {
                 switcher: true,
             },
             rules: Vec::new(),
+            pinned: Vec::new(),
             modes: Vec::new(),
         }
     }

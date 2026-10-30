@@ -123,7 +123,7 @@ impl Reader<'_> {
                 }
                 "bar" => {
                     if let Some(t) = self.section(key, value) {
-                        self.bar(t, &mut config.bar)
+                        self.bar(t, &mut config.bar, &mut config.pinned)
                     }
                 }
                 "keyboard" => {
@@ -243,7 +243,7 @@ impl Reader<'_> {
         }
     }
 
-    fn bar(&mut self, table: &DeTable, bar: &mut Bar) {
+    fn bar(&mut self, table: &DeTable, bar: &mut Bar, pinned: &mut Vec<String>) {
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
                 "workspaces" => {
@@ -287,6 +287,11 @@ impl Reader<'_> {
                         bar.blur = v
                     }
                 }
+                "pinned" => {
+                    if let Some(v) = self.strings(key, value) {
+                        *pinned = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
@@ -299,6 +304,7 @@ impl Reader<'_> {
                         "floating",
                         "opacity",
                         "blur",
+                        "pinned",
                     ],
                 ),
             }

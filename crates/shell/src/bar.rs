@@ -4,7 +4,7 @@ use chrono::{DateTime, Local};
 use iced::widget::{Row, button, column, container, mouse_area, row, space, text};
 use iced::{Alignment, Background, Element, Fill, Theme};
 
-use crate::apps::App;
+use crate::apps::{self, App};
 use crate::controls::Controls;
 use crate::icon::{Icon, icon};
 use crate::media::Track;
@@ -29,6 +29,13 @@ pub struct Bar<'a> {
     pub look: apolline_config::Bar,
     pub panel_open: bool,
     pub apps: &'a [App],
+    pub pinned: Vec<Pinned>,
+}
+
+pub struct Pinned {
+    pub id: String,
+    pub running: bool,
+    pub focused: bool,
 }
 
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
@@ -214,7 +221,47 @@ fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
 
 fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     let palette = bar.palette;
-    Row::with_children(bar.status.windows.iter().map(|(id, app, focused)| {
+    let pinned = bar.pinned.iter().map(|pin| {
+        let glyph = crate::windows::picture(bar.apps, &pin.id, 16.0, palette);
+        let (width, tint) = match (pin.focused, pin.running) {
+            (true, _) => (12, palette.accent),
+            (false, true) => (4, neutral::MUTED),
+            (false, false) => (0, neutral::MUTED),
+        };
+        let marker = container(space())
+            .width(width)
+            .height(2)
+            .style(style::pill(tint));
+        let focused = pin.focused;
+        let button = button(column![glyph, marker].spacing(2).align_x(Alignment::Center))
+            .padding(iced::Padding::new(4.0).bottom(1.0))
+            .style(move |theme, status| {
+                let mut style = style::ghost(7.0)(theme, status);
+                if focused {
+                    style.background = Some(Background::Color(style::color(style::FILL)));
+                }
+                style
+            })
+            .on_press(Message::OpenPinned(pin.id.clone()));
+        mouse_area(button)
+            .on_right_press(Message::Pin(pin.id.clone()))
+            .into()
+    });
+    let pinned_ids: Vec<&str> = bar.pinned.iter().map(|pin| pin.id.as_str()).collect();
+    let loose: Vec<&(u64, String, bool)> = bar
+        .status
+        .windows
+        .iter()
+        .filter(|(_, app, _)| !pinned_ids.contains(&app_key(bar.apps, app)))
+        .collect();
+    let gap = (!bar.pinned.is_empty() && !loose.is_empty()).then(|| {
+        container(space())
+            .width(1)
+            .height(14)
+            .style(|_| container::background(style::color(neutral::HAIRLINE)))
+            .into()
+    });
+    let windows = loose.into_iter().map(|(id, app, focused)| {
         let focused = *focused;
         let glyph = crate::windows::picture(bar.apps, app, 16.0, palette);
         let marker = container(space())
@@ -233,11 +280,17 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             .on_press(Message::FocusWindow(*id));
         mouse_area(task)
             .on_middle_press(Message::CloseWindow(*id))
+            .on_right_press(Message::Pin(app_key(bar.apps, app).to_owned()))
             .into()
-    }))
-    .spacing(2)
-    .align_y(Alignment::Center)
-    .into()
+    });
+    Row::with_children(pinned.chain(gap).chain(windows))
+        .spacing(2)
+        .align_y(Alignment::Center)
+        .into()
+}
+
+pub fn app_key<'a>(apps: &'a [App], app_id: &'a str) -> &'a str {
+    apps::find(apps, app_id).map_or(app_id, |app| app.id.as_str())
 }
 
 fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {

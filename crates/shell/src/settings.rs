@@ -18,6 +18,7 @@ use iced::{
     Task, Theme, Vector, window,
 };
 
+use crate::apps::{self, App};
 use crate::controls::Controls;
 use crate::fragment::{self, Fragment};
 use crate::icon::{Icon, MODE_ICONS, icon};
@@ -232,6 +233,10 @@ enum Message {
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,
+    Apps(Vec<App>),
+    PinQuery(String),
+    PinApp(String),
+    UnpinApp(usize),
     RemoveFolder(usize),
     Notifications(usize, Notifications),
     Performance(bool),
@@ -344,6 +349,8 @@ struct Settings {
     draft: String,
     wallpaper_draft: String,
     library: Vec<String>,
+    apps: Vec<App>,
+    pin_query: String,
     queue: Vec<String>,
     all_walls: bool,
     typing: String,
@@ -407,6 +414,8 @@ impl Settings {
             draft: String::new(),
             wallpaper_draft: String::new(),
             library: Vec::new(),
+            apps: Vec::new(),
+            pin_query: String::new(),
             queue: Vec::new(),
             all_walls: false,
             typing: String::new(),
@@ -431,6 +440,7 @@ impl Settings {
                 Task::perform(thumbnails(), Message::Thumbs),
                 custom,
                 library,
+                Task::perform(apps::scan(), Message::Apps),
             ]),
         )
     }
@@ -539,6 +549,23 @@ impl Settings {
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
             Message::AllWallpapers => self.all_walls = !self.all_walls,
+            Message::Apps(apps) => self.apps = apps,
+            Message::PinQuery(query) => self.pin_query = query,
+            Message::PinApp(id) => {
+                let mut pinned = self.config.pinned.clone();
+                if !pinned.contains(&id) {
+                    pinned.push(id);
+                    self.edit(|e| e.set_list("bar", "pinned", &pinned));
+                }
+                self.pin_query.clear();
+            }
+            Message::UnpinApp(index) => {
+                let mut pinned = self.config.pinned.clone();
+                if index < pinned.len() {
+                    pinned.remove(index);
+                    self.edit(|e| e.set_list("bar", "pinned", &pinned));
+                }
+            }
             Message::RemoveFolder(index) => {
                 let mut folders = self.config.desktop.folders.clone();
                 if index < folders.len() {
@@ -2620,6 +2647,74 @@ impl Settings {
         .into()
     }
 
+    fn pinned_apps(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let mut rows: Vec<Element<'_, Message>> = self
+            .config
+            .pinned
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let name = apps::find(&self.apps, id).map_or(id.as_str(), |app| app.name.as_str());
+                row![
+                    crate::windows::picture(&self.apps, id, 20.0, palette).map(|_| Message::Noop),
+                    text(name).size(13).width(Fill),
+                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::UnpinApp(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([8, 16])
+                .into()
+            })
+            .collect();
+        let query = self.pin_query.trim();
+        let mut found = Row::new().spacing(6);
+        if !query.is_empty() {
+            let mut matches: Vec<(u32, &App)> = self
+                .apps
+                .iter()
+                .filter(|app| !self.config.pinned.contains(&app.id))
+                .filter_map(|app| apps::score(query, app).map(|score| (score, app)))
+                .collect();
+            matches.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+            for (_, app) in matches.into_iter().take(4) {
+                found = found.push(
+                    button(
+                        row![
+                            crate::windows::picture(&self.apps, &app.id, 16.0, palette)
+                                .map(|_| Message::Noop),
+                            text(app.name.as_str()).size(12),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                    )
+                    .padding([6, 10])
+                    .style(style::secondary)
+                    .on_press(Message::PinApp(app.id.clone())),
+                );
+            }
+        }
+        rows.push(
+            column![
+                text_input("Find an app to pin", &self.pin_query)
+                    .on_input(Message::PinQuery)
+                    .padding([8, 12])
+                    .size(13)
+                    .style(style::field(palette)),
+                found,
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+        );
+        rows.push(note(
+            "Pinned apps sit before the open windows. A click jumps to the app or starts it; right-click any icon on the bar to pin or unpin it.",
+        ));
+        rows
+    }
+
     fn bar(&self) -> Element<'_, Message> {
         let look = self.config.bar;
         let palette = self.palette();
@@ -2637,10 +2732,20 @@ impl Settings {
                 held: 2,
                 do_not_disturb: self.config.alerts.do_not_disturb,
                 awake: false,
-                apps: &[],
+                apps: &self.apps,
                 now: chrono::Local::now(),
                 look,
                 panel_open: false,
+                pinned: self
+                    .config
+                    .pinned
+                    .iter()
+                    .map(|id| bar::Pinned {
+                        id: id.clone(),
+                        running: false,
+                        focused: false,
+                    })
+                    .collect(),
             })
             .map(|_| Message::Noop);
             let inset = if look.floating { 10.0 } else { 0.0 };
@@ -2695,6 +2800,7 @@ impl Settings {
                     ),
                 ]
             ),
+            group("Pinned apps", self.pinned_apps(palette)),
             group(
                 "Workspaces",
                 vec![setting(

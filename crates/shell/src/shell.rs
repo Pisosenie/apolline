@@ -61,6 +61,8 @@ pub enum Message {
     OsdDone(u64),
     Clip(Clip),
     FocusWindow(u64),
+    OpenPinned(String),
+    Pin(String),
     CloseWindow(u64),
     ClipQuery(String),
     ClipCopy(Option<usize>),
@@ -355,6 +357,18 @@ impl Shell {
                 for window in &mut self.status.windows {
                     window.2 = window.0 == id;
                 }
+            }
+            Message::OpenPinned(id) => return self.open_pinned(&id),
+            Message::Pin(id) => {
+                let mut pinned = self.config.pinned.clone();
+                match pinned.iter().position(|p| *p == id) {
+                    Some(index) => {
+                        pinned.remove(index);
+                    }
+                    None => pinned.push(id),
+                }
+                self.save(|e| e.set_list("bar", "pinned", &pinned));
+                return self.reload_config();
             }
             Message::CloseWindow(id) => {
                 if self.niri.is_some() {
@@ -798,6 +812,70 @@ impl Shell {
         Task::batch([close, task])
     }
 
+    fn pinned(&self) -> Vec<bar::Pinned> {
+        let windows: Vec<(String, bool)> = match &self.niri {
+            Some(state) => state
+                .recent()
+                .into_iter()
+                .map(|w| (w.app_id.clone().unwrap_or_default(), w.is_focused))
+                .collect(),
+            None => self
+                .status
+                .windows
+                .iter()
+                .map(|(_, app, focused)| (app.clone(), *focused))
+                .collect(),
+        };
+        self.config
+            .pinned
+            .iter()
+            .map(|id| {
+                let mine: Vec<bool> = windows
+                    .iter()
+                    .filter(|(app, _)| bar::app_key(&self.apps, app) == id)
+                    .map(|(_, focused)| *focused)
+                    .collect();
+                bar::Pinned {
+                    id: id.clone(),
+                    running: !mine.is_empty(),
+                    focused: mine.contains(&true),
+                }
+            })
+            .collect()
+    }
+
+    fn open_pinned(&mut self, id: &str) -> Task<Message> {
+        let windows: Vec<(u64, bool)> = match &self.niri {
+            Some(state) => state
+                .recent()
+                .into_iter()
+                .filter(|w| bar::app_key(&self.apps, w.app_id.as_deref().unwrap_or_default()) == id)
+                .map(|w| (w.id, w.is_focused))
+                .collect(),
+            None => self
+                .status
+                .windows
+                .iter()
+                .filter(|(_, app, _)| bar::app_key(&self.apps, app) == id)
+                .map(|(window, _, focused)| (*window, *focused))
+                .collect(),
+        };
+        let next = match windows.iter().position(|(_, focused)| *focused) {
+            Some(at) => windows.get(at + 1).or(windows.first()),
+            None => windows.first(),
+        };
+        if let Some((window, _)) = next {
+            return self.update(Message::FocusWindow(*window));
+        }
+        match apps::find(&self.apps, id) {
+            Some(app) => {
+                let exec = app.exec.clone();
+                self.spawn(&exec)
+            }
+            None => Task::none(),
+        }
+    }
+
     fn open_windows(&self) -> Vec<OpenWindow> {
         match &self.niri {
             Some(state) => state
@@ -1139,6 +1217,7 @@ impl Shell {
             look: self.config.bar,
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
+            pinned: self.pinned(),
         })
     }
 
