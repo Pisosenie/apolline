@@ -1,0 +1,29 @@
+# Apolline reads this file when it starts.
+# Anything it does not understand is reported and skipped — the rest still applies.
+# Check it at any time with:  apolline check
+
+[general]
+mode = "work"              # work, play or evening
+
+[layout]
+gaps = 10
+radius = 12
+borders = true
+
+[mode.work]
+wallpaper = "fog.jpg"
+accent = "auto"            # "auto" takes it from the wallpaper, or a color like "#86bdf0"
+notifications = "mentions" # all, mentions or hold
+open = []
+
+[mode.play]
+wallpaper = "ember.jpg"
+accent = "auto"
+notifications = "hold"
+open = ["steam", "discord"]
+
+[mode.evening]
+wallpaper = "night.jpg"
+accent = "auto"
+notifications = "all"
+open = []

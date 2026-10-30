@@ -1,0 +1,19 @@
+[package]
+name = "apolline-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "apolline"
+path = "src/main.rs"
+
+[dependencies]
+apolline-theme.workspace = true
+apolline-config.workspace = true
+iced.workspace = true
+chrono.workspace = true
+png.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+iced_layershell = "0.19"

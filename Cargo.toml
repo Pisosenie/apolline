@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+apolline-theme = { path = "crates/theme" }
+apolline-config = { path = "crates/config" }
+iced = { version = "0.14", features = ["image", "tokio"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1.1"
+strsim = "0.11"
+chrono = "0.4"
+png = "0.18"
