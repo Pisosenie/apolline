@@ -104,8 +104,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.
 
 ### 4. Finding things and getting in
-- The launcher answers more: emoji by name, unit and currency conversion, files, and a dmenu mode
-  (`apolline pick` reads lines from stdin) for your own scripts.
+- The launcher answers more — done: emoji by name, unit and currency conversion, files, and a dmenu
+  mode (`apolline pick` reads lines from stdin) for your own scripts.
 - Fingerprint next to the password on the lock screen and in the polkit dialog, both at once.
 - The login screen (`apolline greet`, done in its first form) remembers the last person and session and
   lists people through getent; next are the keyboard layout and no flash on the way into the session.

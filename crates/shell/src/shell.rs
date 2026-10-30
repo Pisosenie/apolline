@@ -88,6 +88,7 @@ pub enum Message {
     Frame,
     CalendarMonth(i32),
     CalendarDay(chrono::NaiveDate),
+    Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
     Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
     Files(Vec<std::path::PathBuf>),
@@ -521,6 +522,8 @@ impl Shell {
                 self.day = None;
             }
             Message::CalendarDay(day) => self.day = Some(day),
+            Message::Rates(Ok(rates)) => self.launcher.set_rates(rates),
+            Message::Rates(Err(err)) => eprintln!("apolline: exchange rates: {err}"),
             Message::Agenda(agenda) => self.agenda = agenda,
             Message::Files(files) => self.launcher.set_files(files),
             Message::Detail(detail) => {
@@ -958,7 +961,7 @@ impl Shell {
                 self.apps = apps.clone();
                 self.launcher.set_apps(apps);
             }
-            Message::Query(query) => return self.launcher.search(query),
+            Message::Query(query) => return self.search(query),
             Message::Submit => {
                 if let Some(target) = self.launcher.chosen() {
                     return self.run(target);
@@ -1071,13 +1074,13 @@ impl Shell {
             Key::Named(Named::Backspace) if launcher => {
                 let mut query = self.launcher.query.clone();
                 query.pop();
-                return self.launcher.search(query);
+                return self.search(query);
             }
             Key::Named(Named::Enter) if launcher => return self.update(Message::Submit),
             _ if launcher => {
                 if let Some(typed) = text.filter(|t| t.chars().all(|c| !c.is_control())) {
                     let query = format!("{}{typed}", self.launcher.query);
-                    return self.launcher.search(query);
+                    return self.search(query);
                 }
             }
             Key::Character("0") => return self.switch(None),
@@ -1512,6 +1515,15 @@ impl Shell {
             Some(file) => Task::perform(crate::marks::open(file), Message::MarksOpened),
             None => self.show(Osd::Note("No screenshot to mark yet".into())),
         }
+    }
+
+    fn search(&mut self, query: String) -> Task<Message> {
+        let found = self.launcher.search(query);
+        if self.launcher.wants_rates() {
+            let rates = Task::perform(crate::rates::load(), Message::Rates);
+            return Task::batch([found, rates]);
+        }
+        found
     }
 
     fn marks_key(&mut self, key: Key, modifiers: keyboard::Modifiers) -> Task<Message> {

@@ -45,7 +45,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 
 | Key | Opens |
 |---|---|
-| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), open windows, sums like `15% of 340` and units like `10 km in mi` (Enter copies the answer), `:emoji` by name, `/files` in your home, screenshots of an area, the screen or the window, a color picker, screen recording (with wf-recorder), modes, settings, lock |
+| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), open windows, sums like `15% of 340`, units like `10 km in mi` and money like `100 usd in eur` (today's rates from ExchangeRate-API, asked for only when you type a sum of money; Enter copies the answer), `:emoji` by name, `/files` in your home, screenshots of an area, the screen or the window, a color picker, screen recording (with wf-recorder), modes, settings, lock |
 | `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume, brightness, mode, the player, past notifications, screenshot, power |
 | `Mod+Shift+M` | the mode switcher |
 | `Mod+Alt+V` | clipboard history |
@@ -223,7 +223,7 @@ The three default wallpapers are built into the binary; point `wallpaper` at you
 | `assets/icons` | the Lucide icons Apolline uses (ISC) |
 | `assets/pam`, `assets/*.desktop`, `assets/apolline.svg` | what a package installs next to the binary |
 | `packaging/arch` | the `apolline-git` PKGBUILD |
-| `tools/` | wallpaper generator, headless screenshot script, stand-ins for MPRIS, UPower, power profiles and the quick settings tools |
+| `tools/` | wallpaper generator, headless screenshot script, a recorder of niri's event stream for the IPC tests, stand-ins for MPRIS, UPower, power profiles and the quick settings tools |
 
 ## License
 

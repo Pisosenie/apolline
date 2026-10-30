@@ -10,6 +10,81 @@ pub fn answer(input: &str) -> Option<String> {
     value.is_finite().then(|| format(value))
 }
 
+// Sums of money: "100 usd in eur", "$20 to rub", "50€ in kzt".
+pub fn money(input: &str, rates: &crate::rates::Rates) -> Option<String> {
+    let lower = input.trim().to_lowercase();
+    [" in ", " to "]
+        .iter()
+        .flat_map(|word| lower.match_indices(word))
+        .find_map(|(at, word)| {
+            let (amount, from) = amount(&lower[..at])?;
+            let to = currency(lower[at + word.len()..].trim())?;
+            let value = rates.convert(amount, &from, &to)?;
+            rates
+                .knows(&from)
+                .then(|| format!("{} {to}", money_format(value)))
+        })
+}
+
+// True when the words look like a sum of money, before any rates are known.
+pub fn wants_rates(input: &str) -> bool {
+    let lower = input.trim().to_lowercase();
+    [" in ", " to "].iter().any(|word| {
+        lower.split_once(word).is_some_and(|(from, to)| {
+            amount(from).is_some() && currency(to.trim()).is_some() && convert(input).is_none()
+        })
+    })
+}
+
+const SYMBOLS: [(char, &str); 8] = [
+    ('$', "USD"),
+    ('€', "EUR"),
+    ('£', "GBP"),
+    ('₽', "RUB"),
+    ('¥', "JPY"),
+    ('₸', "KZT"),
+    ('₴', "UAH"),
+    ('₹', "INR"),
+];
+
+fn currency(word: &str) -> Option<String> {
+    let word = word.trim();
+    let mut chars = word.chars();
+    if let (Some(c), None) = (chars.next(), chars.next())
+        && let Some((_, code)) = SYMBOLS.iter().find(|(s, _)| *s == c)
+    {
+        return Some((*code).to_owned());
+    }
+    (word.len() == 3 && word.chars().all(|c| c.is_ascii_alphabetic()))
+        .then(|| word.to_ascii_uppercase())
+}
+
+// "100 usd", "$100", "100$", "1,5 €", "2*50 eur".
+fn amount(text: &str) -> Option<(f64, String)> {
+    let text = text.trim();
+    let (number, code) = match text
+        .char_indices()
+        .find(|(_, c)| SYMBOLS.iter().any(|(s, _)| s == c))
+    {
+        Some((0, symbol)) => (&text[symbol.len_utf8()..], symbol.to_string()),
+        Some((at, symbol)) if at + symbol.len_utf8() == text.len() => {
+            (&text[..at], symbol.to_string())
+        }
+        Some(_) => return None,
+        None => {
+            let split = text.rfind(|c: char| c.is_whitespace())?;
+            (&text[..split], text[split..].to_owned())
+        }
+    };
+    let code = currency(&code)?;
+    Some((eval(number.trim())?, code))
+}
+
+fn money_format(value: f64) -> String {
+    let text = format!("{value:.2}");
+    text.strip_suffix(".00").map_or(text.clone(), str::to_owned)
+}
+
 const UNITS: [(&str, &str, f64); 30] = [
     ("mm", "length", 0.001),
     ("cm", "length", 0.01),
@@ -262,6 +337,27 @@ mod tests {
         assert_eq!(answer("1,5 × 4").as_deref(), Some("6"));
         assert_eq!(answer("1/3").as_deref(), Some("0.3333333333"));
         assert_eq!(answer("50%").as_deref(), Some("0.5"));
+    }
+
+    #[test]
+    fn money_converts_with_the_day_s_rates() {
+        let rates = crate::rates::sample();
+        assert_eq!(money("100 usd in eur", &rates).as_deref(), Some("92 EUR"));
+        assert_eq!(money("$20 to rub", &rates).as_deref(), Some("1630 RUB"));
+        assert_eq!(money("50€ in kzt", &rates).as_deref(), Some("27065.22 KZT"));
+        assert_eq!(
+            money("2*50 EUR in USD", &rates).as_deref(),
+            Some("108.70 USD")
+        );
+        assert_eq!(
+            money("100 abc in eur", &rates),
+            None,
+            "not a currency it knows"
+        );
+        assert!(wants_rates("100 usd in eur"));
+        assert!(wants_rates("$5 to ₽"));
+        assert!(!wants_rates("10 km in mi"), "units are no money");
+        assert!(!wants_rates("firefox"));
     }
 
     #[test]

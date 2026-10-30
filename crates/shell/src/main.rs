@@ -37,6 +37,7 @@ mod popup;
 mod power;
 mod preview;
 mod profile;
+mod rates;
 mod settings;
 mod shell;
 mod shot;

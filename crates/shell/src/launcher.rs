@@ -47,6 +47,8 @@ pub struct Launcher {
     files: Vec<std::path::PathBuf>,
     look: apolline_config::Surface,
     grid: bool,
+    rates: Option<std::sync::Arc<crate::rates::Rates>>,
+    asked: bool,
 }
 
 pub struct OpenWindow {
@@ -151,6 +153,7 @@ impl Launcher {
     pub fn open(&mut self) -> Task<Message> {
         self.query.clear();
         self.selected = 0;
+        self.asked = false;
         Task::batch([
             focus(SEARCH),
             scroll_to(LIST, AbsoluteOffset { x: 0.0, y: 0.0 }),
@@ -159,6 +162,17 @@ impl Launcher {
 
     pub fn focus(&self) -> Task<Message> {
         focus(SEARCH)
+    }
+
+    // True once a sum of money is typed and there are no rates yet; asked once a launch.
+    pub fn wants_rates(&mut self) -> bool {
+        let wanted = self.rates.is_none() && !self.asked && calc::wants_rates(&self.query);
+        self.asked |= wanted;
+        wanted
+    }
+
+    pub fn set_rates(&mut self, rates: std::sync::Arc<crate::rates::Rates>) {
+        self.rates = Some(rates);
     }
 
     pub fn set_modes(&mut self, modes: Vec<(String, String)>) {
@@ -264,6 +278,22 @@ impl Launcher {
                 Entry {
                     title: format!("= {result}"),
                     about: "Enter copies it".to_owned(),
+                    picture: Pic::Icon(Icon::Calculator),
+                    target: Target::Copy(result),
+                    game: false,
+                },
+            ));
+        } else if let Some(rates) = &self.rates
+            && let Some(result) = calc::money(query, rates)
+        {
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: format!("= {result}"),
+                    about: format!(
+                        "Enter copies it · rates of {} by ExchangeRate-API",
+                        rates.day
+                    ),
                     picture: Pic::Icon(Icon::Calculator),
                     target: Target::Copy(result),
                     game: false,
