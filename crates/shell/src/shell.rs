@@ -902,6 +902,7 @@ impl Shell {
             }
             Message::Player(action) => return self.player(action),
             Message::DoNotDisturb(on) => {
+                self.plain.alerts.do_not_disturb = on;
                 self.config.alerts.do_not_disturb = on;
                 if !self.demo {
                     self.save(|editor| editor.set("notifications", "do_not_disturb", on));
