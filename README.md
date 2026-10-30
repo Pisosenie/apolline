@@ -101,6 +101,7 @@ apolline theme            # list them, the applied one marked
 apolline theme Glass      # apply one
 apolline theme next       # the next one, handy on a key
 apolline theme install ~/Downloads/dune   # a theme.toml, or a folder with one and its pictures
+apolline theme install https://example.com/dune.toml   # or straight from a link
 ```
 
 A theme can be a folder: `theme.toml` next to its wallpaper, named without a path (`wallpaper = "sand.jpg"`), so the picture travels with the look.

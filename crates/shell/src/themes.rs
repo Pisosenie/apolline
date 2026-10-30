@@ -66,6 +66,23 @@ pub fn install(path: &Path) -> Result<Theme, String> {
     install_into(&dir(), path)
 }
 
+pub fn install_from(link: &str) -> Result<Theme, String> {
+    if !link.starts_with("https://") {
+        return Err("a theme link starts with https://".into());
+    }
+    let text = ureq::get(link)
+        .call()
+        .map_err(|err| err.to_string())?
+        .body_mut()
+        .with_config()
+        .limit(256 * 1024)
+        .read_to_string()
+        .map_err(|err| err.to_string())?;
+    let theme = Theme::parse(&text)?;
+    save_into(&dir(), &theme)?;
+    Ok(theme)
+}
+
 fn install_into(dir: &Path, path: &Path) -> Result<Theme, String> {
     if !path.is_dir() {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;

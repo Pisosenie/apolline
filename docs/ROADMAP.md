@@ -93,7 +93,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - **Layers you can see**: theme, then your tweaks, then the mode; Settings shows which layer a value
   comes from.
 - **Themes as folders** — done: `theme.toml` with its wallpaper, `apolline theme install FILE|FOLDER`.
-  Next: install from a URL, an optional niri snippet in the folder.
+  Installs from a link too. Next: an optional niri snippet in the folder.
 - **Per-surface style** — done for the launcher (radius, opacity, list or grid) and quick settings
   (radius, opacity); padding and text size are next.
 - **Wallpapers**: done — a gallery from folders, one per monitor, rotation, a thumbnail cache and a cross-fade.
