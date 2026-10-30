@@ -476,6 +476,50 @@ mod tests {
         assert!(!state.is_running("  "));
     }
 
+    // A session recorded on niri 26.04: every kind of event Apolline knows must still read,
+    // so a change in niri's JSON shows up here instead of as a quietly stale bar.
+    #[test]
+    fn a_niri_26_04_session_reads_in_full() {
+        const SESSION: &str = include_str!("../tests/sessions/niri-26.04.jsonl");
+        const KNOWN: [&str; 10] = [
+            "WorkspacesChanged",
+            "WorkspaceActivated",
+            "WindowsChanged",
+            "WindowOpenedOrChanged",
+            "WindowClosed",
+            "WindowFocusChanged",
+            "WindowFocusTimestampChanged",
+            "KeyboardLayoutsChanged",
+            "KeyboardLayoutSwitched",
+            "ScreenshotCaptured",
+        ];
+        let mut state = State::default();
+        let mut floated = false;
+        for line in SESSION.lines() {
+            let kind = line
+                .trim_start_matches("{\"")
+                .split('"')
+                .next()
+                .unwrap_or_default();
+            let event = Event::parse(line);
+            if KNOWN.contains(&kind) {
+                assert!(event.is_some(), "{kind} no longer reads: {line}");
+            }
+            if let Some(Event::ScreenshotCaptured { path }) = &event {
+                assert!(path.as_deref().is_some_and(|p| p.ends_with(".png")));
+                floated = state.focused_window().is_some_and(|w| w.is_floating);
+            }
+            if let Some(event) = event {
+                state.apply(event);
+            }
+        }
+        assert!(floated, "the window made floating reads as floating");
+        assert_eq!(state.focused_window().map(|w| w.id), Some(6));
+        assert_eq!(state.focused_output(), Some("winit"));
+        assert!(!state.is_running("rec-one") && !state.is_running("rec-two"));
+        assert_eq!(state.workspaces().len(), 2);
+    }
+
     #[test]
     fn each_output_has_its_own_workspaces() {
         let state = replay(concat!(
