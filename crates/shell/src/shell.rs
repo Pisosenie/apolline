@@ -127,6 +127,12 @@ pub enum Overlay {
     Calendar,
 }
 
+struct Shown {
+    output: Option<String>,
+    name: String,
+    from: Option<(image::Handle, Instant)>,
+}
+
 #[derive(Default)]
 struct System {
     battery: Option<Battery>,
@@ -184,7 +190,7 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
-    fade: Option<(image::Handle, Instant)>,
+    shown: Vec<Shown>,
     night: (bool, Option<bool>),
     module_text: Vec<(usize, String)>,
     recording: Option<crate::capture::Recording>,
@@ -268,7 +274,7 @@ impl Shell {
             gtk: None,
             config,
             wallpapers: Vec::new(),
-            fade: None,
+            shown: Vec::new(),
             night: (false, None),
             module_text: Vec::new(),
             recording: None,
@@ -578,12 +584,14 @@ impl Shell {
                 }
             }
             Message::Frame => {
-                if self
-                    .fade
-                    .as_ref()
-                    .is_some_and(|(_, at)| at.elapsed() >= FADE)
-                {
-                    self.fade = None;
+                for shown in &mut self.shown {
+                    if shown
+                        .from
+                        .as_ref()
+                        .is_some_and(|(_, at)| at.elapsed() >= FADE)
+                    {
+                        shown.from = None;
+                    }
                 }
             }
             Message::ConfigChanged => {
@@ -798,22 +806,9 @@ impl Shell {
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
             Message::Wallpaper(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
-                let primary = self.wallpaper_name(None).to_owned();
-                if name == primary
-                    && !self.demo
-                    && let Some((_, old)) = self.wallpapers.iter().find(|(n, _)| *n != name)
-                {
-                    self.fade = Some((old.clone(), Instant::now()));
-                }
                 self.wallpapers.retain(|(n, _)| *n != name);
                 self.wallpapers.push((name, handle));
-                let wanted = self.wanted_wallpapers();
-                if wanted
-                    .iter()
-                    .all(|w| self.wallpapers.iter().any(|(n, _)| n == w))
-                {
-                    self.wallpapers.retain(|(n, _)| wanted.contains(n));
-                }
+                self.show_wallpapers();
                 self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
@@ -1666,7 +1661,51 @@ impl Shell {
         )
     }
 
+    // Each screen keeps its old picture until the new one has loaded, then fades over.
+    fn show_wallpapers(&mut self) {
+        let screens: Vec<Option<String>> = std::iter::once(None)
+            .chain(self.outputs.iter().cloned().map(Some))
+            .collect();
+        let mut shown = Vec::with_capacity(screens.len());
+        for output in screens {
+            let wanted = self.wallpaper_name(output.as_deref()).to_owned();
+            let before = self
+                .shown
+                .iter()
+                .position(|s| s.output == output)
+                .map(|i| self.shown.swap_remove(i));
+            let loaded = self.wallpapers.iter().any(|(n, _)| *n == wanted);
+            match before {
+                Some(before) if !loaded || before.name == wanted => shown.push(before),
+                before => {
+                    let from = before
+                        .filter(|_| !self.demo)
+                        .and_then(|b| self.picture(&b.name).cloned())
+                        .map(|old| (old, Instant::now()));
+                    shown.push(Shown {
+                        output,
+                        name: wanted,
+                        from,
+                    });
+                }
+            }
+        }
+        self.shown = shown;
+        let wanted = self.wanted_wallpapers();
+        let shown = &self.shown;
+        self.wallpapers
+            .retain(|(n, _)| wanted.contains(n) || shown.iter().any(|s| s.name == *n));
+    }
+
+    fn picture(&self, name: &str) -> Option<&image::Handle> {
+        self.wallpapers
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, handle)| handle)
+    }
+
     fn load_wallpaper(&mut self) -> Task<Message> {
+        self.show_wallpapers();
         let wanted = self.wanted_wallpapers();
         let missing: Vec<String> = wanted
             .into_iter()
@@ -1680,12 +1719,12 @@ impl Shell {
     }
 
     pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
-        let wanted = self.wallpaper_name(output);
         let shown = self
-            .wallpapers
+            .shown
             .iter()
-            .find(|(name, _)| name == wanted)
-            .or(self.wallpapers.first());
+            .find(|s| s.output.as_deref() == output)
+            .filter(|s| self.picture(&s.name).is_some())
+            .or_else(|| self.shown.iter().find(|s| s.output.is_none()));
         let picture = |handle: &image::Handle, opacity: f32| {
             image(handle.clone())
                 .width(Fill)
@@ -1693,14 +1732,14 @@ impl Shell {
                 .content_fit(ContentFit::Cover)
                 .opacity(opacity)
         };
-        match shown {
-            Some((name, handle)) => match &self.fade {
-                Some((old, at)) if name == self.wallpaper_name(None) => {
+        match shown.and_then(|s| Some((s, self.picture(&s.name)?))) {
+            Some((shown, handle)) => match &shown.from {
+                Some((old, at)) => {
                     let t = (at.elapsed().as_secs_f32() / FADE.as_secs_f32()).min(1.0);
                     let eased = 1.0 - (1.0 - t).powi(3);
                     stack![picture(old, 1.0), picture(handle, eased)].into()
                 }
-                _ => picture(handle, 1.0).into(),
+                None => picture(handle, 1.0).into(),
             },
             None => container(space())
                 .width(Fill)
@@ -1806,7 +1845,7 @@ impl Shell {
         } else {
             clipboard::subscription().map(Message::Clip)
         };
-        let fading = if self.fade.is_some() {
+        let fading = if self.shown.iter().any(|s| s.from.is_some()) {
             iced::window::frames().map(|_| Message::Frame)
         } else {
             iced::Subscription::none()
