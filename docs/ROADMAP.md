@@ -96,7 +96,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   `apolline theme install FILE|URL`.
 - **Per-surface style**: `[style.bar]`, `[style.launcher]`, `[style.panel]` for radius, opacity,
   padding and text size; the launcher as a list or a grid.
-- **Wallpapers**: a different one per monitor, rotation through a folder, a thumbnail cache on disk.
+- **Wallpapers**: a thumbnail cache on disk, transitions between pictures (one per monitor and rotation are done).
 - **Fonts, icons, cursor and GTK theme** pickers that write the files apps actually read.
 - **More apps in the accent**: KDE apps through kdeglobals, live reload of running GTK apps, Flatpak.
   Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.

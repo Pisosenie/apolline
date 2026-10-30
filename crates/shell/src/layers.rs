@@ -218,7 +218,7 @@ impl Layers {
         }
         for (output, screen) in &self.screens {
             if id == screen.wallpaper {
-                return self.shell.wallpaper();
+                return self.shell.wallpaper(output.as_deref());
             }
             if id == screen.bar {
                 return self.shell.bar(output.as_deref());

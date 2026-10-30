@@ -98,7 +98,7 @@ impl Preview {
             } else {
                 Alignment::Start
             });
-        let mut layers = stack![self.shell.wallpaper(), bar, popups];
+        let mut layers = stack![self.shell.wallpaper(None), bar, popups];
         if let Some(osd) = self.shell.osd_view() {
             layers = layers.push(
                 container(osd)

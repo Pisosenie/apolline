@@ -32,6 +32,12 @@ impl Request {
     }
 }
 
+pub fn output_names(outputs: &str) -> Vec<String> {
+    serde_json::from_str::<BTreeMap<String, serde_json::Value>>(outputs)
+        .map(|outputs| outputs.into_keys().collect())
+        .unwrap_or_default()
+}
+
 pub fn largest_mode(outputs: &str) -> Option<(u32, u32)> {
     let outputs: BTreeMap<String, serde_json::Value> = serde_json::from_str(outputs).ok()?;
     outputs

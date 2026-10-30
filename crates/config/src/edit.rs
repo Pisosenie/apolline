@@ -34,6 +34,14 @@ impl Editor {
         self.set(section, "speed", (f64::from(speed) * 100.0).round() / 100.0);
     }
 
+    pub fn set_pairs(&mut self, section: &str, key: &str, pairs: &[(String, String)]) {
+        if pairs.is_empty() {
+            self.unset(section, key);
+        } else {
+            self.set(section, key, keys(pairs));
+        }
+    }
+
     pub fn set_list(&mut self, section: &str, key: &str, items: &[String]) {
         let list: Array = items.iter().map(String::as_str).collect();
         self.set(section, key, list);

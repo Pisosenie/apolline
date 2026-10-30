@@ -234,6 +234,7 @@ enum Message {
     UseWallpaper,
     AllWallpapers,
     ColorApps(bool),
+    ForMonitor(Option<String>),
     Rotate(u32),
     Shuffle(bool),
     Apps(Vec<App>),
@@ -365,6 +366,8 @@ struct Settings {
     pin_query: String,
     weather_draft: Option<String>,
     live: crate::control::Shared,
+    monitors: Vec<String>,
+    monitor: Option<String>,
     hours_draft: String,
     monitor_draft: String,
     queue: Vec<String>,
@@ -434,6 +437,8 @@ impl Settings {
             pin_query: String::new(),
             weather_draft: None,
             live: crate::control::shared(),
+            monitors: wallpaper::monitors(),
+            monitor: None,
             hours_draft: String::new(),
             monitor_draft: String::new(),
             queue: Vec::new(),
@@ -562,6 +567,16 @@ impl Settings {
                 return self.custom_thumb();
             }
             Message::ModeAccent(accent) => self.edit(|e| e.set_mode_accent(index, accent)),
+            Message::ForMonitor(monitor) => self.monitor = monitor,
+            Message::DesktopWallpaper(name) if self.monitor.is_some() => {
+                let monitor = self.monitor.clone().unwrap_or_default();
+                let mut outputs = self.config.desktop.outputs.clone();
+                outputs.retain(|(output, _)| *output != monitor);
+                if name != self.config.desktop.wallpaper {
+                    outputs.push((monitor, name));
+                }
+                self.edit(|e| e.set_pairs("desktop", "outputs", &outputs));
+            }
             Message::DesktopWallpaper(name) => {
                 self.edit(|e| e.set("desktop", "wallpaper", name.as_str()));
                 return self.custom_thumb();
@@ -2304,15 +2319,47 @@ impl Settings {
     fn appearance(&self) -> Element<'_, Message> {
         let layout = self.config.layout;
         let palette = self.palette();
+        let shown = self
+            .monitor
+            .as_ref()
+            .and_then(|m| {
+                self.config
+                    .desktop
+                    .outputs
+                    .iter()
+                    .find(|(output, _)| output == m)
+            })
+            .map_or(self.config.desktop.wallpaper.as_str(), |(_, picture)| {
+                picture.as_str()
+            });
+        let mut screens: Vec<Element<'_, Message>> = Vec::new();
+        if self.monitors.len() > 1 {
+            let chips = Row::with_children(
+                std::iter::once(None)
+                    .chain(self.monitors.iter().map(Some))
+                    .map(|monitor| {
+                        let label = monitor.map_or("Every monitor", String::as_str);
+                        button(text(label).size(12))
+                            .padding([6, 12])
+                            .style(style::choice(self.monitor.as_ref() == monitor))
+                            .on_press(Message::ForMonitor(monitor.cloned()))
+                            .into()
+                    }),
+            )
+            .spacing(4)
+            .wrap();
+            screens.push(padded(chips));
+        }
+        screens.push(padded(self.wallpaper_picker(
+            Some(shown),
+            false,
+            desktop_wallpaper,
+            palette,
+        )));
         let desktop = group(
             "Desktop",
             vec![
-                padded(self.wallpaper_picker(
-                    Some(self.config.desktop.wallpaper.as_str()),
-                    false,
-                    desktop_wallpaper,
-                    palette,
-                )),
+                column(screens).spacing(0).into(),
                 setting(
                     "Change the wallpaper",
                     "Goes through the gallery above; the file keeps the one you picked",
@@ -4491,6 +4538,28 @@ fn stamp(path: &std::path::Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use apolline_config::{Mouse, Touchpad};
+
+    #[test]
+    fn a_monitor_can_have_its_own_wallpaper_and_give_it_back() {
+        let dir = std::env::temp_dir().join(format!("apolline-monitors-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[desktop]\nwallpaper = \"fog.jpg\"\n").unwrap();
+        let (mut settings, _) = Settings::open(path.clone(), None);
+        settings.monitors = vec!["eDP-1".into(), "HDMI-A-1".into()];
+
+        let _ = settings.update(Message::ForMonitor(Some("HDMI-A-1".into())));
+        let _ = settings.update(Message::DesktopWallpaper("night.jpg".into()));
+        assert_eq!(
+            settings.config.desktop.outputs,
+            [("HDMI-A-1".to_owned(), "night.jpg".to_owned())]
+        );
+        assert_eq!(settings.config.desktop.wallpaper, "fog.jpg");
+
+        let _ = settings.update(Message::DesktopWallpaper("fog.jpg".into()));
+        assert!(settings.config.desktop.outputs.is_empty(), "same as everywhere drops the line");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn undo_walks_the_file_back_and_redo_forward() {

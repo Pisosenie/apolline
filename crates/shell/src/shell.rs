@@ -170,7 +170,7 @@ pub struct Shell {
     armed: Option<Power>,
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
-    wallpaper: Option<(String, image::Handle)>,
+    wallpapers: Vec<(String, image::Handle)>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -245,7 +245,7 @@ impl Shell {
             armed: None,
             thumbs: HashMap::new(),
             config,
-            wallpaper: None,
+            wallpapers: Vec::new(),
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -313,7 +313,6 @@ impl Shell {
     fn reload_config(&mut self) -> Task<Message> {
         let (mut config, diagnostics) = Config::load(&self.config_path);
         let key = self.current().map(ModeSettings::key);
-        let before = self.config.wallpaper(self.mode).to_owned();
         if config.desktop.rotate == 0 || config.desktop.wallpaper != self.picked {
             self.rotated = None;
         }
@@ -327,11 +326,7 @@ impl Shell {
         self.report(&diagnostics);
         self.sync();
         self.release_held();
-        let wallpaper = if self.config.wallpaper(self.mode) != before {
-            self.load_wallpaper()
-        } else {
-            Task::none()
-        };
+        let wallpaper = self.load_wallpaper();
         Task::batch([wallpaper, self.load_thumbs()])
     }
 
@@ -381,9 +376,35 @@ impl Shell {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.wallpaper
-            .as_ref()
-            .is_some_and(|(name, _)| name == self.config.wallpaper(self.mode))
+        let wanted = self.wallpaper_name(None);
+        self.wallpapers.iter().any(|(name, _)| name == wanted)
+    }
+
+    fn wallpaper_name(&self, output: Option<&str>) -> &str {
+        if let Some(own) = self.current().and_then(|m| m.wallpaper.as_deref()) {
+            return own;
+        }
+        output
+            .and_then(|output| {
+                self.config
+                    .desktop
+                    .outputs
+                    .iter()
+                    .find(|(name, _)| name == output)
+            })
+            .map_or(self.config.desktop.wallpaper.as_str(), |(_, picture)| {
+                picture.as_str()
+            })
+    }
+
+    fn wanted_wallpapers(&self) -> Vec<String> {
+        let mut names: Vec<String> = std::iter::once(None)
+            .chain(self.outputs.iter().map(|o| Some(o.as_str())))
+            .map(|output| self.wallpaper_name(output).to_owned())
+            .collect();
+        names.sort();
+        names.dedup();
+        names
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -647,11 +668,13 @@ impl Shell {
                 if outputs != self.outputs {
                     self.outputs = outputs;
                     self.sync();
+                    return self.load_wallpaper();
                 }
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
-            Message::Wallpaper(name, Ok(handle)) if name == self.config.wallpaper(self.mode) => {
-                self.wallpaper = Some((name, handle));
+            Message::Wallpaper(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
+                self.wallpapers.retain(|(n, _)| *n != name);
+                self.wallpapers.push((name, handle));
                 self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
@@ -1403,15 +1426,28 @@ impl Shell {
         )
     }
 
-    fn load_wallpaper(&self) -> Task<Message> {
-        let name = self.config.wallpaper(self.mode).to_owned();
-        Task::perform(wallpaper::load(name.clone()), move |result| {
-            Message::Wallpaper(name.clone(), result)
-        })
+    fn load_wallpaper(&mut self) -> Task<Message> {
+        let wanted = self.wanted_wallpapers();
+        self.wallpapers.retain(|(name, _)| wanted.contains(name));
+        let missing: Vec<String> = wanted
+            .into_iter()
+            .filter(|name| !self.wallpapers.iter().any(|(n, _)| n == name))
+            .collect();
+        Task::batch(missing.into_iter().map(|name| {
+            Task::perform(wallpaper::load(name.clone()), move |result| {
+                Message::Wallpaper(name.clone(), result)
+            })
+        }))
     }
 
-    pub fn wallpaper(&self) -> Element<'_, Message> {
-        match &self.wallpaper {
+    pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
+        let wanted = self.wallpaper_name(output);
+        let shown = self
+            .wallpapers
+            .iter()
+            .find(|(name, _)| name == wanted)
+            .or(self.wallpapers.first());
+        match shown {
             Some((_, handle)) => image(handle.clone())
                 .width(Fill)
                 .height(Fill)

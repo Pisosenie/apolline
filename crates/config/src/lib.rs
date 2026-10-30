@@ -185,6 +185,7 @@ pub struct Desktop {
     pub folders: Vec<String>,
     pub rotate: u32,
     pub shuffle: bool,
+    pub outputs: Vec<(String, String)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -528,6 +529,7 @@ impl Default for Config {
                 folders: Vec::new(),
                 rotate: 0,
                 shuffle: false,
+                outputs: Vec::new(),
             },
             layout: Layout {
                 gaps: 10,

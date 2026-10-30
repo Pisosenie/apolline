@@ -641,6 +641,23 @@ impl Reader<'_> {
                         desktop.shuffle = v
                     }
                 }
+                "outputs" => {
+                    let DeValue::Table(table) = value.get_ref() else {
+                        self.wrong::<()>(
+                            key,
+                            value,
+                            r#"monitors and pictures, like { "HDMI-A-1" = "wide.jpg" }"#,
+                        );
+                        continue;
+                    };
+                    desktop.outputs = table
+                        .iter()
+                        .filter_map(|(output, picture)| {
+                            let picture = self.string(output, picture)?;
+                            Some((output.get_ref().to_string(), picture.to_owned()))
+                        })
+                        .collect();
+                }
                 _ => self.unknown(
                     key,
                     "option",
@@ -651,6 +668,7 @@ impl Reader<'_> {
                         "folders",
                         "rotate",
                         "shuffle",
+                        "outputs",
                     ],
                 ),
             }

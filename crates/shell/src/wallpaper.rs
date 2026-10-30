@@ -161,12 +161,22 @@ pub async fn thumbnail(name: String) -> Option<Handle> {
 const THUMB: (u32, u32) = (760, 475);
 
 fn screen() -> Option<(u32, u32)> {
+    apolline_niri::largest_mode(&outputs()?)
+}
+
+pub fn monitors() -> Vec<String> {
+    outputs()
+        .map(|json| apolline_niri::output_names(&json))
+        .unwrap_or_default()
+}
+
+fn outputs() -> Option<String> {
     std::env::var_os("NIRI_SOCKET")?;
     let output = std::process::Command::new("niri")
         .args(["msg", "-j", "outputs"])
         .output()
         .ok()?;
-    apolline_niri::largest_mode(&String::from_utf8_lossy(&output.stdout))
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn learn(name: &str, thumb: &::image::RgbaImage) {
