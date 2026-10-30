@@ -21,6 +21,7 @@ mod keys;
 mod launcher;
 mod lock;
 mod logind;
+mod marks;
 mod media;
 mod modules;
 mod night;

@@ -131,6 +131,7 @@ impl Layers {
             Overlay::Keys => "apolline-keys",
             Overlay::Polkit => "apolline-polkit",
             Overlay::Calendar => "apolline-calendar",
+            Overlay::Marks => "apolline-marks",
         };
         let (id, open) = open(NewLayerShellSettings {
             layer: Layer::Overlay,

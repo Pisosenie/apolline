@@ -55,6 +55,10 @@ pub enum Message {
     Notify(Notification),
     Unnotify(u32),
     Dismiss(u32),
+    Mark(crate::marks::Event),
+    MarksOpened(Result<std::sync::Arc<crate::marks::Marks>, String>),
+    MarksDone(Result<String, String>),
+    CloseMarks,
     Forget(u32),
     ClearAll,
     Idle(Stage, bool),
@@ -125,6 +129,7 @@ pub enum Overlay {
     Keys,
     Polkit,
     Calendar,
+    Marks,
 }
 
 struct Shown {
@@ -191,6 +196,8 @@ pub struct Shell {
     night: (bool, Option<bool>),
     module_text: Vec<(usize, String)>,
     recording: Option<crate::capture::Recording>,
+    marks: Option<crate::marks::Marks>,
+    shot: Option<String>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -272,6 +279,8 @@ impl Shell {
             night: (false, None),
             module_text: Vec::new(),
             recording: None,
+            marks: None,
+            shot: None,
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -587,6 +596,11 @@ impl Shell {
                     return Task::batch([reload, self.triggers()]);
                 }
             }
+            Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. }, _)
+                if self.overlay == Some(Overlay::Marks) =>
+            {
+                return self.marks_key(key, modifiers);
+            }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
                 return self.key(key, text.as_deref(), captured);
             }
@@ -771,6 +785,11 @@ impl Shell {
                 return niri::send(apolline_niri::Request::FocusWorkspace(id));
             }
             Message::Workspace(index, None) => self.workspace = index,
+            Message::Niri(apolline_niri::Event::ScreenshotCaptured { path: Some(path) }) => {
+                self.popups.retain(|(n, _)| n.id != notify::SHOT_CARD);
+                self.popups.push((notify::shot_card(&path), Instant::now()));
+                self.shot = Some(path);
+            }
             Message::Niri(event) => {
                 let switched = matches!(event, apolline_niri::Event::KeyboardLayoutSwitched { .. });
                 let state = self.niri.get_or_insert_default();
@@ -850,10 +869,24 @@ impl Shell {
             }
             Message::KeepAwake(on) => self.awake = on,
             Message::Idle(stage, true) => return self.idle(stage),
+            Message::Dismiss(notify::SHOT_CARD) => {
+                self.forget(notify::SHOT_CARD);
+                if let Some(path) = self.shot.take() {
+                    return self.open_marks(Some(path.into()));
+                }
+            }
             Message::Dismiss(id) => {
                 self.forget(id);
                 return notify::closed(id, Closed::Dismissed);
             }
+            Message::MarksOpened(Ok(marks)) => {
+                self.marks = Some(std::sync::Arc::unwrap_or_clone(marks));
+                return self.set_overlay(Some(Overlay::Marks));
+            }
+            Message::MarksOpened(Err(err)) => return self.show(Osd::Note(err)),
+            Message::Mark(event) => return self.mark(event),
+            Message::MarksDone(Ok(said) | Err(said)) => return self.show(Osd::Note(said)),
+            Message::CloseMarks => return self.set_overlay(None),
             Message::Apps(apps) => {
                 let apps = if apps.is_empty() && self.demo {
                     apps::sample()
@@ -1050,6 +1083,9 @@ impl Shell {
         {
             polkit::finish(&dialog.request.cookie, false);
         }
+        if self.overlay == Some(Overlay::Marks) {
+            self.marks = None;
+        }
         self.overlay = overlay;
         self.power_menu = false;
         self.armed = None;
@@ -1105,6 +1141,9 @@ impl Shell {
                 Some(command) => self.spawn(command),
                 None if capture == crate::capture::Capture::Color => {
                     Task::perform(crate::capture::pick_color(), Message::Picked)
+                }
+                None if capture == crate::capture::Capture::Mark => {
+                    return Task::batch([close, self.open_marks(None)]);
                 }
                 None => return Task::batch([close, self.toggle_recording()]),
             },
@@ -1401,6 +1440,72 @@ impl Shell {
         self.load_wallpaper()
     }
 
+    fn open_marks(&mut self, file: Option<std::path::PathBuf>) -> Task<Message> {
+        match file.or_else(crate::marks::latest) {
+            Some(file) => Task::perform(crate::marks::open(file), Message::MarksOpened),
+            None => self.show(Osd::Note("No screenshot to mark yet".into())),
+        }
+    }
+
+    fn marks_key(&mut self, key: Key, modifiers: keyboard::Modifiers) -> Task<Message> {
+        use crate::marks::{Event, Tool};
+        let event = match key.as_ref() {
+            Key::Named(Named::Escape) => return self.set_overlay(None),
+            Key::Named(Named::Enter) => Event::Both,
+            Key::Character("z") if modifiers.command() => Event::Undo,
+            Key::Character("c") if modifiers.command() => Event::Copy,
+            Key::Character("s") if modifiers.command() => Event::Save,
+            Key::Character("p") => Event::Tool(Tool::Pen),
+            Key::Character("a") => Event::Tool(Tool::Arrow),
+            Key::Character("b") => Event::Tool(Tool::Box),
+            Key::Character("m") => Event::Tool(Tool::Marker),
+            Key::Character("h") => Event::Tool(Tool::Hide),
+            _ => return Task::none(),
+        };
+        self.mark(event)
+    }
+
+    fn mark(&mut self, event: crate::marks::Event) -> Task<Message> {
+        use crate::marks::Event;
+        let Some(marks) = self.marks.as_mut() else {
+            return Task::none();
+        };
+        if !matches!(event, Event::Copy | Event::Save | Event::Both) {
+            marks.update(event);
+            return Task::none();
+        }
+        let marks = marks.clone();
+        let close = if matches!(event, Event::Both) {
+            self.set_overlay(None)
+        } else {
+            Task::none()
+        };
+        let finish = Task::perform(
+            async move {
+                let done = tokio::task::spawn_blocking(move || {
+                    let png = marks.render()?;
+                    let file = marks.marked();
+                    let mut said = Vec::new();
+                    if matches!(event, Event::Copy | Event::Both) {
+                        let content = clipboard::Content::Png(std::sync::Arc::new(png.clone()));
+                        clipboard::copy(&content);
+                        said.push("Copied".to_owned());
+                    }
+                    if matches!(event, Event::Save | Event::Both) {
+                        crate::marks::save(&file, &png)?;
+                        let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
+                        said.push(format!("Saved {}", name.unwrap_or_default()));
+                    }
+                    Ok::<_, String>(said.join(" · "))
+                })
+                .await;
+                done.unwrap_or_else(|err| Err(err.to_string()))
+            },
+            Message::MarksDone,
+        );
+        Task::batch([close, finish])
+    }
+
     fn toggle_recording(&mut self) -> Task<Message> {
         if self.recording.is_some() {
             return self.stop_recording();
@@ -1600,6 +1705,10 @@ impl Shell {
             ),
             Some(Overlay::Clipboard) => self.picker.view(&self.clips, palette),
             Some(Overlay::Keys) => keymap::view(&self.keymap, &self.keys_query, palette),
+            Some(Overlay::Marks) => match &self.marks {
+                Some(marks) => crate::marks::view(marks, palette),
+                None => space().into(),
+            },
             Some(Overlay::Calendar) => crate::calendar::view(
                 self.now,
                 self.month,

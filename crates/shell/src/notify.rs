@@ -19,6 +19,7 @@ pub const SHOWN_FOR: Duration = Duration::from_secs(5);
 const CONFIG_SHOWN_FOR: Duration = Duration::from_secs(12);
 
 pub const CONFIG_CARD: u32 = 1 << 31;
+pub const SHOT_CARD: u32 = CONFIG_CARD + 1;
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
 
@@ -122,6 +123,21 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         timeout: Some(CONFIG_SHOWN_FOR),
         received: Instant::now(),
     })
+}
+
+pub fn shot_card(path: &str) -> Notification {
+    let name = std::path::Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_owned(), |f| f.to_string_lossy().into_owned());
+    Notification {
+        id: SHOT_CARD,
+        app: name,
+        summary: "Screenshot copied".into(),
+        body: "Click to add arrows, boxes or hide a part".into(),
+        urgency: Urgency::Normal,
+        timeout: Some(Duration::from_secs(6)),
+        received: Instant::now(),
+    }
 }
 
 fn capitalize(text: &str) -> String {

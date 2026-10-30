@@ -9,6 +9,7 @@ pub enum Capture {
     Window,
     Color,
     Record,
+    Mark,
 }
 
 impl Capture {
@@ -17,7 +18,7 @@ impl Capture {
             Capture::Area => Some("niri msg action screenshot"),
             Capture::Screen => Some("sleep 0.3; niri msg action screenshot-screen"),
             Capture::Window => Some("sleep 0.3; niri msg action screenshot-window"),
-            Capture::Color | Capture::Record => None,
+            Capture::Color | Capture::Record | Capture::Mark => None,
         }
     }
 }

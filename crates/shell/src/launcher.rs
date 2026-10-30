@@ -78,7 +78,7 @@ fn emoji() -> impl Iterator<Item = (&'static str, &'static str)> {
         .filter_map(|line| line.split_once(' '))
 }
 
-const ACTIONS: [(&str, &str, Icon, Target); 10] = [
+const ACTIONS: [(&str, &str, Icon, Target); 11] = [
     (
         "Screenshot an area",
         "Pick a part of the screen",
@@ -96,6 +96,12 @@ const ACTIONS: [(&str, &str, Icon, Target); 10] = [
         "Only the focused window",
         Icon::AppWindow,
         Target::Capture(Capture::Window),
+    ),
+    (
+        "Mark the last screenshot",
+        "Arrows, boxes, a marker; hide what shouldn't show",
+        Icon::Pencil,
+        Target::Capture(Capture::Mark),
     ),
     (
         "Pick a color",

@@ -173,6 +173,9 @@ pub enum Event {
     KeyboardLayoutSwitched {
         idx: u8,
     },
+    ScreenshotCaptured {
+        path: Option<String>,
+    },
 }
 
 impl Event {
@@ -253,6 +256,7 @@ impl State {
                     layouts.current_idx = idx;
                 }
             }
+            Event::ScreenshotCaptured { .. } => {}
         }
     }
 
