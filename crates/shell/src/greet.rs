@@ -112,17 +112,32 @@ pub fn main(args: &[String]) -> ExitCode {
     } else {
         (system_accounts(), sessions())
     };
+    let (last_login, last_session) = if preview { (None, None) } else { last() };
     let session = sessions
         .iter()
-        .find(|s| s.command.first().is_some_and(|c| c.contains("niri")))
+        .find(|s| Some(&s.name) == last_session.as_ref())
+        .or_else(|| {
+            sessions
+                .iter()
+                .find(|s| s.command.first().is_some_and(|c| c.contains("niri")))
+        })
         .or(sessions.first())
         .cloned();
+    let user = users
+        .iter()
+        .position(|u| Some(&u.login) == last_login.as_ref())
+        .unwrap_or(0);
+    let login = if users.is_empty() {
+        last_login.unwrap_or_default()
+    } else {
+        String::new()
+    };
     let greet = std::sync::Mutex::new(Some(Greet {
         users,
-        user: 0,
+        user,
         sessions,
         session,
-        login: String::new(),
+        login,
         password: String::new(),
         state: State::Typing,
         wallpaper: None,
@@ -139,7 +154,11 @@ pub fn main(args: &[String]) -> ExitCode {
                 .and_then(|mut g| g.take())
                 .expect("booted once");
             let load = Task::perform(wallpaper::load("fog.jpg".into()), Message::Wallpaper);
-            let first = if greet.users.is_empty() { LOGIN } else { FIELD };
+            let first = if greet.users.is_empty() && greet.login.is_empty() {
+                LOGIN
+            } else {
+                FIELD
+            };
             (greet, Task::batch([load, focus(first)]))
         },
         Greet::update,
@@ -224,6 +243,36 @@ pub fn accounts(passwd: &str, (first, last): (u32, u32)) -> Vec<Account> {
             })
         })
         .collect()
+}
+
+// The greeter's own home, e.g. /var/lib/greetd, keeps who logged in last and how.
+fn last_file() -> Option<PathBuf> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+        })?;
+    Some(state.join("apolline").join("last-login"))
+}
+
+fn last() -> (Option<String>, Option<String>) {
+    let text = last_file()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_default();
+    let mut lines = text
+        .lines()
+        .map(str::trim)
+        .map(|l| (!l.is_empty()).then(|| l.to_owned()));
+    (lines.next().flatten(), lines.next().flatten())
+}
+
+fn remember(login: &str, session: &str) {
+    let Some(path) = last_file() else { return };
+    if let Some(dir) = path.parent()
+        && std::fs::create_dir_all(dir).is_ok()
+    {
+        let _ = std::fs::write(path, format!("{login}\n{session}\n"));
+    }
 }
 
 fn sessions() -> Vec<Session> {
@@ -322,7 +371,15 @@ impl Greet {
                 );
             }
             Message::Submit => {}
-            Message::Done(Ok(())) => return iced::exit(),
+            Message::Done(Ok(())) => {
+                let login = match self.users.get(self.user) {
+                    Some(user) => user.login.as_str(),
+                    None => self.login.trim(),
+                };
+                let session = self.session.as_ref().map_or("", |s| s.name.as_str());
+                remember(login, session);
+                return iced::exit();
+            }
             Message::Done(Err(err)) => {
                 self.state = State::Wrong(err);
                 return focus(FIELD);

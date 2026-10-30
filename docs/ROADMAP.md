@@ -105,8 +105,9 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - The launcher answers more: emoji by name, unit and currency conversion, files, and a dmenu mode
   (`apolline pick` reads lines from stdin) for your own scripts.
 - Fingerprint next to the password on the lock screen and in the polkit dialog, both at once.
-- The login screen (`apolline greet`, done in its first form) gets the keyboard layout, the last user
-  remembered, and no flash on the way into the session; it still needs a run on real hardware.
+- The login screen (`apolline greet`, done in its first form) remembers the last person and session and
+  lists people through getent; next are the keyboard layout and no flash on the way into the session.
+  It still needs a run on real hardware.
 
 ### 5. Displays and comfort
 - Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,
