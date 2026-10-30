@@ -137,6 +137,9 @@ pub struct Shell {
     fired: Vec<bool>,
     auto: Option<(usize, Option<usize>)>,
     reason: Option<Trigger>,
+    rotated: Option<(String, Instant)>,
+    picked: String,
+    started: Instant,
     system: Option<System>,
     boosted: Option<String>,
     popups: Vec<(Notification, Instant)>,
@@ -201,6 +204,9 @@ impl Shell {
             fired: Vec::new(),
             auto: None,
             reason: None,
+            rotated: None,
+            picked: String::new(),
+            started: Instant::now(),
             system: None,
             boosted: None,
             popups: Vec::new(),
@@ -245,6 +251,7 @@ impl Shell {
             now: Local::now(),
         };
         shell.report(&diagnostics);
+        shell.picked = shell.config.desktop.wallpaper.clone();
         shell.sync();
         shell.launcher.set_modes(shell.mode_names());
         let welcome = if !demo && !shell.config_path.exists() {
@@ -304,9 +311,16 @@ impl Shell {
     }
 
     fn reload_config(&mut self) -> Task<Message> {
-        let (config, diagnostics) = Config::load(&self.config_path);
+        let (mut config, diagnostics) = Config::load(&self.config_path);
         let key = self.current().map(ModeSettings::key);
         let before = self.config.wallpaper(self.mode).to_owned();
+        if config.desktop.rotate == 0 || config.desktop.wallpaper != self.picked {
+            self.rotated = None;
+        }
+        self.picked = config.desktop.wallpaper.clone();
+        if let Some((name, _)) = &self.rotated {
+            config.desktop.wallpaper = name.clone();
+        }
         self.config = config;
         self.mode = key.and_then(|key| self.config.find(&key));
         self.launcher.set_modes(self.mode_names());
@@ -382,9 +396,10 @@ impl Shell {
                 } else {
                     Task::none()
                 };
-                self.publish();
                 let triggers = self.triggers();
-                return Task::batch([self.expire(), controls, triggers]);
+                let rotate = self.rotate();
+                self.publish();
+                return Task::batch([self.expire(), controls, triggers, rotate]);
             }
             Message::CalendarMonth(month) => self.month = month,
             Message::Detail(detail) => {
@@ -1091,6 +1106,7 @@ impl Shell {
                 .and_then(|(_, back)| back)
                 .and_then(|i| self.config.modes.get(i))
                 .map(ModeSettings::key),
+            wallpaper: self.rotated.as_ref().map(|(name, _)| name.clone()),
         };
         if self.published.as_ref() != Some(&shared) {
             control::publish(&shared);
@@ -1157,6 +1173,40 @@ impl Shell {
         } else {
             self.config.notifications(self.mode)
         }
+    }
+
+    fn rotate(&mut self) -> Task<Message> {
+        let every = self.config.desktop.rotate;
+        if self.demo || every == 0 {
+            return Task::none();
+        }
+        let since = self.rotated.as_ref().map_or(self.started, |(_, at)| *at);
+        if since.elapsed() < Duration::from_secs(u64::from(every) * 60) {
+            return Task::none();
+        }
+        let library = wallpaper::library(&self.config.desktop.folders);
+        let current = &self.config.desktop.wallpaper;
+        let next = if self.config.desktop.shuffle && library.len() > 1 {
+            let others: Vec<&String> = library.iter().filter(|name| *name != current).collect();
+            let pick = Instant::now().elapsed().as_nanos() as usize
+                ^ (Local::now().timestamp_subsec_nanos() as usize);
+            others
+                .get(pick % others.len().max(1))
+                .map(|name| (*name).clone())
+        } else {
+            let at = library.iter().position(|name| name == current);
+            library
+                .get(at.map_or(0, |i| (i + 1) % library.len().max(1)))
+                .cloned()
+        };
+        let Some(next) = next.filter(|next| next != current) else {
+            self.rotated = Some((current.clone(), Instant::now()));
+            return Task::none();
+        };
+        self.config.desktop.wallpaper = next.clone();
+        self.rotated = Some((next, Instant::now()));
+        self.sync();
+        self.load_wallpaper()
     }
 
     fn triggers(&mut self) -> Task<Message> {

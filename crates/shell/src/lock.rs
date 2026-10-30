@@ -131,8 +131,11 @@ impl Lock {
         mode: Option<String>,
         screenshot: Option<PathBuf>,
     ) -> (Self, Task<Message>) {
-        let (config, _) = Config::load(&apolline_config::default_path());
+        let (mut config, _) = Config::load(&apolline_config::default_path());
         let shared = control::shared();
+        if let Some(wallpaper) = &shared.wallpaper {
+            config.desktop.wallpaper = wallpaper.clone();
+        }
         let mode = mode
             .or(shared.mode)
             .and_then(|key| config.find(&key))

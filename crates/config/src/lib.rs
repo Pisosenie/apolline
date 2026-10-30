@@ -183,6 +183,8 @@ pub struct Desktop {
     pub accent: Accent,
     pub theme: Option<String>,
     pub folders: Vec<String>,
+    pub rotate: u32,
+    pub shuffle: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -524,6 +526,8 @@ impl Default for Config {
                 accent: Accent::Auto,
                 theme: None,
                 folders: Vec::new(),
+                rotate: 0,
+                shuffle: false,
             },
             layout: Layout {
                 gaps: 10,

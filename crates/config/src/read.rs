@@ -631,7 +631,28 @@ impl Reader<'_> {
                         desktop.folders = v
                     }
                 }
-                _ => self.unknown(key, "option", &["wallpaper", "accent", "theme", "folders"]),
+                "rotate" => {
+                    if let Some(v) = self.number(key, value, 0..=10080) {
+                        desktop.rotate = u32::from(v)
+                    }
+                }
+                "shuffle" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        desktop.shuffle = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &[
+                        "wallpaper",
+                        "accent",
+                        "theme",
+                        "folders",
+                        "rotate",
+                        "shuffle",
+                    ],
+                ),
             }
         }
     }

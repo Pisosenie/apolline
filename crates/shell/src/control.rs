@@ -70,12 +70,16 @@ pub struct Shared {
     pub waiting: usize,
     pub reason: Option<String>,
     pub back: Option<String>,
+    pub wallpaper: Option<String>,
 }
 
 impl Shared {
     fn text(&self) -> String {
         let mode = self.mode.as_deref().unwrap_or_default();
         let mut text = format!("mode {mode}\nwaiting {}\n", self.waiting);
+        if let Some(wallpaper) = &self.wallpaper {
+            text.push_str(&format!("wallpaper {wallpaper}\n"));
+        }
         if let Some(reason) = &self.reason {
             let back = self.back.as_deref().unwrap_or_default();
             text.push_str(&format!("reason {reason}\nback {back}\n"));
@@ -91,6 +95,7 @@ impl Shared {
                 Some(("waiting", count)) => shared.waiting = count.parse().unwrap_or(0),
                 Some(("reason", why)) => shared.reason = Some(why.to_owned()),
                 Some(("back", key)) if !key.is_empty() => shared.back = Some(key.to_owned()),
+                Some(("wallpaper", name)) => shared.wallpaper = Some(name.to_owned()),
                 _ => {}
             }
         }
@@ -189,6 +194,7 @@ mod tests {
             waiting: 2,
             reason: Some("20:00-07:00".into()),
             back: Some("work".into()),
+            wallpaper: Some("~/Pictures/Wallpapers/two words.jpg".into()),
         };
         assert_eq!(Shared::parse(&shared.text()), shared);
         assert_eq!(Shared::parse("garbage"), Shared::default());

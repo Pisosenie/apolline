@@ -234,6 +234,8 @@ enum Message {
     UseWallpaper,
     AllWallpapers,
     ColorApps(bool),
+    Rotate(u32),
+    Shuffle(bool),
     Apps(Vec<App>),
     PinQuery(String),
     WeatherDraft(String),
@@ -567,6 +569,20 @@ impl Settings {
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
             Message::AllWallpapers => self.all_walls = !self.all_walls,
+            Message::Rotate(minutes) => self.edit(|e| {
+                if minutes == 0 {
+                    e.unset("desktop", "rotate");
+                } else {
+                    e.set("desktop", "rotate", i64::from(minutes));
+                }
+            }),
+            Message::Shuffle(on) => self.edit(|e| {
+                if on {
+                    e.set("desktop", "shuffle", true);
+                } else {
+                    e.unset("desktop", "shuffle");
+                }
+            }),
             Message::ColorApps(on) => self.edit(|e| {
                 if on {
                     e.set("apps", "colors", true);
@@ -2297,6 +2313,25 @@ impl Settings {
                     desktop_wallpaper,
                     palette,
                 )),
+                setting(
+                    "Change the wallpaper",
+                    "Goes through the gallery above; the file keeps the one you picked",
+                    segmented(
+                        [
+                            (0u32, "Never", None),
+                            (15, "15 min", None),
+                            (60, "Hourly", None),
+                            (1440, "Daily", None),
+                        ],
+                        self.config.desktop.rotate,
+                        Message::Rotate,
+                    ),
+                ),
+                setting(
+                    "Shuffle",
+                    "Pick at random instead of in order",
+                    switch(self.config.desktop.shuffle, Message::Shuffle, palette),
+                ),
                 padded(accent_picker(
                     Some(self.config.desktop.accent),
                     auto_accent(&self.config.desktop.wallpaper),
@@ -3424,7 +3459,9 @@ impl Settings {
             .back
             .as_deref()
             .and_then(|key| self.config.find(key))
-            .map_or("the plain desktop".to_owned(), |i| self.config.modes[i].name.clone());
+            .map_or("the plain desktop".to_owned(), |i| {
+                self.config.modes[i].name.clone()
+            });
         Some(
             container(
                 row![
