@@ -570,7 +570,7 @@ impl Shell {
                 return self.show(Osd::Note(format!("Copied {hex}")));
             }
             Message::Picked(None) => {}
-            Message::StopRecording => return self.toggle_recording(),
+            Message::StopRecording => return self.stop_recording(),
             Message::Module(index, text) => {
                 self.module_text.retain(|(i, _)| *i != index);
                 if !text.is_empty() {
@@ -1417,23 +1417,29 @@ impl Shell {
     }
 
     fn toggle_recording(&mut self) -> Task<Message> {
-        match self.recording.take() {
-            Some(recording) => {
-                let file = recording.stop();
-                let name = file
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                self.show(Osd::Note(format!("Saved {name}")))
-            }
-            None => match crate::capture::Recording::start() {
-                Ok(recording) => {
-                    self.recording = Some(recording);
-                    Task::none()
-                }
-                Err(err) => self.show(Osd::Note(err)),
-            },
+        if self.recording.is_some() {
+            return self.stop_recording();
         }
+        let output = self.niri.as_ref().and_then(|n| n.focused_output());
+        match crate::capture::Recording::start(output) {
+            Ok(recording) => {
+                self.recording = Some(recording);
+                Task::none()
+            }
+            Err(err) => self.show(Osd::Note(err)),
+        }
+    }
+
+    fn stop_recording(&mut self) -> Task<Message> {
+        let Some(recording) = self.recording.take() else {
+            return Task::none();
+        };
+        let file = recording.stop();
+        let name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.show(Osd::Note(format!("Saved {name}")))
     }
 
     fn night_scheduled(&self) -> bool {

@@ -24,15 +24,18 @@ fn run((index, module): &(usize, Module)) -> impl Stream<Item = Message> + use<>
     let (index, module) = (*index, module.clone());
     iced::stream::channel(4, async move |mut output| {
         loop {
-            let child = tokio::process::Command::new("sh")
+            let mut command = tokio::process::Command::new("sh");
+            command
                 .args(["-c", &module.command])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .spawn();
-            match child {
+                .process_group(0)
+                .kill_on_drop(true);
+            crate::child::tie(command.as_std_mut(), libc::SIGTERM);
+            match command.spawn() {
                 Ok(mut child) => {
+                    let mut group = crate::child::Group::new(child.id());
                     if let Some(stdout) = child.stdout.take() {
                         let mut lines = BufReader::new(stdout).lines();
                         while let Ok(Some(line)) = lines.next_line().await {
@@ -46,6 +49,7 @@ fn run((index, module): &(usize, Module)) -> impl Stream<Item = Message> + use<>
                         }
                     }
                     let _ = child.wait().await;
+                    group.let_go();
                 }
                 Err(err) => {
                     eprintln!("apolline: module {}: {err}", module.command);

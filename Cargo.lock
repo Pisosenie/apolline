@@ -143,6 +143,7 @@ dependencies = [
  "iced_layershell",
  "iced_sessionlock",
  "image",
+ "libc",
  "pam",
  "png 0.18.1",
  "serde_json",

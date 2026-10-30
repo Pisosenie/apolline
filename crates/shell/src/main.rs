@@ -3,6 +3,7 @@ mod bar;
 mod calc;
 mod calendar;
 mod capture;
+mod child;
 mod clipboard;
 mod clips;
 mod control;

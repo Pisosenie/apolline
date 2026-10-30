@@ -331,6 +331,13 @@ impl State {
         windows
     }
 
+    pub fn focused_output(&self) -> Option<&str> {
+        self.workspaces
+            .iter()
+            .find(|w| w.is_focused)
+            .and_then(|w| w.output.as_deref())
+    }
+
     pub fn focused_window(&self) -> Option<&Window> {
         self.windows.values().find(|w| w.is_focused)
     }

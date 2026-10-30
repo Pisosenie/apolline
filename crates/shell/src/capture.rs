@@ -53,7 +53,7 @@ pub struct Recording {
 }
 
 impl Recording {
-    pub fn start() -> Result<Self, String> {
+    pub fn start(output: Option<&str>) -> Result<Self, String> {
         let dir = std::env::var_os("XDG_VIDEOS_DIR")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Videos")))
@@ -63,7 +63,11 @@ impl Recording {
             "Recording {}.mp4",
             chrono::Local::now().format("%Y-%m-%d %H.%M.%S")
         ));
-        let child = Command::new("wf-recorder")
+        let mut command = Command::new("wf-recorder");
+        if let Some(output) = output {
+            command.args(["-o", output]);
+        }
+        let child = crate::child::tie(&mut command, libc::SIGINT)
             .arg("-f")
             .arg(&file)
             .stdin(Stdio::null())
