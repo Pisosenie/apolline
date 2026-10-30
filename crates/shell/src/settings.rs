@@ -2421,29 +2421,52 @@ impl Settings {
     }
 
     fn layers(&self, palette: Palette) -> Option<Element<'_, Message>> {
-        let name = self.config.desktop.theme.as_deref()?;
-        let (index, (theme, _)) =
-            self.themes.iter().enumerate().find(|(_, (t, _))| {
-                apolline_config::slug(&t.name) == apolline_config::slug(name)
-            })?;
-        let tweaks = theme.tweaks(&Look::of(&self.config, "now", None));
-        let words = if tweaks.is_empty() {
-            format!("{} as it comes", theme.name)
-        } else {
-            let list = match tweaks.split_last() {
-                Some((last, [])) => (*last).to_owned(),
-                Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
-                None => String::new(),
-            };
-            format!("{}, with your own {list}", theme.name)
+        let theme = self.config.desktop.theme.as_deref().and_then(|name| {
+            self.themes
+                .iter()
+                .enumerate()
+                .find(|(_, (t, _))| apolline_config::slug(&t.name) == apolline_config::slug(name))
+        });
+        let mode = self
+            .live
+            .mode
+            .as_ref()
+            .and_then(|key| self.config.modes.iter().find(|m| m.key() == *key));
+        let over = mode.map(mode_overrides).filter(|o| !o.is_empty());
+        if theme.is_none() && over.is_none() {
+            return None;
+        }
+        let and = |words: &[&str]| match words.split_last() {
+            Some((last, [])) => (*last).to_owned(),
+            Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+            None => String::new(),
         };
-        let mut line = row![
-            icon(Icon::Layers, 15.0, palette.accent),
-            text(words).size(13).width(Fill),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center);
-        if !tweaks.is_empty() {
+        let tweaks = theme.map_or_else(Vec::new, |(_, (t, _))| {
+            t.tweaks(&Look::of(&self.config, "now", None))
+        });
+        let mut words = Column::new().spacing(2).width(Fill);
+        if let Some((_, (theme, _))) = theme {
+            words = words.push(
+                text(if tweaks.is_empty() {
+                    format!("{} as it comes", theme.name)
+                } else {
+                    format!("{}, with your own {}", theme.name, and(&tweaks))
+                })
+                .size(13),
+            );
+        }
+        if let (Some(mode), Some(over)) = (mode, &over) {
+            let refs: Vec<&str> = over.iter().map(String::as_str).collect();
+            words = words.push(
+                text(format!("{} is on: {} for now", mode.name, and(&refs)))
+                    .size(12)
+                    .color(style::color(style::FAINT)),
+            );
+        }
+        let mut line = row![icon(Icon::Layers, 15.0, palette.accent), words]
+            .spacing(10)
+            .align_y(Alignment::Center);
+        if let Some((index, (theme, _))) = theme.filter(|_| !tweaks.is_empty()) {
             line = line.push(
                 button(text(format!("Back to {}", theme.name)).size(12))
                     .padding([6, 12])
@@ -5231,6 +5254,24 @@ fn broken(err: &str) -> Element<'_, Message> {
 
 fn stamp(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+// What a mode puts over the everyday look while it's on.
+fn mode_overrides(mode: &ModeSettings) -> Vec<String> {
+    let mut over = Vec::new();
+    if let Some(theme) = &mode.theme {
+        over.push(format!("{theme}'s look"));
+    }
+    if mode.wallpaper.is_some() && mode.theme.is_none() {
+        over.push("its own wallpaper".to_owned());
+    }
+    if mode.accent.is_some() && mode.theme.is_none() {
+        over.push("its own accent".to_owned());
+    }
+    if mode.performance {
+        over.push("no shadows, blur or animations".to_owned());
+    }
+    over
 }
 
 #[cfg(test)]
