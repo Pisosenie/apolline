@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use apolline_config::Config;
-use apolline_theme::{Mode, Palette, Rgba, font, neutral};
+use apolline_theme::{Palette, Rgba, font, neutral};
 use chrono::{DateTime, Local};
 use iced::gradient::Linear;
 use iced::keyboard::{self, Key, key::Named};
@@ -25,10 +25,10 @@ use crate::{controls, fonts, niri, power, shot, style, wallpaper};
 const FIELD: &str = "lock-password";
 const DARK: Rgba = Rgba::hex(0x040508);
 
-pub fn run(preview: bool, mode: Option<Mode>, screenshot: Option<PathBuf>) -> Result<(), String> {
+pub fn run(preview: bool, mode: Option<String>, screenshot: Option<PathBuf>) -> Result<(), String> {
     if preview || screenshot.is_some() {
         let app = iced::application(
-            move || Lock::new(true, mode, screenshot.clone()),
+            move || Lock::new(true, mode.clone(), screenshot.clone()),
             Lock::update,
             Lock::view_window,
         )
@@ -47,14 +47,14 @@ pub fn run(preview: bool, mode: Option<Mode>, screenshot: Option<PathBuf>) -> Re
 }
 
 #[cfg(target_os = "linux")]
-fn session(mode: Option<Mode>) -> Result<(), String> {
+fn session(mode: Option<String>) -> Result<(), String> {
     let guard = std::fs::File::create(control::runtime_dir().join("apolline-lock.lock"))
         .map_err(|err| err.to_string())?;
     if guard.try_lock().is_err() {
         return Ok(());
     }
     let app = iced_sessionlock::application(
-        move || Lock::new(false, mode, None),
+        move || Lock::new(false, mode.clone(), None),
         Lock::update,
         Lock::view,
     )
@@ -69,7 +69,7 @@ fn session(mode: Option<Mode>) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn session(_: Option<Mode>) -> Result<(), String> {
+fn session(_: Option<String>) -> Result<(), String> {
     Err("locking needs a Wayland session on Linux; try --preview".into())
 }
 
@@ -108,7 +108,7 @@ struct User {
 
 struct Lock {
     config: Config,
-    mode: Mode,
+    mode: Option<usize>,
     user: User,
     password: String,
     state: State,
@@ -128,12 +128,15 @@ struct Lock {
 impl Lock {
     fn new(
         preview: bool,
-        mode: Option<Mode>,
+        mode: Option<String>,
         screenshot: Option<PathBuf>,
     ) -> (Self, Task<Message>) {
         let (config, _) = Config::load(&apolline_config::default_path());
         let shared = control::shared();
-        let mode = mode.or(shared.mode).unwrap_or(config.mode);
+        let mode = mode
+            .or(shared.mode)
+            .and_then(|key| config.find(&key))
+            .or_else(|| config.start());
         let sample = preview && !niri::connected();
         let lock = Self {
             mode,
@@ -156,8 +159,8 @@ impl Lock {
             shooting: false,
             config,
         };
-        let source = wallpaper::resolve(&lock.config.mode(mode).wallpaper);
-        let load = Task::perform(wallpaper::load(source), Message::Wallpaper);
+        let name = lock.config.wallpaper(mode).to_owned();
+        let load = Task::perform(wallpaper::load(name), Message::Wallpaper);
         let network = if sample { Task::none() } else { read_network() };
         (lock, Task::batch([load, network, focus(FIELD)]))
     }
@@ -386,18 +389,19 @@ impl Lock {
         .into()
     }
 
-    fn mode_pill(&self, palette: Palette) -> Element<'_, Message> {
-        container(
+    fn mode_pill(&self, palette: Palette) -> Option<Element<'_, Message>> {
+        let mode = self.mode.and_then(|i| self.config.modes.get(i))?;
+        let pill = container(
             row![
                 container(Space::new().width(6).height(6)).style(style::dot(palette.accent)),
-                text(self.mode.name()).size(12).font(style::medium()),
+                text(mode.name.as_str()).size(12).font(style::medium()),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
         )
         .padding([7, 12])
-        .style(glass(0.45, 0.1, style::PILL))
-        .into()
+        .style(glass(0.45, 0.1, style::PILL));
+        Some(pill.into())
     }
 
     fn status(&self) -> Element<'_, Message> {
@@ -772,12 +776,12 @@ mod tests {
 
     #[test]
     fn a_wrong_password_clears_the_field_and_says_so() {
-        let (mut lock, _) = Lock::new(true, Some(Mode::Evening), None);
+        let (mut lock, _) = Lock::new(true, Some("evening".into()), None);
         let _ = lock.update(Message::Password("hunter2".into()));
         let _ = lock.update(Message::Checked(Err("Wrong password".into())));
         assert_eq!(lock.state, State::Wrong("Wrong password".into()));
         let _ = lock.update(Message::Password("h".into()));
         assert_eq!(lock.state, State::Typing);
-        assert_eq!(lock.mode, Mode::Evening);
+        assert_eq!(lock.mode, lock.config.find("evening"));
     }
 }

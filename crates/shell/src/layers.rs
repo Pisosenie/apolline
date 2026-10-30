@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use apolline_theme::{Mode, font, metrics};
+use apolline_theme::{font, metrics};
 use iced::widget::space;
 use iced::{Color, Element, Font, Subscription, Task, Theme, window};
 use iced_layershell::build_pattern::daemon;
@@ -10,15 +10,17 @@ use iced_layershell::reexport::{
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 
 use crate::fonts;
-use crate::popup;
 use crate::shell::{Message, Overlay, Shell};
+use apolline_config::Edge;
+
+use crate::{osd, popup};
 
 const BAR_SURFACE: u32 = (metrics::BAR_INSET + metrics::BAR_HEIGHT) as u32;
 const POPUP_MARGIN: i32 = 8;
 
-pub fn run(mode: Option<Mode>) -> Result<(), String> {
+pub fn run(mode: Option<String>) -> Result<(), String> {
     let app = daemon(
-        move || Layers::new(mode),
+        move || Layers::new(mode.clone()),
         "apolline",
         Layers::update,
         Layers::view,
@@ -54,18 +56,22 @@ struct Screen {
 struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
+    look: (Edge, bool),
     popups: Option<(window::Id, usize)>,
     overlay: Option<(window::Id, Overlay)>,
+    osd: Option<window::Id>,
 }
 
 impl Layers {
-    fn new(mode: Option<Mode>) -> (Self, Task<Message>) {
+    fn new(mode: Option<String>) -> (Self, Task<Message>) {
         let (shell, load) = Shell::new(mode, false);
         let mut layers = Self {
             shell,
             screens: BTreeMap::new(),
+            look: (Edge::Top, true),
             popups: None,
             overlay: None,
+            osd: None,
         };
         let screens = layers.fit_screens();
         (layers, Task::batch([load, screens]))
@@ -78,7 +84,31 @@ impl Layers {
             self.fit_screens(),
             self.fit_popups(),
             self.fit_overlay(),
+            self.fit_osd(),
         ])
+    }
+
+    fn fit_osd(&mut self) -> Task<Message> {
+        match (self.osd, self.shell.osd_view().is_some()) {
+            (None, true) => {
+                let (id, open) = open(NewLayerShellSettings {
+                    layer: Layer::Overlay,
+                    anchor: Anchor::Bottom,
+                    size: Some(osd::SURFACE),
+                    margin: Some((0, 0, 56, 0)),
+                    keyboard_interactivity: KeyboardInteractivity::None,
+                    namespace: Some("apolline-osd".into()),
+                    ..Default::default()
+                });
+                self.osd = Some(id);
+                open
+            }
+            (Some(id), false) => {
+                self.osd = None;
+                window::close(id)
+            }
+            _ => Task::none(),
+        }
     }
 
     fn fit_overlay(&mut self) -> Task<Message> {
@@ -97,6 +127,8 @@ impl Layers {
             Overlay::Switcher => "apolline-switcher",
             Overlay::Launcher => "apolline-launcher",
             Overlay::Panel => "apolline-panel",
+            Overlay::Clipboard => "apolline-clipboard",
+            Overlay::Keys => "apolline-keys",
         };
         let (id, open) = open(NewLayerShellSettings {
             layer: Layer::Overlay,
@@ -115,10 +147,19 @@ impl Layers {
             None => vec![None],
             Some(names) => names.iter().cloned().map(Some).collect(),
         };
-        let have: Vec<Output> = self.screens.keys().cloned().collect();
+        let mut have: Vec<Output> = self.screens.keys().cloned().collect();
+        let look = self.shell.bar_look();
+        let mut tasks = Vec::new();
+        if look != self.look {
+            self.look = look;
+            for (_, screen) in std::mem::take(&mut self.screens) {
+                tasks.push(window::close(screen.wallpaper));
+                tasks.push(window::close(screen.bar));
+            }
+            have.clear();
+        }
         let (added, removed) = diff(&have, &wanted);
 
-        let mut tasks = Vec::new();
         for output in removed {
             if let Some(screen) = self.screens.remove(&output) {
                 tasks.push(window::close(screen.wallpaper));
@@ -126,7 +167,7 @@ impl Layers {
             }
         }
         for output in added {
-            let (screen, open_screen) = open_screen(&output);
+            let (screen, open_screen) = open_screen(&output, look);
             self.screens.insert(output, screen);
             tasks.push(open_screen);
         }
@@ -168,6 +209,9 @@ impl Layers {
         if self.popups.is_some_and(|(popups, _)| popups == id) {
             return self.shell.popups();
         }
+        if self.osd == Some(id) {
+            return self.shell.osd_view().unwrap_or_else(|| space().into());
+        }
         if self.overlay.is_some_and(|(overlay, _)| overlay == id) {
             return self.shell.overlay_view();
         }
@@ -187,7 +231,12 @@ impl Layers {
     }
 }
 
-fn open_screen(output: &Output) -> (Screen, Task<Message>) {
+fn open_screen(output: &Output, (edge, floating): (Edge, bool)) -> (Screen, Task<Message>) {
+    let height = if floating {
+        BAR_SURFACE
+    } else {
+        metrics::BAR_HEIGHT as u32
+    };
     let output_option = match output {
         Some(name) => OutputOption::OutputName(name.clone()),
         None => OutputOption::default(),
@@ -203,9 +252,13 @@ fn open_screen(output: &Output) -> (Screen, Task<Message>) {
     });
     let (bar, open_bar) = open(NewLayerShellSettings {
         layer: Layer::Top,
-        anchor: Anchor::Top | Anchor::Left | Anchor::Right,
-        size: Some((0, BAR_SURFACE)),
-        exclusive_zone: Some(BAR_SURFACE as i32),
+        anchor: match edge {
+            Edge::Top => Anchor::Top,
+            Edge::Bottom => Anchor::Bottom,
+        } | Anchor::Left
+            | Anchor::Right,
+        size: Some((0, height)),
+        exclusive_zone: Some(height as i32),
         keyboard_interactivity: KeyboardInteractivity::None,
         output_option,
         namespace: Some("apolline-bar".into()),

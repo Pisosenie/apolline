@@ -16,21 +16,42 @@ echo yes > "$state/bluetooth"
 cat > "$dir/wpctl" <<EOF
 #!/usr/bin/env bash
 echo "wpctl \$*" >> "$state/log"
+args=("\$@"); last="\${args[-1]}"
+target=volume; mute=muted
+case "\$*" in *SOURCE*) target=mic; mute=mic_muted ;; esac
 case "\$1" in
     get-volume)
-        muted=""; [ "\$(cat $state/muted)" = 1 ] && muted=" [MUTED]"
-        echo "Volume: \$(cat $state/volume)\$muted" ;;
-    set-volume) echo "\${@: -1}" > "$state/volume" ;;
-    set-mute) echo "\${@: -1}" > "$state/muted" ;;
+        flag=""; [ "\$(cat $state/\$mute 2>/dev/null || echo 0)" = 1 ] && flag=" [MUTED]"
+        echo "Volume: \$(cat $state/\$target 2>/dev/null || echo 1.00)\$flag" ;;
+    set-volume)
+        now=\$(cat $state/volume)
+        case "\$last" in
+            *%+) awk -v n="\$now" -v d="\${last%\%+}" 'BEGIN { v = n + d / 100; if (v > 1) v = 1; printf "%.2f\n", v }' > $state/volume ;;
+            *%-) awk -v n="\$now" -v d="\${last%\%-}" 'BEGIN { v = n - d / 100; if (v < 0) v = 0; printf "%.2f\n", v }' > $state/volume ;;
+            *) echo "\$last" > $state/volume ;;
+        esac ;;
+    set-mute)
+        if [ "\$last" = toggle ]; then
+            [ "\$(cat $state/\$mute 2>/dev/null || echo 0)" = 1 ] && echo 0 > $state/\$mute || echo 1 > $state/\$mute
+        else
+            echo "\$last" > $state/\$mute
+        fi ;;
 esac
 EOF
 
 cat > "$dir/brightnessctl" <<EOF
 #!/usr/bin/env bash
 echo "brightnessctl \$*" >> "$state/log"
+args=("\$@"); last="\${args[-1]}"; now=\$(cat $state/brightness)
 case "\$*" in
-    *set*) value="\${@: -1}"; echo "\${value%\\%}" > "$state/brightness" ;;
-    *) echo "panel,backlight,\$(cat $state/brightness),\$(cat $state/brightness)%,100" ;;
+    *set*)
+        case "\$last" in
+            *%+) v=\$((now + \${last%\%+})); [ \$v -gt 100 ] && v=100 ;;
+            *%-) v=\$((now - \${last%\%-})); [ \$v -lt 1 ] && v=1 ;;
+            *) v=\${last%\%} ;;
+        esac
+        echo \$v > $state/brightness ;;
+    *) echo "panel,backlight,\$now,\$now%,100" ;;
 esac
 EOF
 

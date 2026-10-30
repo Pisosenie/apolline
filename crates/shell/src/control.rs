@@ -2,21 +2,25 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream as StdStream;
 use std::path::PathBuf;
 
-use apolline_theme::Mode;
 use iced::Subscription;
 use iced::futures::{SinkExt, Stream};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 
+use crate::controls::Nudge;
 use crate::shell::Message;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    Mode(Mode),
+    Mode(String),
     NextMode,
+    NoMode,
     Switcher,
     Launcher,
     Panel,
+    Clipboard,
+    Keys,
+    Nudge(Nudge),
 }
 
 impl Command {
@@ -26,11 +30,15 @@ impl Command {
             ["switch"] => Ok(Command::Switcher),
             ["launcher"] => Ok(Command::Launcher),
             ["panel"] => Ok(Command::Panel),
+            ["clipboard"] => Ok(Command::Clipboard),
+            ["keys"] => Ok(Command::Keys),
+            words @ ["volume" | "mic" | "brightness", _] => Nudge::parse(words)
+                .map(Command::Nudge)
+                .ok_or_else(|| format!("unknown command “{}”", line.trim())),
             ["mode", "next"] => Ok(Command::NextMode),
-            ["mode", name] => Mode::from_key(name)
-                .map(Command::Mode)
-                .ok_or_else(|| format!("unknown mode “{name}”, use work, play, evening or next")),
-            ["mode"] => Err("which mode? use work, play, evening or next".into()),
+            ["mode", "none" | "off"] => Ok(Command::NoMode),
+            ["mode", name @ ..] if !name.is_empty() => Ok(Command::Mode(name.join(" "))),
+            ["mode"] => Err("which mode? give its name, next or none".into()),
             _ => Err(format!("unknown command “{}”", line.trim())),
         }
     }
@@ -56,15 +64,15 @@ pub fn me() -> String {
         .unwrap_or_else(|| "apolline".to_owned())
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Shared {
-    pub mode: Option<Mode>,
+    pub mode: Option<String>,
     pub waiting: usize,
 }
 
 impl Shared {
-    fn text(self) -> String {
-        let mode = self.mode.map_or("", Mode::key);
+    fn text(&self) -> String {
+        let mode = self.mode.as_deref().unwrap_or_default();
         format!("mode {mode}\nwaiting {}\n", self.waiting)
     }
 
@@ -72,7 +80,7 @@ impl Shared {
         let mut shared = Self::default();
         for line in text.lines() {
             match line.split_once(' ') {
-                Some(("mode", key)) => shared.mode = Mode::from_key(key),
+                Some(("mode", key)) if !key.is_empty() => shared.mode = Some(key.to_owned()),
                 Some(("waiting", count)) => shared.waiting = count.parse().unwrap_or(0),
                 _ => {}
             }
@@ -81,7 +89,7 @@ impl Shared {
     }
 }
 
-pub fn publish(shared: Shared) {
+pub fn publish(shared: &Shared) {
     let path = runtime_dir().join("apolline.state");
     let staged = path.with_extension("state.new");
     if std::fs::write(&staged, shared.text())
@@ -168,7 +176,7 @@ mod tests {
     #[test]
     fn shared_state_round_trips() {
         let shared = Shared {
-            mode: Some(Mode::Evening),
+            mode: Some("night-owl".into()),
             waiting: 2,
         };
         assert_eq!(Shared::parse(&shared.text()), shared);
@@ -177,13 +185,12 @@ mod tests {
 
     #[test]
     fn parses_mode_commands() {
-        assert_eq!(Command::parse("mode play\n"), Ok(Command::Mode(Mode::Play)));
-        assert_eq!(Command::parse("  mode   next "), Ok(Command::NextMode));
-        assert!(
-            Command::parse("mode party")
-                .unwrap_err()
-                .contains("unknown mode “party”")
+        assert_eq!(
+            Command::parse("mode Night Owl\n"),
+            Ok(Command::Mode("Night Owl".into()))
         );
+        assert_eq!(Command::parse("mode none"), Ok(Command::NoMode));
+        assert_eq!(Command::parse("  mode   next "), Ok(Command::NextMode));
         assert!(Command::parse("mode").is_err());
         assert!(
             Command::parse("reboot")

@@ -1,4 +1,5 @@
-use apolline_theme::{Mode, Palette, metrics, neutral};
+use apolline_config::ModeSettings;
+use apolline_theme::{Palette, metrics, neutral};
 use iced::widget::{
     Column, Row, button, column, container, mouse_area, opaque, row, scrollable, slider, space,
     text,
@@ -58,7 +59,9 @@ impl Power {
 }
 
 pub struct Panel<'a> {
-    pub mode: Mode,
+    pub at_bottom: bool,
+    pub modes: &'a [ModeSettings],
+    pub mode: Option<usize>,
     pub palette: Palette,
     pub controls: &'a Controls,
     pub battery: Option<Battery>,
@@ -155,7 +158,9 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     }
     body = body.push(sliders);
 
-    body = body.push(modes(panel.mode, palette));
+    if !panel.modes.is_empty() {
+        body = body.push(modes(panel.modes, panel.mode, palette));
+    }
 
     if let Some(track) = panel.track {
         body = body.push(player(track, palette));
@@ -170,10 +175,17 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             .width(Fill)
             .height(Fill)
             .align_x(Alignment::End)
-            .padding(
+            .align_y(if panel.at_bottom {
+                Alignment::End
+            } else {
+                Alignment::Start
+            })
+            .padding(if panel.at_bottom {
                 Padding::new(metrics::BAR_INSET)
-                    .top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0),
-            ),
+                    .bottom(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0)
+            } else {
+                Padding::new(metrics::BAR_INSET).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0)
+            }),
     )
     .on_press(Message::Overlay(None))
     .into()
@@ -362,35 +374,47 @@ fn slider_row<'a>(
     .into()
 }
 
-fn modes<'a>(current: Mode, palette: Palette) -> Element<'a, Message> {
-    let buttons = Row::with_children(Mode::ALL.map(|mode| {
-        let on = mode == current;
+fn modes<'a>(
+    modes: &'a [ModeSettings],
+    current: Option<usize>,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let chip = |label: &'a str, glyph: Icon, target: Option<usize>| {
+        let on = target == current;
         let ink = if on { palette.on_accent } else { neutral::TEXT };
         button(
             row![
-                icon(Icon::of(mode), 15.0, ink),
-                text(mode.name()).size(13).font(style::medium()),
+                icon(glyph, 15.0, ink),
+                text(label).size(13).font(style::medium())
             ]
             .spacing(8)
             .align_y(Alignment::Center),
         )
-        .width(Fill)
-        .padding([9, 10])
+        .padding([9, 12])
         .style(move |theme, status| {
             let mut style = style::tile(on, palette)(theme, status);
             style.border.radius = 10.0.into();
             style
         })
-        .on_press(Message::Mode(mode))
+        .on_press(Message::Mode(target))
         .into()
-    }))
-    .spacing(6);
+    };
+    let mut chips: Vec<Element<'a, Message>> = vec![chip("None", Icon::Circle, None)];
+    chips.extend(
+        modes
+            .iter()
+            .enumerate()
+            .map(|(index, mode)| chip(&mode.name, Icon::named(&mode.icon), Some(index))),
+    );
     column![
         text("MODE")
             .size(10)
             .font(style::semibold())
             .color(style::color(style::FAINT)),
-        buttons
+        Row::with_children(chips)
+            .spacing(6)
+            .wrap()
+            .vertical_spacing(6),
     ]
     .spacing(8)
     .into()

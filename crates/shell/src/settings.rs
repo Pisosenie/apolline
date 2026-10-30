@@ -2,9 +2,10 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use apolline_config::{
-    Accent, Config, Diagnostic, Editor, Notifications, Shortcut, Switch, Workspaces,
+    Accent, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Notifications, Rule, Shortcut,
+    Switch, TEMPLATES, Theme as Look, Width, Workspaces, auto_accent,
 };
-use apolline_theme::{Mode, Palette, Rgba, font, neutral};
+use apolline_theme::{ACCENTS, Palette, Rgba, font, neutral};
 use iced::keyboard;
 use iced::widget::text::Span;
 use iced::widget::{
@@ -18,11 +19,10 @@ use iced::{
 
 use crate::controls::Controls;
 use crate::fragment::{self, Fragment};
-use crate::icon::{Icon, icon};
+use crate::icon::{Icon, MODE_ICONS, icon};
 use crate::status::Status;
-use crate::{bar, fonts, keys, notify, shot, style, wallpaper};
+use crate::{bar, fonts, keys, notify, shot, style, themes, wallpaper};
 
-const SWATCHES: [u32; 6] = [0x86bdf0, 0xff6a3d, 0xf2b35c, 0xc084fc, 0x5dd39e, 0xf472b6];
 const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
 const WIDE: f32 = 1120.0;
@@ -85,7 +85,9 @@ pub fn run(screenshot: Option<PathBuf>, page: Option<String>) -> iced::Result {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Modes,
+    Themes,
     Appearance,
+    Windows,
     Bar,
     Lock,
     Notifications,
@@ -96,9 +98,11 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 9] = [
+    const ALL: [Page; 11] = [
         Page::Modes,
+        Page::Themes,
         Page::Appearance,
+        Page::Windows,
         Page::Bar,
         Page::Lock,
         Page::Notifications,
@@ -111,7 +115,9 @@ impl Page {
     fn key(self) -> &'static str {
         match self {
             Page::Modes => "modes",
+            Page::Themes => "themes",
             Page::Appearance => "appearance",
+            Page::Windows => "windows",
             Page::Bar => "bar",
             Page::Lock => "lock",
             Page::Notifications => "notifications",
@@ -125,7 +131,9 @@ impl Page {
     fn title(self) -> &'static str {
         match self {
             Page::Modes => "Modes",
+            Page::Themes => "Themes",
             Page::Appearance => "Appearance",
+            Page::Windows => "Windows",
             Page::Bar => "Bar",
             Page::Lock => "Lock screen",
             Page::Notifications => "Notifications",
@@ -139,7 +147,11 @@ impl Page {
     fn subtitle(self) -> &'static str {
         match self {
             Page::Modes => "One key changes wallpaper, apps, notifications and performance.",
+            Page::Themes => "A whole look in one click, and yours in one file to share.",
             Page::Appearance => "Gaps, corners, borders and shadows of every window.",
+            Page::Windows => {
+                "How windows open, move, fade and animate, for all of them or one app."
+            }
             Page::Bar => "What the bar at the top shows.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
@@ -153,7 +165,9 @@ impl Page {
     fn icon(self) -> Icon {
         match self {
             Page::Modes => Icon::Layers,
+            Page::Themes => Icon::Brush,
             Page::Appearance => Icon::Palette,
+            Page::Windows => Icon::AppWindow,
             Page::Bar => Icon::PanelTop,
             Page::Lock => Icon::Lock,
             Page::Notifications => Icon::Bell,
@@ -167,7 +181,9 @@ impl Page {
     fn sections(self) -> &'static [&'static str] {
         match self {
             Page::Modes | Page::About => &[],
-            Page::Appearance => &["layout"],
+            Page::Themes => &["desktop", "layout", "windows", "bar"],
+            Page::Appearance => &["desktop", "layout"],
+            Page::Windows => &["windows"],
             Page::Bar => &["bar"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
@@ -190,12 +206,28 @@ impl std::fmt::Display for Layout {
 #[derive(Clone, Debug)]
 enum Message {
     Page(Page),
-    Mode(Mode),
-    Wallpaper(String),
+    Select(usize),
+    Adding(bool),
+    AddMode(&'static str),
+    RemoveMode,
+    MoveMode(isize),
+    ModeName(String),
+    ModeNameDone,
+    ModeIcon(&'static str),
+    ModeWallpaper(Option<String>),
+    ModeAccent(Option<Accent>),
+    DesktopWallpaper(String),
+    DesktopAccent(Accent),
     WallpaperDraft(String),
     UseWallpaper,
-    Accent(Accent),
-    Notifications(Mode, Notifications),
+    Notifications(usize, Notifications),
+    Performance(bool),
+    KeepAwake(bool),
+    StartHere(bool),
+    KeyCommand(String),
+    RecordModeKey,
+    AddModeKey,
+    RemoveModeKey(usize),
     Draft(String),
     Add,
     Remove(usize),
@@ -205,6 +237,9 @@ enum Message {
     Shadows(bool),
     Workspaces(Workspaces),
     Seconds(bool),
+    BarEdge(Edge),
+    BarFloating(bool),
+    BarOpacity(u16),
     Date(bool),
     BatteryPercent(bool),
     DoNotDisturb(bool),
@@ -233,7 +268,27 @@ enum Message {
     IdleLock(u16),
     IdleScreen(u16),
     IdleSuspend(u16),
-    AwakeInPlay(bool),
+    WinWidth(Width),
+    WinPreset(Width),
+    WinCenter(Center),
+    CenterLone(bool),
+    RecentWindows(bool),
+    FocusFollows(bool),
+    WarpMouse(bool),
+    Opacity(u16),
+    InactiveOpacity(u16),
+    Animations(u8),
+    RuleApp(String),
+    RuleFloating(bool),
+    RuleWidth(Width),
+    AddRule,
+    RemoveRule(usize),
+    ApplyTheme(usize),
+    ThemeName(String),
+    SaveTheme,
+    ThemePath(String),
+    ImportTheme,
+    OpenThemes,
     Setup,
     OpenFile,
     Commit,
@@ -251,7 +306,18 @@ struct Settings {
     config: Config,
     diagnostics: Vec<Diagnostic>,
     page: Page,
-    mode: Mode,
+    selected: usize,
+    adding: bool,
+    armed: bool,
+    name_draft: Option<String>,
+    key_combo: Option<String>,
+    key_command: String,
+    recording_mode_key: bool,
+    rule: Rule,
+    themes: Vec<(Look, Option<PathBuf>)>,
+    theme_name: String,
+    theme_path: String,
+    theme_note: Option<Result<String, String>>,
     draft: String,
     wallpaper_draft: String,
     typing: String,
@@ -259,7 +325,7 @@ struct Settings {
     recording: Option<Shortcut>,
     shortcut_error: Option<String>,
     niri_binds: Vec<(String, String)>,
-    samples: [Status; 3],
+    sample: Status,
     controls: Controls,
     setup_log: Vec<String>,
     tested: Option<Result<(), String>>,
@@ -284,7 +350,23 @@ impl Settings {
             stamp: stamp(&path),
             path,
             editor,
-            mode: config.mode,
+            selected: config.start().unwrap_or(0),
+            adding: false,
+            armed: false,
+            name_draft: None,
+            key_combo: None,
+            key_command: String::new(),
+            recording_mode_key: false,
+            rule: Rule {
+                app: String::new(),
+                floating: Some(true),
+                width: None,
+                opacity: None,
+            },
+            themes: themes::all(),
+            theme_name: String::new(),
+            theme_path: String::new(),
+            theme_note: None,
             config,
             diagnostics,
             page: Page::Modes,
@@ -295,7 +377,7 @@ impl Settings {
             recording: None,
             shortcut_error: None,
             niri_binds: read_niri_binds(),
-            samples: Mode::ALL.map(Status::sample),
+            sample: Status::sample(),
             controls: Controls::sample(),
             setup_log: Vec::new(),
             tested: None,
@@ -311,52 +393,192 @@ impl Settings {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
-        let mode = self.mode;
+        let index = self.selected;
         match message {
             Message::Page(page) => {
                 self.page = page;
                 self.recording = None;
+                self.recording_mode_key = false;
+                self.armed = false;
             }
-            Message::Mode(mode) => {
-                self.mode = mode;
+            Message::Select(index) => {
+                self.selected = index;
+                self.adding = false;
+                self.armed = false;
+                self.name_draft = None;
+                self.key_combo = None;
                 return self.custom_thumb();
             }
-            Message::Wallpaper(name) => {
-                self.edit(|e| e.set_wallpaper(mode, &name));
+            Message::Adding(adding) => self.adding = adding,
+            Message::AddMode(template) => {
+                let base = if template.is_empty() {
+                    "New mode"
+                } else {
+                    template
+                };
+                let mut name = base.to_owned();
+                let mut n = 2;
+                while self.config.find(&name).is_some() {
+                    name = format!("{base} {n}");
+                    n += 1;
+                }
+                let mode = if template.is_empty() {
+                    ModeSettings::blank(&name)
+                } else {
+                    ModeSettings {
+                        name,
+                        ..ModeSettings::template(template)
+                    }
+                };
+                let mut added = None;
+                self.edit(|e| added = Some(e.add_mode(&mode)));
+                self.selected = added.unwrap_or(0);
+                self.adding = false;
                 return self.custom_thumb();
             }
+            Message::RemoveMode => {
+                if !self.armed {
+                    self.armed = true;
+                    return Task::none();
+                }
+                let starts_here = self.config.start() == Some(index);
+                self.edit(|e| {
+                    if starts_here {
+                        e.set("general", "mode", "");
+                    }
+                    e.remove_mode(index);
+                });
+                self.selected = index.saturating_sub(1);
+                self.armed = false;
+            }
+            Message::MoveMode(by) => {
+                let to = index as isize + by;
+                if to >= 0 && (to as usize) < self.config.modes.len() {
+                    self.edit(|e| e.move_mode(index, to as usize));
+                    self.selected = to as usize;
+                }
+            }
+            Message::ModeName(name) => self.name_draft = Some(name),
+            Message::ModeNameDone => {
+                let Some(name) = self.name_draft.take().map(|n| n.trim().to_owned()) else {
+                    return Task::none();
+                };
+                let taken = self.config.find(&name).is_some_and(|other| other != index);
+                if name.is_empty() || taken {
+                    self.error = Some(if taken {
+                        format!("there is already a mode called “{name}”")
+                    } else {
+                        "a mode needs a name".to_owned()
+                    });
+                    return Task::none();
+                }
+                let starts_here = self.config.start() == Some(index);
+                self.edit(|e| {
+                    e.set_mode(index, "name", name.as_str());
+                    if starts_here {
+                        e.set("general", "mode", name.as_str());
+                    }
+                });
+            }
+            Message::ModeIcon(name) => self.edit(|e| e.set_mode(index, "icon", name)),
+            Message::ModeWallpaper(wallpaper) => {
+                self.edit(|e| match &wallpaper {
+                    Some(name) => e.set_mode(index, "wallpaper", name.as_str()),
+                    None => e.unset_mode(index, "wallpaper"),
+                });
+                return self.custom_thumb();
+            }
+            Message::ModeAccent(accent) => self.edit(|e| e.set_mode_accent(index, accent)),
+            Message::DesktopWallpaper(name) => {
+                self.edit(|e| e.set("desktop", "wallpaper", name.as_str()));
+                return self.custom_thumb();
+            }
+            Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
             Message::UseWallpaper => {
                 let path = self.wallpaper_draft.trim().to_owned();
                 match wallpaper::resolve(&path) {
+                    _ if path.is_empty() => {}
                     wallpaper::Source::File(file) if !file.exists() => {
                         self.error = Some(format!("{} does not exist", file.display()));
                     }
-                    _ if path.is_empty() => {}
                     _ => {
-                        self.edit(|e| e.set_wallpaper(mode, &path));
                         self.wallpaper_draft.clear();
-                        return self.custom_thumb();
+                        return self.update(if self.page == Page::Modes {
+                            Message::ModeWallpaper(Some(path))
+                        } else {
+                            Message::DesktopWallpaper(path)
+                        });
                     }
                 }
             }
-            Message::Accent(accent) => self.edit(|e| e.set_accent(mode, accent)),
-            Message::Notifications(mode, n) => self.edit(|e| e.set_notifications(mode, n)),
+            Message::Notifications(index, n) => self.edit(|e| e.set_mode_notifications(index, n)),
+            Message::Performance(on) => self.edit(|e| e.set_mode(index, "performance", on)),
+            Message::KeepAwake(on) => self.edit(|e| e.set_mode(index, "keep_awake", on)),
+            Message::StartHere(on) => {
+                let name = self.config.modes.get(index).map(|m| m.name.clone());
+                self.edit(|e| {
+                    e.set(
+                        "general",
+                        "mode",
+                        if on {
+                            name.unwrap_or_default()
+                        } else {
+                            String::new()
+                        },
+                    )
+                });
+            }
+            Message::KeyCommand(command) => self.key_command = command,
+            Message::RecordModeKey => {
+                self.recording_mode_key = true;
+                self.recording = None;
+            }
+            Message::AddModeKey => {
+                let command = self.key_command.trim().to_owned();
+                if let (Some(combo), false) = (self.key_combo.clone(), command.is_empty())
+                    && let Some(mode) = self.config.modes.get(index)
+                {
+                    let mut keys: Vec<(String, String)> = mode
+                        .keys
+                        .iter()
+                        .filter(|(c, _)| !keys::same(c, &combo))
+                        .cloned()
+                        .collect();
+                    keys.push((combo, command));
+                    self.edit(|e| e.set_mode_keys(index, &keys));
+                    self.key_combo = None;
+                    self.key_command.clear();
+                }
+            }
+            Message::RemoveModeKey(k) => {
+                if let Some(mode) = self.config.modes.get(index) {
+                    let mut keys = mode.keys.clone();
+                    if k < keys.len() {
+                        keys.remove(k);
+                        self.edit(|e| e.set_mode_keys(index, &keys));
+                    }
+                }
+            }
             Message::Draft(draft) => self.draft = draft,
             Message::Add => {
                 let command = self.draft.trim().to_owned();
-                if !command.is_empty() {
-                    let mut open = self.config.mode(mode).open.clone();
+                if !command.is_empty()
+                    && let Some(mode) = self.config.modes.get(index)
+                {
+                    let mut open = mode.open.clone();
                     open.push(command);
-                    self.edit(|e| e.set_open(mode, &open));
+                    self.edit(|e| e.set_mode_list(index, "open", &open));
                     self.draft.clear();
                 }
             }
-            Message::Remove(index) => {
-                let mut open = self.config.mode(mode).open.clone();
-                if index < open.len() {
-                    open.remove(index);
-                    self.edit(|e| e.set_open(mode, &open));
+            Message::Remove(app) => {
+                if let Some(mode) = self.config.modes.get(index) {
+                    let mut open = mode.open.clone();
+                    if app < open.len() {
+                        open.remove(app);
+                        self.edit(|e| e.set_mode_list(index, "open", &open));
+                    }
                 }
             }
             Message::Gaps(v) => self.stage(|e| e.set("layout", "gaps", i64::from(v))),
@@ -371,6 +593,15 @@ impl Settings {
                 self.edit(|e| e.set("bar", "workspaces", value));
             }
             Message::Seconds(on) => self.edit(|e| e.set("bar", "seconds", on)),
+            Message::BarEdge(edge) => self.edit(|e| {
+                e.set(
+                    "bar",
+                    "position",
+                    if edge == Edge::Top { "top" } else { "bottom" },
+                )
+            }),
+            Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
+            Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
             Message::Date(on) => self.edit(|e| e.set("bar", "date", on)),
             Message::BatteryPercent(on) => self.edit(|e| e.set("bar", "battery_percent", on)),
             Message::DoNotDisturb(on) => {
@@ -425,6 +656,16 @@ impl Settings {
                 self.recording = shortcut;
                 self.shortcut_error = None;
             }
+            Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. })
+                if self.recording_mode_key =>
+            {
+                if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
+                    self.recording_mode_key = false;
+                } else if let Some(combo) = keys::combo(&key, modifiers) {
+                    self.key_combo = Some(combo);
+                    self.recording_mode_key = false;
+                }
+            }
             Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                 if let Some(shortcut) = self.recording {
                     if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
@@ -447,7 +688,6 @@ impl Settings {
                 self.stage(|e| e.set("idle", "screen_off_after", i64::from(v)))
             }
             Message::IdleSuspend(v) => self.stage(|e| e.set("idle", "suspend_after", i64::from(v))),
-            Message::AwakeInPlay(on) => self.edit(|e| e.set("idle", "awake_in_play", on)),
             Message::LockNow => {
                 let line = format!("{} lock &", crate::control::me());
                 return Task::future(async move {
@@ -458,10 +698,122 @@ impl Settings {
                 })
                 .discard();
             }
+            Message::WinWidth(width) => self.edit(|e| e.set("windows", "width", width.key())),
+            Message::WinPreset(width) => {
+                let mut presets = self
+                    .config
+                    .windows
+                    .presets
+                    .clone()
+                    .unwrap_or_else(|| vec![Width::Third, Width::Half, Width::TwoThirds]);
+                if presets.contains(&width) {
+                    presets.retain(|w| *w != width);
+                } else {
+                    presets.push(width);
+                    presets.sort_by(|a, b| a.proportion().total_cmp(&b.proportion()));
+                }
+                if !presets.is_empty() {
+                    let keys: Vec<String> = presets.iter().map(|w| w.key().to_owned()).collect();
+                    self.edit(|e| e.set_list("windows", "presets", &keys));
+                }
+            }
+            Message::WinCenter(center) => self.edit(|e| e.set("windows", "center", center.key())),
+            Message::CenterLone(on) => self.edit(|e| e.set("windows", "center_lone", on)),
+            Message::RecentWindows(on) => self.edit(|e| e.set("windows", "switcher", on)),
+            Message::FocusFollows(on) => self.edit(|e| e.set("windows", "focus_follows_mouse", on)),
+            Message::WarpMouse(on) => self.edit(|e| e.set("windows", "warp_mouse", on)),
+            Message::Opacity(v) => {
+                self.stage(|e| e.set("windows", "opacity", f64::from(v) / 100.0))
+            }
+            Message::InactiveOpacity(v) => {
+                self.stage(|e| e.set("windows", "inactive_opacity", f64::from(v) / 100.0))
+            }
+            Message::Animations(choice) => match choice {
+                2 => self.edit(|e| e.unset("windows", "animations")),
+                _ => {
+                    let speed = [0.0, 2.0, 1.0, 0.5][usize::from(choice.min(3))];
+                    self.edit(|e| e.set("windows", "animations", speed));
+                }
+            },
+            Message::RuleApp(app) => self.rule.app = app,
+            Message::RuleFloating(on) => self.rule.floating = Some(on),
+            Message::RuleWidth(width) => {
+                self.rule.width = (self.rule.width != Some(width)).then_some(width)
+            }
+            Message::AddRule => {
+                let app = self.rule.app.trim().to_owned();
+                if !app.is_empty() {
+                    let rule = Rule {
+                        app,
+                        ..self.rule.clone()
+                    };
+                    self.edit(|e| e.add_rule(&rule));
+                    self.rule.app.clear();
+                }
+            }
+            Message::RemoveRule(index) => self.edit(|e| e.remove_rule(index)),
+            Message::ApplyTheme(index) => {
+                if let Some((theme, _)) = self.themes.get(index).cloned() {
+                    self.edit(|e| theme.apply(e));
+                    self.theme_note = None;
+                    return self.custom_thumb();
+                }
+            }
+            Message::ThemeName(name) => self.theme_name = name,
+            Message::SaveTheme => {
+                let name = self.theme_name.trim().to_owned();
+                if !name.is_empty() {
+                    let theme = Look::of(&self.config, &name, std::env::var("USER").ok());
+                    self.theme_note = Some(themes::save(&theme).map(|path| {
+                        format!(
+                            "Saved as {}. Send that file to share the look.",
+                            path.display()
+                        )
+                    }));
+                    if self.theme_note.as_ref().is_some_and(Result::is_ok) {
+                        self.edit(|e| e.set("desktop", "theme", name.as_str()));
+                        self.theme_name.clear();
+                    }
+                    self.themes = themes::all();
+                }
+            }
+            Message::ThemePath(path) => self.theme_path = path,
+            Message::ImportTheme => {
+                let path = self.theme_path.trim();
+                if !path.is_empty() {
+                    let path = match path.strip_prefix("~/") {
+                        Some(rest) => std::env::var_os("HOME")
+                            .map(PathBuf::from)
+                            .unwrap_or_default()
+                            .join(rest),
+                        None => PathBuf::from(path),
+                    };
+                    self.theme_note = Some(
+                        themes::import(&path)
+                            .map(|theme| format!("“{}” is in the gallery now", theme.name)),
+                    );
+                    self.theme_path.clear();
+                    self.themes = themes::all();
+                    return self.custom_thumb();
+                }
+            }
+            Message::OpenThemes => {
+                let _ = std::fs::create_dir_all(themes::dir());
+                let opener = if cfg!(target_os = "macos") {
+                    "open"
+                } else {
+                    "xdg-open"
+                };
+                let dir = themes::dir();
+                return Task::future(async move {
+                    let _ = tokio::process::Command::new(opener).arg(dir).status().await;
+                })
+                .discard();
+            }
             Message::Setup => {
                 let look = Fragment {
                     config: &self.config,
-                    mode: self.config.mode,
+                    mode: self.config.start(),
                     outputs: &[],
                 };
                 self.setup_log =
@@ -535,14 +887,23 @@ impl Settings {
     }
 
     fn custom_thumb(&self) -> Task<Message> {
-        let name = self.config.mode(self.mode).wallpaper.clone();
-        if self.thumb(&name).is_some() || is_bundled(&name) {
-            return Task::none();
+        let mut names = vec![self.config.desktop.wallpaper.clone()];
+        names.extend(self.themes.iter().map(|(theme, _)| theme.wallpaper.clone()));
+        names.sort();
+        names.dedup();
+        if !self.config.modes.is_empty() {
+            names.push(self.config.wallpaper(Some(self.selected)).to_owned());
         }
-        let source = wallpaper::resolve(&name);
-        Task::perform(wallpaper::thumbnail(source), move |thumb| {
-            Message::Thumb(name.clone(), thumb)
-        })
+        Task::batch(
+            names
+                .into_iter()
+                .filter(|name| self.thumb(name).is_none() && !is_bundled(name))
+                .map(|name| {
+                    Task::perform(wallpaper::thumbnail(name.clone()), move |thumb| {
+                        Message::Thumb(name.clone(), thumb)
+                    })
+                }),
+        )
     }
 
     fn thumb(&self, name: &str) -> Option<&image::Handle> {
@@ -599,7 +960,11 @@ impl Settings {
     }
 
     fn palette(&self) -> Palette {
-        self.config.palette(self.mode)
+        if self.page == Page::Modes && self.selected < self.config.modes.len() {
+            self.config.palette(Some(self.selected))
+        } else {
+            self.config.palette(None)
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -626,7 +991,9 @@ impl Settings {
     fn page_view(&self, page: Page, wide: bool) -> Element<'_, Message> {
         let form: Element<'_, Message> = match page {
             Page::Modes => self.modes(),
+            Page::Themes => self.themes(),
             Page::Appearance => self.appearance(),
+            Page::Windows => self.windows(),
             Page::Bar => self.bar(),
             Page::Lock => self.lock(),
             Page::Notifications => self.notifications(),
@@ -637,7 +1004,15 @@ impl Settings {
         };
         let writes = match (&self.editor, page) {
             (_, Page::About) => None,
-            (Ok(editor), Page::Modes) => Some(editor.section(self.mode)),
+            (Ok(editor), Page::Modes) if self.selected < self.config.modes.len() => {
+                Some(editor.mode_section(self.selected))
+            }
+            (Ok(_), Page::Modes) => Some(String::new()),
+            (Ok(editor), Page::Windows) => Some(format!(
+                "{}\n{}",
+                editor.sections(page.sections()),
+                editor.lists("rule")
+            )),
             (Ok(editor), page) => Some(editor.sections(page.sections())),
             (Err(_), _) => None,
         };
@@ -674,7 +1049,7 @@ impl Settings {
     fn sidebar(&self, compact: bool) -> Element<'_, Message> {
         let palette = self.palette();
         let mut brand = row![
-            container(icon(Icon::of(self.config.mode), 16.0, palette.on_accent))
+            container(icon(Icon::Sparkles, 16.0, palette.on_accent))
                 .center(32)
                 .style(style::pill(palette.accent)),
         ]
@@ -765,20 +1140,54 @@ impl Settings {
     }
 
     fn modes(&self) -> Element<'_, Message> {
-        let current = self.config.mode(self.mode);
-        let palette = self.palette();
+        if self.config.modes.is_empty() || self.adding {
+            return self.templates();
+        }
+        let index = self.selected.min(self.config.modes.len() - 1);
+        let mode = &self.config.modes[index];
+        let palette = self.config.palette(Some(index));
 
-        let tabs = segmented(
-            Mode::ALL.map(|mode| (mode, mode.name(), Some(Icon::of(mode)))),
-            self.mode,
-            Message::Mode,
+        let mut tabs = Row::new().spacing(6).align_y(Alignment::Center);
+        for (i, other) in self.config.modes.iter().enumerate() {
+            let on = i == index;
+            let tint = if on {
+                self.config.palette(Some(i)).accent
+            } else {
+                style::FAINT
+            };
+            tabs = tabs.push(
+                button(
+                    row![
+                        icon(Icon::named(&other.icon), 14.0, tint),
+                        text(other.name.as_str()).size(13)
+                    ]
+                    .spacing(7)
+                    .align_y(Alignment::Center),
+                )
+                .padding([7, 14])
+                .style(style::choice(on))
+                .on_press(Message::Select(i)),
+            );
+        }
+        tabs = tabs.push(
+            button(
+                row![
+                    icon(Icon::Plus, 14.0, style::SOFT_TEXT),
+                    text("Add").size(13)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            )
+            .padding([7, 12])
+            .style(style::ghost(8.0))
+            .on_press(Message::Adding(true)),
         );
 
-        let preview = self.preview(self.mode, 180.0, {
+        let preview = self.preview(self.config.wallpaper(Some(index)), 170.0, {
             let chip = container(
                 row![
-                    icon(Icon::of(self.mode), 12.0, palette.accent),
-                    text(self.mode.name())
+                    icon(Icon::named(&mode.icon), 12.0, palette.accent),
+                    text(mode.name.as_str())
                         .size(11)
                         .color(style::color(palette.accent))
                 ]
@@ -814,111 +1223,46 @@ impl Settings {
                 .into()
         });
 
-        let mut walls = Row::new().spacing(12);
-        for (name, _) in wallpaper::bundled() {
-            let Some(handle) = self.thumb(name) else {
-                continue;
-            };
-            let on = current.wallpaper == *name;
-            let ring = if on {
-                palette.accent
-            } else {
-                neutral::HAIRLINE
-            };
-            walls = walls.push(
-                button(
-                    image(handle.clone())
-                        .width(Fill)
-                        .height(88)
-                        .content_fit(ContentFit::Cover)
-                        .border_radius(9.0),
-                )
-                .width(Fill)
-                .padding(3)
-                .style(move |_: &Theme, _| button::Style {
-                    background: None,
-                    border: Border {
-                        color: style::color(ring),
-                        width: if on { 2.0 } else { 1.0 },
-                        radius: 12.0.into(),
-                    },
-                    ..button::Style::default()
-                })
-                .on_press(Message::Wallpaper((*name).to_owned())),
-            );
-        }
-        let own = row![
-            text_input("~/Pictures/my-wallpaper.jpg", &self.wallpaper_draft)
-                .on_input(Message::WallpaperDraft)
-                .on_submit(Message::UseWallpaper)
-                .padding([8, 12])
-                .size(13)
-                .style(style::field(palette)),
-            button(text("Use").size(13))
-                .padding([8, 16])
-                .style(style::secondary)
-                .on_press(Message::UseWallpaper),
-        ]
-        .spacing(8);
-        let mut wallpaper = column![walls, own].spacing(14);
-        if !is_bundled(&current.wallpaper) {
-            wallpaper = wallpaper.push(
-                row![
-                    icon(Icon::Image, 14.0, style::FAINT),
-                    text(format!("Using your file {}", current.wallpaper))
-                        .size(12)
-                        .color(style::color(style::FAINT)),
-                ]
-                .spacing(8),
-            );
-        }
-
-        let mut swatches = Row::new().spacing(10).align_y(Alignment::Center).push(
-            button(text("Auto").size(12))
-                .padding([6, 14])
-                .style(style::choice(current.accent == Accent::Auto))
-                .on_press(Message::Accent(Accent::Auto)),
-        );
-        for hex in SWATCHES {
-            let color = Rgba::hex(hex);
-            let on = current.accent == Accent::Fixed(color);
-            swatches = swatches.push(
-                button(
-                    container(if on {
-                        Element::from(icon(Icon::Check, 14.0, neutral::INK))
+        let name = text_input("Name", self.name_draft.as_deref().unwrap_or(&mode.name))
+            .on_input(Message::ModeName)
+            .on_submit(Message::ModeNameDone)
+            .padding([8, 12])
+            .size(14)
+            .width(260)
+            .style(style::field(palette));
+        let rename = button(text("Rename").size(13))
+            .padding([8, 14])
+            .style(style::secondary)
+            .on_press_maybe(self.name_draft.is_some().then_some(Message::ModeNameDone));
+        let icons = Row::with_children(MODE_ICONS.map(|(key, glyph)| {
+            let on = mode.icon == key;
+            button(
+                container(icon(
+                    glyph,
+                    17.0,
+                    if on {
+                        palette.on_accent
                     } else {
-                        space().into()
-                    })
-                    .center(26),
-                )
-                .padding(0)
-                .style(move |_: &Theme, status| button::Style {
-                    background: Some(Background::Color(style::color(color))),
-                    border: Border {
-                        color: style::color(neutral::TEXT),
-                        width: if on || status == button::Status::Hovered {
-                            2.0
-                        } else {
-                            0.0
-                        },
-                        radius: style::PILL.into(),
+                        style::SOFT_TEXT
                     },
-                    ..button::Style::default()
-                })
-                .on_press(Message::Accent(Accent::Fixed(color))),
-            );
-        }
-        let (badge, tint) = if readable(palette) {
-            ("Readable on any wallpaper", style::GOOD)
-        } else {
-            ("Low contrast", style::WARN)
-        };
-        swatches = swatches
-            .push(space::horizontal())
-            .push(text(badge).size(12).color(style::color(tint)));
+                ))
+                .center(34),
+            )
+            .padding(0)
+            .style(move |theme, status| {
+                let mut style = style::tile(on, palette)(theme, status);
+                style.border.radius = 9.0.into();
+                style
+            })
+            .on_press(Message::ModeIcon(key))
+            .into()
+        }))
+        .spacing(6)
+        .wrap()
+        .vertical_spacing(6);
 
         let mut apps = Column::new().spacing(8);
-        for (index, command) in current.open.iter().enumerate() {
+        for (app, command) in mode.open.iter().enumerate() {
             apps = apps.push(
                 row![
                     icon(Icon::AppWindow, 15.0, style::FAINT),
@@ -927,13 +1271,13 @@ impl Settings {
                     button(icon(Icon::X, 14.0, style::FAINT))
                         .padding(6)
                         .style(style::ghost(8.0))
-                        .on_press(Message::Remove(index)),
+                        .on_press(Message::Remove(app)),
                 ]
                 .spacing(10)
                 .align_y(Alignment::Center),
             );
         }
-        if current.open.is_empty() {
+        if mode.open.is_empty() {
             apps = apps.push(
                 text("Nothing opens yet")
                     .size(13)
@@ -964,50 +1308,645 @@ impl Settings {
             .spacing(8),
         );
 
-        let mut form = column![
-            tabs,
+        let mut keys = vec![];
+        for (k, (combo, command)) in mode.keys.iter().enumerate() {
+            let taken = Shortcut::ALL
+                .into_iter()
+                .find(|&s| keys::same(self.config.shortcuts.get(s), combo));
+            let replaced = self
+                .niri_binds
+                .iter()
+                .find(|(bind, _)| keys::same(bind, combo));
+            let about = match (taken, replaced) {
+                (Some(shortcut), _) => Some(format!(
+                    "Taken by “{}”, so it won't work; pick other keys",
+                    fragment::action(shortcut).0
+                )),
+                (None, Some((_, action))) => {
+                    Some(format!("Replaces {action} while this mode is on"))
+                }
+                _ => None,
+            };
+            let mut words = column![text(command.as_str()).size(13).font(style::mono())].spacing(3);
+            if let Some(about) = about {
+                let tint = if taken.is_some() {
+                    style::WARN
+                } else {
+                    style::FAINT
+                };
+                words = words.push(text(about).size(12).color(style::color(tint)));
+            }
+            keys.push(
+                row![
+                    container(keycaps(combo)).width(Length::Fixed(200.0)),
+                    words.width(Fill),
+                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::RemoveModeKey(k)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([10, 16])
+                .into(),
+            );
+        }
+        let capture: Element<'_, Message> = match (&self.key_combo, self.recording_mode_key) {
+            (_, true) => container(
+                text("Press the keys…")
+                    .size(13)
+                    .color(style::color(palette.accent)),
+            )
+            .padding([6, 12])
+            .style(style::pill(palette.accent_soft))
+            .into(),
+            (Some(combo), false) => button(keycaps(combo))
+                .padding(2)
+                .style(style::ghost(8.0))
+                .on_press(Message::RecordModeKey)
+                .into(),
+            (None, false) => button(text("Choose keys").size(13))
+                .padding([7, 14])
+                .style(style::secondary)
+                .on_press(Message::RecordModeKey)
+                .into(),
+        };
+        keys.push(
+            row![
+                container(capture).width(Length::Fixed(200.0)),
+                text_input(
+                    "command, like  steam  or  niri msg action fullscreen-window",
+                    &self.key_command
+                )
+                .on_input(Message::KeyCommand)
+                .on_submit(Message::AddModeKey)
+                .padding([8, 12])
+                .size(13)
+                .font(style::mono())
+                .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::primary(palette))
+                    .on_press_maybe(
+                        (self.key_combo.is_some() && !self.key_command.trim().is_empty())
+                            .then_some(Message::AddModeKey)
+                    ),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .padding([12, 16])
+            .into(),
+        );
+
+        let starts_here = self.config.start() == Some(index);
+        let last = self.config.modes.len() - 1;
+        let manage = row![
+            button(
+                row![
+                    icon(Icon::ArrowUp, 14.0, style::SOFT_TEXT),
+                    text("Earlier").size(13)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+            )
+            .padding([7, 12])
+            .style(style::secondary)
+            .on_press_maybe((index > 0).then_some(Message::MoveMode(-1))),
+            button(
+                row![
+                    icon(Icon::ArrowDown, 14.0, style::SOFT_TEXT),
+                    text("Later").size(13)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+            )
+            .padding([7, 12])
+            .style(style::secondary)
+            .on_press_maybe((index < last).then_some(Message::MoveMode(1))),
+            space::horizontal(),
+            button(
+                text(if self.armed {
+                    "Delete for good?"
+                } else {
+                    "Delete mode"
+                })
+                .size(13)
+            )
+            .padding([7, 14])
+            .style(move |theme, status| {
+                let mut style = style::danger(self.armed)(theme, status);
+                style.border.radius = 10.0.into();
+                style
+            })
+            .on_press(Message::RemoveMode),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+
+        column![
+            tabs.wrap().vertical_spacing(6),
             preview,
-            group("Wallpaper", vec![padded(wallpaper)]),
             group(
-                "Accent",
-                vec![padded(
-                    column![
-                        swatches,
-                        text("Auto picks a color that matches the wallpaper.")
-                            .size(12)
-                            .color(style::color(style::FAINT))
-                    ]
-                    .spacing(10)
-                )]
+                "Name and icon",
+                vec![
+                    padded(row![name, rename].spacing(8).align_y(Alignment::Center)),
+                    padded(icons),
+                ]
+            ),
+            group(
+                "Look",
+                vec![
+                    padded(self.wallpaper_picker(
+                        mode.wallpaper.as_deref(),
+                        true,
+                        mode_wallpaper,
+                        palette
+                    )),
+                    padded(accent_picker(
+                        mode.accent,
+                        auto_accent(self.config.wallpaper(Some(self.selected))),
+                        true,
+                        mode_accent,
+                        palette
+                    )),
+                ]
             ),
             group(
                 "Notifications",
                 vec![setting(
                     "Popups",
                     "Held ones wait behind the bell on the bar",
-                    rules(self.mode, current.notifications),
+                    rules(index, mode.notifications),
                 )]
             ),
             group("Open when this mode starts", vec![padded(apps)]),
-        ]
-        .spacing(22);
-        if self.mode == Mode::Play {
-            form = form.push(group(
-                "Performance",
+            group(
+                "Behaviour",
                 vec![
-                    fact(Icon::Zap, "Power profile switches to performance"),
-                    fact(Icon::Monitor, "Games drive the refresh rate (VRR)"),
-                    fact(Icon::Layers, "Animations and window shadows are off"),
-                ],
-            ));
+                    setting(
+                        "Performance",
+                        "Power profile to performance, games drive the refresh rate, effects off",
+                        switch(mode.performance, Message::Performance, palette),
+                    ),
+                    setting(
+                        "Keep the screen awake",
+                        "No idle lock, no screen off, no sleep while this mode is on",
+                        switch(mode.keep_awake, Message::KeepAwake, palette),
+                    ),
+                    setting(
+                        "Start in this mode",
+                        "Apolline switches to it when you log in",
+                        switch(starts_here, Message::StartHere, palette),
+                    ),
+                ]
+            ),
+            group("Keys only in this mode", keys),
+            padded(manage),
+        ]
+        .spacing(22)
+        .into()
+    }
+
+    fn templates(&self) -> Element<'_, Message> {
+        let card = |name: &'static str, template: ModeSettings, about: &'static str| {
+            let accent = match template.accent {
+                Some(Accent::Fixed(color)) => color,
+                _ => auto_accent(
+                    template
+                        .wallpaper
+                        .as_deref()
+                        .unwrap_or(&self.config.desktop.wallpaper),
+                ),
+            };
+            let palette = Palette::new(accent);
+            button(
+                column![
+                    container(icon(Icon::named(&template.icon), 20.0, palette.accent))
+                        .center(40)
+                        .style(style::pill(palette.accent_soft)),
+                    text(if name.is_empty() { "Empty" } else { name })
+                        .size(15)
+                        .font(style::semibold()),
+                    text(about).size(12).color(style::color(style::FAINT)),
+                ]
+                .spacing(8),
+            )
+            .width(Fill)
+            .padding(16)
+            .style(|theme, status| {
+                let mut style = style::secondary(theme, status);
+                style.border = Border {
+                    color: style::color(neutral::HAIRLINE),
+                    width: 1.0,
+                    radius: style::RADIUS_TILE.into(),
+                };
+                style
+            })
+            .on_press(Message::AddMode(name))
+        };
+        let about = |name: &str| match name {
+            "Work" => "Calm wallpaper, low-priority popups wait",
+            "Play" => "Performance, no popups, the screen stays awake",
+            "Evening" => "Night wallpaper, warm accent, everything gets through",
+            "Focus" => "Only urgent popups, a violet accent",
+            "Presentation" => "No popups and the screen never sleeps",
+            _ => "",
+        };
+        let mut cards: Vec<Element<'_, Message>> = TEMPLATES
+            .map(|name| card(name, ModeSettings::template(name), about(name)).into())
+            .into();
+        cards.push(card("", ModeSettings::blank(""), "Start from nothing").into());
+        let mut grid = Column::new().spacing(12);
+        let mut cards = cards.into_iter();
+        loop {
+            let chunk: Vec<Element<'_, Message>> = cards.by_ref().take(3).collect();
+            if chunk.is_empty() {
+                break;
+            }
+            grid = grid.push(Row::with_children(chunk).spacing(12));
         }
-        form.into()
+        let intro = if self.config.modes.is_empty() {
+            "A mode changes the wallpaper, accent, notifications, apps, performance and keys in one go. You don't need any; when you want one, start here."
+        } else {
+            "Pick a starting point. Everything in it can be changed afterwards."
+        };
+        let mut page = column![
+            text(intro).size(14).color(style::color(style::SOFT_TEXT)),
+            grid
+        ]
+        .spacing(18);
+        if !self.config.modes.is_empty() {
+            page = page.push(
+                button(text("Cancel").size(13))
+                    .padding([7, 14])
+                    .style(style::secondary)
+                    .on_press(Message::Adding(false)),
+            );
+        }
+        page.into()
+    }
+
+    fn wallpaper_picker<'a>(
+        &'a self,
+        current: Option<&str>,
+        inherit: bool,
+        on: fn(Option<String>) -> Message,
+        palette: Palette,
+    ) -> Element<'a, Message> {
+        let ring = move |on: bool| {
+            move |_: &Theme, _| button::Style {
+                background: None,
+                border: Border {
+                    color: style::color(if on {
+                        palette.accent
+                    } else {
+                        neutral::HAIRLINE
+                    }),
+                    width: if on { 2.0 } else { 1.0 },
+                    radius: 12.0.into(),
+                },
+                ..button::Style::default()
+            }
+        };
+        let mut walls = Row::new().spacing(12);
+        if inherit {
+            let picture: Element<'a, Message> = match self.thumb(&self.config.desktop.wallpaper) {
+                Some(handle) => stack![
+                    image(handle.clone())
+                        .width(Fill)
+                        .height(88)
+                        .content_fit(ContentFit::Cover)
+                        .border_radius(9.0)
+                        .opacity(0.45_f32),
+                    container(text("Desktop's").size(12).font(style::medium())).center(Fill)
+                ]
+                .height(88)
+                .into(),
+                None => container(text("Desktop's").size(12))
+                    .center_x(Fill)
+                    .center_y(88)
+                    .into(),
+            };
+            walls = walls.push(
+                button(picture)
+                    .width(Fill)
+                    .padding(3)
+                    .style(ring(current.is_none()))
+                    .on_press(on(None)),
+            );
+        }
+        for (name, _) in wallpaper::bundled() {
+            let Some(handle) = self.thumb(name) else {
+                continue;
+            };
+            walls = walls.push(
+                button(
+                    image(handle.clone())
+                        .width(Fill)
+                        .height(88)
+                        .content_fit(ContentFit::Cover)
+                        .border_radius(9.0),
+                )
+                .width(Fill)
+                .padding(3)
+                .style(ring(current == Some(*name)))
+                .on_press(on(Some((*name).to_owned()))),
+            );
+        }
+        let own = row![
+            text_input("~/Pictures/my-wallpaper.jpg", &self.wallpaper_draft)
+                .on_input(Message::WallpaperDraft)
+                .on_submit(Message::UseWallpaper)
+                .padding([8, 12])
+                .size(13)
+                .style(style::field(palette)),
+            button(text("Use").size(13))
+                .padding([8, 16])
+                .style(style::secondary)
+                .on_press(Message::UseWallpaper),
+        ]
+        .spacing(8);
+        let mut column = column![walls, own].spacing(14);
+        if let Some(name) = current.filter(|name| !is_bundled(name)) {
+            column = column.push(
+                row![
+                    icon(Icon::Image, 14.0, style::FAINT),
+                    text(format!("Using your file {name}"))
+                        .size(12)
+                        .color(style::color(style::FAINT)),
+                ]
+                .spacing(8),
+            );
+        }
+        column.into()
+    }
+
+    fn theme_card<'a>(&'a self, index: usize, theme: &'a Look, mine: bool) -> Element<'a, Message> {
+        let applied = self.config.desktop.theme.as_deref();
+        let accent = match theme.accent {
+            Accent::Fixed(color) => color,
+            Accent::Auto => auto_accent(&theme.wallpaper),
+        };
+        let look = Palette::new(accent);
+        let picture: Element<'a, Message> = match self.thumb(&theme.wallpaper) {
+            Some(handle) => image(handle.clone())
+                .width(Fill)
+                .height(132)
+                .content_fit(ContentFit::Cover)
+                .border_radius(10.0)
+                .into(),
+            None => container(space())
+                .width(Fill)
+                .height(132)
+                .style(|_| container::background(style::color(neutral::INK)))
+                .into(),
+        };
+        let bar = container(
+            row![
+                container(Space::new().width(14).height(4)).style(style::pill(look.accent)),
+                container(Space::new().width(4).height(4))
+                    .style(style::pill(neutral::TEXT.alpha(0.6))),
+                space::horizontal(),
+                container(Space::new().width(22).height(4))
+                    .style(style::pill(neutral::TEXT.alpha(0.7))),
+            ]
+            .spacing(4)
+            .align_y(Alignment::Center),
+        )
+        .padding([5, 8])
+        .width(Fill)
+        .style(move |_| {
+            let mut style = style::glass(theme.bar.opacity, theme.bar.floating)(&Theme::Dark);
+            if theme.bar.floating {
+                style.border.radius = 7.0.into();
+            }
+            style
+        });
+        let inset = if theme.bar.floating { 6.0 } else { 0.0 };
+        let window = container(space())
+            .width(Length::FillPortion(3))
+            .height(Fill)
+            .style(move |_| container::Style {
+                background: Some(Background::Color(style::color(
+                    Rgba::hex(0x15171b).alpha(theme.opacity.unwrap_or(1.0) * 0.95),
+                ))),
+                border: Border {
+                    color: style::color(if theme.layout.borders {
+                        look.accent
+                    } else {
+                        Rgba::hex(0).alpha(0.0)
+                    }),
+                    width: 1.0,
+                    radius: (f32::from(theme.layout.radius) * 0.5).into(),
+                },
+                ..container::Style::default()
+            });
+        let other = container(space())
+            .width(Length::FillPortion(2))
+            .height(Fill)
+            .style(move |_| container::Style {
+                background: Some(Background::Color(style::color(
+                    Rgba::hex(0x15171b).alpha(theme.inactive_opacity.unwrap_or(1.0) * 0.9),
+                ))),
+                border: Border {
+                    radius: (f32::from(theme.layout.radius) * 0.5).into(),
+                    ..Border::default()
+                },
+                ..container::Style::default()
+            });
+        let gap = f32::from(theme.layout.gaps) * 0.5;
+        let windows = row![window, other].spacing(gap).padding(gap.max(2.0));
+        let screen = if theme.bar.position == Edge::Top {
+            column![container(bar).padding(inset), windows]
+        } else {
+            column![windows, container(bar).padding(inset)]
+        };
+        let on = applied == Some(theme.name.as_str());
+        let mut caption = row![
+            container(Space::new().width(10).height(10)).style(style::pill(look.accent)),
+            text(theme.name.as_str()).size(14).font(style::semibold()),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center);
+        if let Some(author) = theme.author.as_ref().filter(|_| !on) {
+            caption = caption.push(
+                text(if mine {
+                    "yours".to_owned()
+                } else {
+                    author.clone()
+                })
+                .size(12)
+                .color(style::color(style::FAINT)),
+            );
+        }
+        caption = caption.push(space::horizontal());
+        if on {
+            caption = caption.push(
+                container(
+                    text("Applied")
+                        .size(11)
+                        .font(style::semibold())
+                        .color(style::color(look.on_accent)),
+                )
+                .padding([3, 9])
+                .style(style::pill(look.accent)),
+            );
+        }
+        button(
+            column![
+                stack![picture, container(screen).height(132)].height(132),
+                caption
+            ]
+            .spacing(10),
+        )
+        .width(Fill)
+        .padding(8)
+        .style(move |_: &iced::Theme, status| button::Style {
+            background: Some(Background::Color(style::color(match status {
+                button::Status::Hovered | button::Status::Pressed => style::FILL,
+                _ => style::SUNKEN,
+            }))),
+            text_color: style::color(neutral::TEXT),
+            border: Border {
+                color: style::color(if on { look.accent } else { neutral::HAIRLINE }),
+                width: if on { 2.0 } else { 1.0 },
+                radius: style::RADIUS_TILE.into(),
+            },
+            ..button::Style::default()
+        })
+        .on_press(Message::ApplyTheme(index))
+        .into()
+    }
+
+    fn themes(&self) -> Element<'_, Message> {
+        let palette = self.palette();
+        let mut gallery = Column::new().spacing(14);
+        let cards: Vec<Element<'_, Message>> = self
+            .themes
+            .iter()
+            .enumerate()
+            .map(|(index, (theme, file))| self.theme_card(index, theme, file.is_some()))
+            .collect();
+        let mut cards = cards.into_iter();
+        loop {
+            let chunk: Vec<Element<'_, Message>> = cards.by_ref().take(3).collect();
+            if chunk.is_empty() {
+                break;
+            }
+            let missing = 3 - chunk.len();
+            let mut line = Row::with_children(chunk).spacing(14);
+            for _ in 0..missing {
+                line = line.push(Space::new().width(Fill));
+            }
+            gallery = gallery.push(line);
+        }
+
+        let note: Element<'_, Message> = match &self.theme_note {
+            Some(Ok(line)) => text(line.as_str())
+                .size(12)
+                .color(style::color(style::GOOD))
+                .into(),
+            Some(Err(line)) => text(line.as_str())
+                .size(12)
+                .color(style::color(style::WARN))
+                .into(),
+            None => space().into(),
+        };
+        column![
+            gallery,
+            group(
+                "Make your own",
+                vec![
+                    setting(
+                        "Save my look",
+                        "Wallpaper, accent, corners, gaps, borders, shadows, opacity, animations and the bar",
+                        row![
+                            text_input("Name it", &self.theme_name)
+                                .on_input(Message::ThemeName)
+                                .on_submit(Message::SaveTheme)
+                                .padding([8, 12])
+                                .size(13)
+                                .width(180)
+                                .style(style::field(palette)),
+                            button(text("Save").size(13))
+                                .padding([8, 14])
+                                .style(style::primary(palette))
+                                .on_press_maybe(
+                                    (!self.theme_name.trim().is_empty()).then_some(Message::SaveTheme)
+                                ),
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                    ),
+                    setting(
+                        "Add someone's theme",
+                        "A .toml file like the ones in the themes folder",
+                        row![
+                            text_input("~/Downloads/look.toml", &self.theme_path)
+                                .on_input(Message::ThemePath)
+                                .on_submit(Message::ImportTheme)
+                                .padding([8, 12])
+                                .size(13)
+                                .width(220)
+                                .style(style::field(palette)),
+                            button(
+                                row![icon(Icon::Download, 14.0, neutral::TEXT), text("Add").size(13)]
+                                    .spacing(6)
+                                    .align_y(Alignment::Center)
+                            )
+                            .padding([8, 14])
+                            .style(style::secondary)
+                            .on_press_maybe(
+                                (!self.theme_path.trim().is_empty()).then_some(Message::ImportTheme)
+                            ),
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                    ),
+                    setting(
+                        "Themes folder",
+                        "Share a look by sending its file",
+                        button(
+                            row![icon(Icon::Folder, 14.0, neutral::TEXT), text("Open").size(13)]
+                                .spacing(6)
+                                .align_y(Alignment::Center)
+                        )
+                        .padding([8, 14])
+                        .style(style::secondary)
+                        .on_press(Message::OpenThemes),
+                    ),
+                ]
+                .into_iter()
+                .chain(self.theme_note.is_some().then(|| padded(note)))
+                .collect()
+            ),
+        ]
+        .spacing(22)
+        .into()
     }
 
     fn appearance(&self) -> Element<'_, Message> {
         let layout = self.config.layout;
         let palette = self.palette();
-        let preview = self.preview(self.mode, 200.0, {
+        let desktop = group(
+            "Desktop",
+            vec![
+                padded(self.wallpaper_picker(
+                    Some(self.config.desktop.wallpaper.as_str()),
+                    false,
+                    desktop_wallpaper,
+                    palette,
+                )),
+                padded(accent_picker(
+                    Some(self.config.desktop.accent),
+                    auto_accent(&self.config.desktop.wallpaper),
+                    false,
+                    desktop_accent,
+                    palette,
+                )),
+            ],
+        );
+        let preview = self.preview(&self.config.desktop.wallpaper, 200.0, {
             let pane = |wide: bool| {
                 let lines = column![
                     container(space())
@@ -1064,6 +2003,7 @@ impl Settings {
 
         column![
             preview,
+            desktop,
             group(
                 "Windows",
                 vec![
@@ -1094,13 +2034,287 @@ impl Settings {
         .into()
     }
 
+    fn windows(&self) -> Element<'_, Message> {
+        let palette = self.palette();
+        let windows = &self.config.windows;
+        let width = windows.width.unwrap_or(Width::Half);
+        let opacity = windows.opacity.unwrap_or(1.0);
+        let inactive = windows.inactive_opacity.unwrap_or(opacity);
+        let centered = windows.center == Some(Center::Always)
+            || (windows.center == Some(Center::Overflow) && width == Width::Full);
+
+        let pane = move |focused: bool, portion: u16| {
+            let alpha = if focused { opacity } else { inactive };
+            container(
+                column![
+                    container(space())
+                        .width(Length::FillPortion(3))
+                        .height(7)
+                        .style(style::pill(Rgba::hex(0xffffff).alpha(0.16 * alpha))),
+                    container(space())
+                        .width(Length::FillPortion(2))
+                        .height(5)
+                        .style(style::pill(Rgba::hex(0xffffff).alpha(0.08 * alpha))),
+                ]
+                .spacing(7),
+            )
+            .padding(12)
+            .width(Length::FillPortion(portion.max(1)))
+            .height(Fill)
+            .style(move |_| container::Style {
+                background: Some(Background::Color(style::color(
+                    Rgba::hex(0x15171b).alpha(alpha * 0.96),
+                ))),
+                border: Border {
+                    color: style::color(if focused {
+                        palette.accent
+                    } else {
+                        Rgba::hex(0xffffff).alpha(0.08)
+                    }),
+                    width: 1.0,
+                    radius: 10.0.into(),
+                },
+                ..container::Style::default()
+            })
+        };
+        let focused = (width.proportion() * 1000.0) as u16;
+        let rest = 1000 - focused.min(1000);
+        let strip: Element<'_, Message> = if width == Width::Full {
+            row![pane(true, 1000)].into()
+        } else if centered {
+            row![
+                pane(false, rest / 2),
+                pane(true, focused),
+                pane(false, rest / 2)
+            ]
+            .spacing(10)
+            .into()
+        } else {
+            row![
+                pane(false, rest / 3),
+                pane(true, focused),
+                pane(false, rest - rest / 3)
+            ]
+            .spacing(10)
+            .into()
+        };
+        let preview = self.preview(
+            &self.config.desktop.wallpaper,
+            170.0,
+            container(strip).padding(12).into(),
+        );
+
+        let presets = windows
+            .presets
+            .clone()
+            .unwrap_or_else(|| vec![Width::Third, Width::Half, Width::TwoThirds]);
+        let preset_chips = Row::with_children(Width::ALL.map(|w| {
+            button(text(w.key()).size(13))
+                .padding([6, 12])
+                .style(style::choice(presets.contains(&w)))
+                .on_press(Message::WinPreset(w))
+                .into()
+        }))
+        .spacing(4);
+
+        let speed = match windows.animations {
+            Some(s) if s <= 0.0 => 0,
+            Some(s) if s > 1.25 => 1,
+            Some(s) if s < 0.8 => 3,
+            _ => 2,
+        };
+        let percent = |value: f32| (value * 100.0).round() as u16;
+
+        let mut rules: Vec<Element<'_, Message>> = self
+            .config
+            .rules
+            .iter()
+            .enumerate()
+            .map(|(index, rule)| {
+                let mut facts = Vec::new();
+                match rule.floating {
+                    Some(true) => facts.push("floating".to_owned()),
+                    Some(false) => facts.push("tiled".to_owned()),
+                    None => {}
+                }
+                if let Some(width) = rule.width {
+                    facts.push(format!("{} wide", width.key()));
+                }
+                if let Some(opacity) = rule.opacity {
+                    facts.push(format!("{}% opaque", percent(opacity)));
+                }
+                row![
+                    icon(Icon::AppWindow, 15.0, style::FAINT),
+                    text(rule.app.as_str()).size(13).font(style::mono()),
+                    text(facts.join(" · "))
+                        .size(12)
+                        .color(style::color(style::FAINT))
+                        .width(Fill),
+                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::RemoveRule(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([10, 16])
+                .into()
+            })
+            .collect();
+        let width_choices = Row::with_children(Width::ALL.map(|w| {
+            button(text(w.key()).size(12))
+                .padding([5, 9])
+                .style(style::choice(self.rule.width == Some(w)))
+                .on_press(Message::RuleWidth(w))
+                .into()
+        }))
+        .spacing(2);
+        rules.push(
+            row![
+                text_input("app id, like pavucontrol", &self.rule.app)
+                    .on_input(Message::RuleApp)
+                    .on_submit(Message::AddRule)
+                    .padding([8, 12])
+                    .size(13)
+                    .font(style::mono())
+                    .width(230)
+                    .style(style::field(palette)),
+                row![
+                    text("Floating")
+                        .size(12)
+                        .color(style::color(style::SOFT_TEXT)),
+                    switch(
+                        self.rule.floating == Some(true),
+                        Message::RuleFloating,
+                        palette
+                    ),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+                width_choices,
+                space::horizontal(),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::primary(palette))
+                    .on_press_maybe((!self.rule.app.trim().is_empty()).then_some(Message::AddRule)),
+            ]
+            .spacing(14)
+            .align_y(Alignment::Center)
+            .padding([12, 16])
+            .into(),
+        );
+        rules.push(note(
+            "The app id is what niri calls the window; `niri msg windows` lists them.",
+        ));
+
+        column![
+            preview,
+            group(
+                "New windows",
+                vec![
+                    setting(
+                        "Open at",
+                        if windows.width.is_none() {
+                            "Not set here, so niri's own choice applies"
+                        } else {
+                            "Width of a new column"
+                        },
+                        segmented(
+                            Width::ALL.map(|w| (w, w.key(), None)),
+                            windows.width,
+                            Message::WinWidth,
+                        ),
+                    ),
+                    setting("Widths Mod+R cycles through", "", preset_chips),
+                ]
+            ),
+            group(
+                "Focus",
+                vec![
+                    setting(
+                        "Alt+Tab with previews",
+                        "Recent windows first; Alt+` stays in one app; arrows, Home and End move",
+                        switch(windows.switcher, Message::RecentWindows, palette),
+                    ),
+                    setting(
+                        "Center the focused window",
+                        "",
+                        segmented(
+                            [
+                                (Center::Never, "Never", None),
+                                (Center::Overflow, "When it doesn't fit", None),
+                                (Center::Always, "Always", None),
+                            ],
+                            windows.center,
+                            Message::WinCenter,
+                        ),
+                    ),
+                    setting(
+                        "Center a lone window",
+                        "One window on a workspace sits in the middle",
+                        switch(windows.center_lone, Message::CenterLone, palette),
+                    ),
+                    setting(
+                        "Focus follows the mouse",
+                        "Pointing at a window focuses it",
+                        switch(windows.focus_follows_mouse, Message::FocusFollows, palette),
+                    ),
+                    setting(
+                        "Pointer follows focus",
+                        "Switching windows with the keyboard moves the pointer along",
+                        switch(windows.warp_mouse, Message::WarpMouse, palette),
+                    ),
+                ]
+            ),
+            group(
+                "Look",
+                vec![
+                    setting(
+                        "Focused window",
+                        "How opaque the window you're in is",
+                        value_slider(30..=100, percent(opacity), Message::Opacity, "%", palette),
+                    ),
+                    setting(
+                        "Other windows",
+                        "Fade the rest to see what's in focus",
+                        value_slider(
+                            30..=100,
+                            percent(inactive),
+                            Message::InactiveOpacity,
+                            "%",
+                            palette
+                        ),
+                    ),
+                    setting(
+                        "Animations",
+                        "Performance modes always turn them off",
+                        segmented(
+                            [
+                                (0u8, "Off", None),
+                                (1, "Snappy", None),
+                                (2, "Normal", None),
+                                (3, "Relaxed", None),
+                            ],
+                            speed,
+                            Message::Animations,
+                        ),
+                    ),
+                ]
+            ),
+            group("Apps", rules),
+        ]
+        .spacing(22)
+        .into()
+    }
+
     fn bar(&self) -> Element<'_, Message> {
         let look = self.config.bar;
         let palette = self.palette();
-        let status = &self.samples[self.mode as usize];
-        let preview = self.preview(self.mode, 96.0, {
+        let status = &self.sample;
+        let preview = self.preview(&self.config.desktop.wallpaper, 96.0, {
             let bar = bar::view(bar::Bar {
-                mode: self.mode,
+                mode: None,
+                has_modes: !self.config.modes.is_empty(),
                 palette,
                 active: status.active,
                 status: status.clone(),
@@ -1110,15 +2324,59 @@ impl Settings {
                 held: 2,
                 do_not_disturb: self.config.alerts.do_not_disturb,
                 awake: false,
+                apps: &[],
                 now: chrono::Local::now(),
                 look,
                 panel_open: false,
             })
             .map(|_| Message::Noop);
-            container(bar).padding(10).into()
+            let inset = if look.floating { 10.0 } else { 0.0 };
+            container(bar)
+                .padding(inset)
+                .height(Fill)
+                .align_y(if look.position == Edge::Bottom {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                })
+                .into()
         });
         column![
             preview,
+            group(
+                "Place and look",
+                vec![
+                    setting(
+                        "Edge",
+                        "",
+                        segmented(
+                            [(Edge::Top, "Top", None), (Edge::Bottom, "Bottom", None)],
+                            look.position,
+                            Message::BarEdge,
+                        ),
+                    ),
+                    setting(
+                        "Style",
+                        "An island with a gap around it, or flush with the screen edge",
+                        segmented(
+                            [(true, "Floating", None), (false, "Edge to edge", None)],
+                            look.floating,
+                            Message::BarFloating,
+                        ),
+                    ),
+                    setting(
+                        "Glass",
+                        "How solid the bar is over the wallpaper",
+                        value_slider(
+                            0..=100,
+                            (look.opacity * 100.0).round() as u16,
+                            Message::BarOpacity,
+                            "%",
+                            palette,
+                        ),
+                    ),
+                ]
+            ),
             group(
                 "Workspaces",
                 vec![setting(
@@ -1165,7 +2423,7 @@ impl Settings {
     fn lock(&self) -> Element<'_, Message> {
         let lock = self.config.lock;
         let palette = self.palette();
-        let preview = self.preview(self.mode, 220.0, {
+        let preview = self.preview(&self.config.desktop.wallpaper, 220.0, {
             let pill = container(
                 row![
                     container(text("D").size(10).color(style::color(palette.on_accent)))
@@ -1265,11 +2523,7 @@ impl Settings {
                         "",
                         minutes(self.config.idle.suspend_after, Message::IdleSuspend, palette),
                     ),
-                    setting(
-                        "Stay awake in Play",
-                        "A gamepad doesn't count as touching the computer",
-                        switch(self.config.idle.awake_in_play, Message::AwakeInPlay, palette),
-                    ),
+                    note("Modes with “keep the screen awake” on skip all of this."),
                 ]
             ),
             group(
@@ -1309,16 +2563,25 @@ impl Settings {
                 .into(),
             None => space().into(),
         };
-        let per_mode: Vec<Element<'_, Message>> = Mode::ALL
-            .map(|mode| {
+        let mut per_mode: Vec<Element<'_, Message>> = self
+            .config
+            .modes
+            .iter()
+            .enumerate()
+            .map(|(index, mode)| {
                 setting_with_icon(
-                    Icon::of(mode),
-                    mode.name(),
+                    Icon::named(&mode.icon),
+                    mode.name.as_str(),
                     "",
-                    rules(mode, self.config.mode(mode).notifications),
+                    rules(index, mode.notifications),
                 )
             })
-            .into();
+            .collect();
+        if per_mode.is_empty() {
+            per_mode.push(note(
+                "Without a mode every notification shows. Each mode can hold some back.",
+            ));
+        }
         column![
             group(
                 "Everywhere",
@@ -1619,7 +2882,7 @@ impl Settings {
             .is_ok_and(|text| text.contains(&fragment::path().display().to_string()));
 
         let hero = row![
-            container(icon(Icon::of(self.config.mode), 28.0, palette.on_accent))
+            container(icon(Icon::Sparkles, 28.0, palette.on_accent))
                 .center(64)
                 .style(style::pill(palette.accent)),
             column![
@@ -1723,11 +2986,10 @@ impl Settings {
 
     fn preview<'a>(
         &'a self,
-        mode: Mode,
+        name: &str,
         height: f32,
         overlay: Element<'a, Message>,
     ) -> Element<'a, Message> {
-        let name = &self.config.mode(mode).wallpaper;
         let picture: Element<'a, Message> = match self.thumb(name) {
             Some(handle) => image(handle.clone())
                 .width(Fill)
@@ -1807,6 +3069,96 @@ impl Settings {
             })
             .into()
     }
+}
+
+fn accent_picker<'a>(
+    current: Option<Accent>,
+    auto: Rgba,
+    inherit: bool,
+    on: fn(Option<Accent>) -> Message,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let mut swatches = Row::new().spacing(10).align_y(Alignment::Center);
+    if inherit {
+        swatches = swatches.push(
+            button(text("Desktop's").size(12))
+                .padding([6, 14])
+                .style(style::choice(current.is_none()))
+                .on_press(on(None)),
+        );
+    }
+    swatches = swatches.push(
+        button(
+            row![
+                container(Space::new().width(10).height(10)).style(style::pill(auto)),
+                text("From wallpaper").size(12),
+            ]
+            .spacing(7)
+            .align_y(Alignment::Center),
+        )
+        .padding([6, 14])
+        .style(style::choice(current == Some(Accent::Auto)))
+        .on_press(on(Some(Accent::Auto))),
+    );
+    for color in ACCENTS {
+        let chosen = current == Some(Accent::Fixed(color));
+        swatches = swatches.push(
+            button(
+                container(if chosen {
+                    Element::from(icon(Icon::Check, 14.0, neutral::INK))
+                } else {
+                    space().into()
+                })
+                .center(26),
+            )
+            .padding(0)
+            .style(move |_: &Theme, status| button::Style {
+                background: Some(Background::Color(style::color(color))),
+                border: Border {
+                    color: style::color(neutral::TEXT),
+                    width: if chosen || status == button::Status::Hovered {
+                        2.0
+                    } else {
+                        0.0
+                    },
+                    radius: style::PILL.into(),
+                },
+                ..button::Style::default()
+            })
+            .on_press(on(Some(Accent::Fixed(color)))),
+        );
+    }
+    let (badge, tint) = if readable(palette) {
+        ("Readable on any wallpaper", style::GOOD)
+    } else {
+        ("Low contrast", style::WARN)
+    };
+    column![
+        swatches
+            .push(space::horizontal())
+            .push(text(badge).size(12).color(style::color(tint))),
+        text("The color is taken from the picture and lightened until it reads on glass.")
+            .size(12)
+            .color(style::color(style::FAINT)),
+    ]
+    .spacing(10)
+    .into()
+}
+
+fn desktop_wallpaper(name: Option<String>) -> Message {
+    Message::DesktopWallpaper(name.unwrap_or_else(|| "fog.jpg".into()))
+}
+
+fn desktop_accent(accent: Option<Accent>) -> Message {
+    Message::DesktopAccent(accent.unwrap_or(Accent::Auto))
+}
+
+fn mode_wallpaper(name: Option<String>) -> Message {
+    Message::ModeWallpaper(name)
+}
+
+fn mode_accent(accent: Option<Accent>) -> Message {
+    Message::ModeAccent(accent)
 }
 
 fn group<'a>(title: &'a str, rows: Vec<Element<'a, Message>>) -> Element<'a, Message> {
@@ -1953,8 +3305,8 @@ fn segmented<'a, T: Copy + PartialEq + 'a, const N: usize>(
     container(buttons).padding(3).style(style::segments).into()
 }
 
-fn rules<'a>(mode: Mode, current: Notifications) -> Element<'a, Message> {
-    let on = move |n| Message::Notifications(mode, n);
+fn rules<'a>(index: usize, current: Notifications) -> Element<'a, Message> {
+    let on = move |n| Message::Notifications(index, n);
     let buttons = Row::with_children(
         [
             (Notifications::All, "All"),
@@ -2192,9 +3544,32 @@ mod tests {
         std::fs::write(&path, include_str!("../../../assets/config.toml")).unwrap();
 
         let (mut settings, _) = Settings::open(path.clone(), None);
-        let _ = settings.update(Message::Mode(Mode::Evening));
-        let _ = settings.update(Message::Accent(Accent::Fixed(Rgba::hex(0xf472b6))));
-        let _ = settings.update(Message::Notifications(Mode::Evening, Notifications::Hold));
+        let _ = settings.update(Message::AddMode("Work"));
+        let _ = settings.update(Message::AddMode("Evening"));
+        assert_eq!(settings.selected, 1);
+        let _ = settings.update(Message::ModeAccent(Some(Accent::Fixed(Rgba::hex(
+            0xf472b6,
+        )))));
+        let _ = settings.update(Message::Notifications(1, Notifications::Hold));
+        let _ = settings.update(Message::ModeName("Night Owl".into()));
+        let _ = settings.update(Message::ModeNameDone);
+        let _ = settings.update(Message::StartHere(true));
+        let _ = settings.update(Message::RecordModeKey);
+        let _ = settings.update(Message::Key(keyboard::Event::KeyPressed {
+            key: keyboard::Key::Character("n".into()),
+            modified_key: keyboard::Key::Character("n".into()),
+            physical_key: keyboard::key::Physical::Unidentified(
+                keyboard::key::NativeCode::Unidentified,
+            ),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::LOGO,
+            text: None,
+            repeat: false,
+        }));
+        let _ = settings.update(Message::KeyCommand("foot -e btop".into()));
+        let _ = settings.update(Message::AddModeKey);
+        let _ = settings.update(Message::MoveMode(-1));
+        assert_eq!(settings.selected, 0);
         let _ = settings.update(Message::Draft("mpv --shuffle ~/Music".into()));
         let _ = settings.update(Message::Add);
         let _ = settings.update(Message::Draft("foot".into()));
@@ -2211,10 +3586,24 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let (config, problems) = Config::parse(&text);
         assert_eq!(problems, vec![]);
-        let evening = config.mode(Mode::Evening);
-        assert_eq!(evening.accent, Accent::Fixed(Rgba::hex(0xf472b6)));
+        let evening = &config.modes[0];
+        assert_eq!(evening.name, "Night Owl");
+        assert_eq!(evening.accent, Some(Accent::Fixed(Rgba::hex(0xf472b6))));
         assert_eq!(evening.notifications, Notifications::Hold);
         assert_eq!(evening.open, ["foot"]);
+        assert_eq!(
+            evening.keys,
+            [("Mod+N".to_owned(), "foot -e btop".to_owned())]
+        );
+        assert_eq!(config.start(), Some(0));
+        assert_eq!(config.modes[1].name, "Work");
+
+        let _ = settings.update(Message::RemoveMode);
+        let _ = settings.update(Message::RemoveMode);
+        let (config, problems) = Config::load(&path);
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.modes.len(), 1);
+        assert_eq!(config.start(), None, "deleting the start mode clears it");
         assert_eq!(config.layout.gaps, 14);
         assert_eq!(config.keyboard.layouts, ["ru"]);
         assert_eq!(config.keyboard.switch, Some(Switch::Caps));

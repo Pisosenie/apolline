@@ -62,6 +62,48 @@ impl Rgba {
     }
 }
 
+pub fn accent_of(rgba: &[u8]) -> Option<Rgba> {
+    let pixels = rgba.len() / 4;
+    let step = (pixels / 20_000).max(1);
+    let mut buckets = [[0.0f32; 4]; 24];
+    for &[r, g, b, _] in rgba.as_chunks::<4>().0.iter().step_by(step) {
+        let [r, g, b] = [r, g, b].map(|c| f32::from(c) / 255.0);
+        let max = r.max(g).max(b);
+        let delta = max - r.min(g).min(b);
+        if max < 0.2 || delta < 0.12 {
+            continue;
+        }
+        let hue = if max == r {
+            60.0 * ((g - b) / delta).rem_euclid(6.0)
+        } else if max == g {
+            60.0 * ((b - r) / delta + 2.0)
+        } else {
+            60.0 * ((r - g) / delta + 4.0)
+        };
+        let bucket = &mut buckets[(hue / 15.0) as usize % 24];
+        bucket[0] += delta;
+        bucket[1] += r * delta;
+        bucket[2] += g * delta;
+        bucket[3] += b * delta;
+    }
+    let [_, r, g, b] = buckets
+        .into_iter()
+        .max_by(|a, b| a[0].total_cmp(&b[0]))
+        .filter(|bucket| bucket[0] > 0.0)?;
+    let max = r.max(g).max(b);
+    let chroma = (1.0 - r.min(g).min(b) / max).max(0.01);
+    let scale = chroma.clamp(0.4, 0.65) / chroma;
+    let vivid = [r, g, b].map(|c| 1.0 - (1.0 - c / max) * scale);
+    let panel = crate::neutral::PANEL.over(Rgba::hex(0x808080));
+    (0..=20)
+        .map(|step| {
+            let white = step as f32 * 0.05;
+            let [r, g, b] = vivid.map(|c| ((c + (1.0 - c) * white) * 255.0).round() as u8);
+            Rgba { r, g, b, a: 1.0 }
+        })
+        .find(|accent| accent.contrast(panel) >= 4.5)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

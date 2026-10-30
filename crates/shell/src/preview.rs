@@ -1,20 +1,29 @@
 use std::path::PathBuf;
 
-use apolline_theme::{Mode, font, metrics};
+use apolline_theme::{font, metrics};
 use iced::widget::{container, stack};
 use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, window};
 
-use crate::shell::{Message, Overlay, Shell};
+use crate::shell::{Message, Shell};
 use crate::{fonts, shot};
 
-pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>, open: Option<Overlay>) -> iced::Result {
+pub fn run(
+    mode: Option<String>,
+    screenshot: Option<PathBuf>,
+    open: Option<Message>,
+) -> iced::Result {
     let app = iced::application(
         move || {
-            let (mut shell, load) = Shell::new(mode, true);
-            let load = Task::batch([load, shell.update(Message::Overlay(open))]);
+            let (mut shell, load) = Shell::new(mode.clone(), true);
+            let mut start = open.clone();
+            let load = match start.take_if(|_| screenshot.is_none()) {
+                Some(message) => Task::batch([load, shell.update(message)]),
+                None => load,
+            };
             let preview = Preview {
                 shell,
                 screenshot: screenshot.clone(),
+                start,
                 ticks: 0,
                 shooting: false,
             };
@@ -37,6 +46,7 @@ pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>, open: Option<Overlay
 struct Preview {
     shell: Shell,
     screenshot: Option<PathBuf>,
+    start: Option<Message>,
     ticks: u32,
     shooting: bool,
 }
@@ -46,7 +56,11 @@ impl Preview {
         match message {
             Message::Tick if self.screenshot.is_some() => {
                 self.ticks += 1;
-                if !self.shooting && self.ticks >= 2 && self.shell.is_ready() {
+                let ready = self.ticks >= 2 && self.shell.is_ready();
+                if ready && let Some(message) = self.start.take() {
+                    return self.shell.update(message);
+                }
+                if !self.shooting && ready {
                     self.shooting = true;
                     return window::latest()
                         .and_then(window::screenshot)
@@ -71,7 +85,25 @@ impl Preview {
             .width(Fill)
             .align_x(Alignment::End)
             .padding(Padding::new(12.0).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0));
-        let mut layers = stack![self.shell.wallpaper(), self.shell.bar(None), popups];
+        let bar =
+            container(self.shell.bar(None))
+                .height(Fill)
+                .align_y(if self.shell.bar_at_bottom() {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                });
+        let mut layers = stack![self.shell.wallpaper(), bar, popups];
+        if let Some(osd) = self.shell.osd_view() {
+            layers = layers.push(
+                container(osd)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::End)
+                    .padding(Padding::new(0.0).bottom(56.0)),
+            );
+        }
         if self.shell.overlay().is_some() {
             layers = layers.push(self.shell.overlay_view());
         }

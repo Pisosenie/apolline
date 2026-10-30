@@ -1,0 +1,22 @@
+[theme]
+name = "Glass"
+author = "Apolline"
+
+[desktop]
+wallpaper = "night.jpg"
+accent = "#c084fc"
+
+[layout]
+gaps = 16
+radius = 18
+borders = true
+shadows = true
+
+[windows]
+opacity = 0.96
+inactive_opacity = 0.8
+
+[bar]
+position = "top"
+floating = true
+opacity = 0.3

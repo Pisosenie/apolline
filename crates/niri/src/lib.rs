@@ -12,6 +12,8 @@ pub fn socket() -> Option<PathBuf> {
 pub enum Request {
     EventStream,
     FocusWorkspace(u64),
+    FocusWindow(u64),
+    CloseWindow(u64),
     Spawn(String),
 }
 
@@ -22,6 +24,8 @@ impl Request {
             Request::FocusWorkspace(id) => {
                 json!({ "Action": { "FocusWorkspace": { "reference": { "Id": id } } } })
             }
+            Request::FocusWindow(id) => json!({ "Action": { "FocusWindow": { "id": id } } }),
+            Request::CloseWindow(id) => json!({ "Action": { "CloseWindow": { "id": id } } }),
             Request::Spawn(command) => json!({ "Action": { "SpawnSh": { "command": command } } }),
         };
         format!("{value}\n")
@@ -51,6 +55,23 @@ pub struct Window {
     pub app_id: Option<String>,
     pub workspace_id: Option<u64>,
     pub is_focused: bool,
+    #[serde(default)]
+    pub is_floating: bool,
+    #[serde(default)]
+    pub layout: Option<WindowLayout>,
+    #[serde(default)]
+    pub focus_timestamp: Option<Timestamp>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct WindowLayout {
+    pub pos_in_scrolling_layout: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+pub struct Timestamp {
+    pub secs: u64,
+    pub nanos: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -61,14 +82,35 @@ pub struct KeyboardLayouts {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub enum Event {
-    WorkspacesChanged { workspaces: Vec<Workspace> },
-    WorkspaceActivated { id: u64, focused: bool },
-    WindowsChanged { windows: Vec<Window> },
-    WindowOpenedOrChanged { window: Window },
-    WindowClosed { id: u64 },
-    WindowFocusChanged { id: Option<u64> },
-    KeyboardLayoutsChanged { keyboard_layouts: KeyboardLayouts },
-    KeyboardLayoutSwitched { idx: u8 },
+    WorkspacesChanged {
+        workspaces: Vec<Workspace>,
+    },
+    WorkspaceActivated {
+        id: u64,
+        focused: bool,
+    },
+    WindowsChanged {
+        windows: Vec<Window>,
+    },
+    WindowOpenedOrChanged {
+        window: Window,
+    },
+    WindowClosed {
+        id: u64,
+    },
+    WindowFocusChanged {
+        id: Option<u64>,
+    },
+    WindowFocusTimestampChanged {
+        id: u64,
+        focus_timestamp: Option<Timestamp>,
+    },
+    KeyboardLayoutsChanged {
+        keyboard_layouts: KeyboardLayouts,
+    },
+    KeyboardLayoutSwitched {
+        idx: u8,
+    },
 }
 
 impl Event {
@@ -81,6 +123,7 @@ impl Event {
 pub struct State {
     workspaces: Vec<Workspace>,
     windows: BTreeMap<u64, Window>,
+    last: Option<u64>,
     layouts: Option<KeyboardLayouts>,
 }
 
@@ -104,21 +147,41 @@ impl State {
                 }
             }
             Event::WindowsChanged { windows } => {
+                self.last = windows
+                    .iter()
+                    .find(|w| w.is_focused)
+                    .map(|w| w.id)
+                    .or(self.last);
                 self.windows = windows.into_iter().map(|w| (w.id, w)).collect();
             }
             Event::WindowOpenedOrChanged { window } => {
                 if window.is_focused {
                     self.windows.values_mut().for_each(|w| w.is_focused = false);
+                    self.last = Some(window.id);
                 }
                 self.windows.insert(window.id, window);
             }
             Event::WindowClosed { id } => {
                 self.windows.remove(&id);
+                if self.last == Some(id) {
+                    self.last = None;
+                }
             }
             Event::WindowFocusChanged { id } => {
                 self.windows
                     .values_mut()
                     .for_each(|w| w.is_focused = Some(w.id) == id);
+                if id.is_some() {
+                    self.last = id;
+                }
+            }
+            Event::WindowFocusTimestampChanged {
+                id,
+                focus_timestamp,
+            } => {
+                if let Some(window) = self.windows.get_mut(&id) {
+                    window.focus_timestamp = focus_timestamp;
+                }
             }
             Event::KeyboardLayoutsChanged { keyboard_layouts } => {
                 self.layouts = Some(keyboard_layouts)
@@ -178,6 +241,34 @@ impl State {
             .any(|app| app.eq_ignore_ascii_case(name))
     }
 
+    pub fn recent(&self) -> Vec<&Window> {
+        let mut windows: Vec<&Window> = self.windows.values().collect();
+        windows.sort_by_key(|w| {
+            (
+                std::cmp::Reverse(Some(w.id) == self.last),
+                std::cmp::Reverse(w.focus_timestamp),
+            )
+        });
+        windows
+    }
+
+    pub fn windows_on(&self, workspace: u64) -> Vec<&Window> {
+        let mut windows: Vec<&Window> = self
+            .windows
+            .values()
+            .filter(|w| w.workspace_id == Some(workspace))
+            .collect();
+        windows.sort_by_key(|w| {
+            let place = w.layout.as_ref().and_then(|l| l.pos_in_scrolling_layout);
+            (
+                w.is_floating,
+                place.unwrap_or((usize::MAX, usize::MAX)),
+                w.id,
+            )
+        });
+        windows
+    }
+
     pub fn focused_window(&self) -> Option<&Window> {
         self.windows.values().find(|w| w.is_focused)
     }
@@ -194,6 +285,50 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_windows_follow_focus_and_bar_order_follows_columns() {
+        let mut state = State::default();
+        let window = |id: u64, column: usize, secs: u64, focused: bool| {
+            format!(
+                r#"{{"id":{id},"title":"w{id}","app_id":"foot","workspace_id":1,"is_focused":{focused},"layout":{{"pos_in_scrolling_layout":[{column},1]}},"focus_timestamp":{{"secs":{secs},"nanos":0}}}}"#
+            )
+        };
+        let all = format!(
+            r#"{{"WindowsChanged":{{"windows":[{},{},{}]}}}}"#,
+            window(1, 3, 10, false),
+            window(2, 1, 30, true),
+            window(3, 2, 20, false)
+        );
+        state.apply(Event::parse(&all).unwrap());
+        let ids = |list: Vec<&Window>| list.iter().map(|w| w.id).collect::<Vec<_>>();
+        assert_eq!(ids(state.recent()), [2, 3, 1]);
+        assert_eq!(ids(state.windows_on(1)), [2, 3, 1]);
+        state.apply(Event::parse(r#"{"WindowFocusChanged":{"id":1}}"#).unwrap());
+        assert_eq!(
+            ids(state.recent()),
+            [1, 2, 3],
+            "focused first, then niri's own order"
+        );
+        state.apply(
+            Event::parse(r#"{"WindowFocusTimestampChanged":{"id":1,"focus_timestamp":{"secs":40,"nanos":0}}}"#)
+                .unwrap(),
+        );
+        state.apply(Event::parse(r#"{"WindowFocusChanged":{"id":3}}"#).unwrap());
+        assert_eq!(ids(state.recent()), [3, 1, 2]);
+        state.apply(Event::parse(r#"{"WindowFocusChanged":{"id":null}}"#).unwrap());
+        assert_eq!(
+            ids(state.recent()),
+            [3, 1, 2],
+            "an overlay taking the keyboard changes nothing"
+        );
+        state.apply(Event::parse(r#"{"WindowClosed":{"id":2}}"#).unwrap());
+        assert_eq!(ids(state.recent()), [3, 1]);
+        assert_eq!(
+            Request::FocusWindow(3).line(),
+            "{\"Action\":{\"FocusWindow\":{\"id\":3}}}\n"
+        );
+    }
 
     fn replay(lines: &str) -> State {
         let mut state = State::default();

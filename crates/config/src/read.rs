@@ -1,28 +1,25 @@
 use std::ops::{Range, RangeInclusive};
 
-use apolline_theme::{Mode, Rgba};
+use apolline_theme::Rgba;
 use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Bar, Config, Diagnostic, Idle, Keyboard, Layout, Lock, ModeSettings, Mouse,
-    Notifications, Shortcut, Shortcuts, Switch, Touchpad, Workspaces,
+    Accent, Alerts, Bar, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard, Layout, Lock,
+    ModeSettings, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch, Touchpad, Width,
+    Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
 type Value<'i> = Spanned<DeValue<'i>>;
 
-const MODES: [(&str, Mode); 3] = [
-    ("work", Mode::Work),
-    ("play", Mode::Play),
-    ("evening", Mode::Evening),
-];
-
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 11] = [
+const SECTIONS: [&str; 15] = [
     "general",
+    "theme",
+    "desktop",
     "layout",
     "bar",
     "keyboard",
@@ -32,7 +29,34 @@ const SECTIONS: [&str; 11] = [
     "shortcuts",
     "lock",
     "idle",
+    "windows",
+    "rule",
     "mode",
+];
+
+const MODE_OPTIONS: [&str; 9] = [
+    "name",
+    "icon",
+    "wallpaper",
+    "accent",
+    "notifications",
+    "open",
+    "performance",
+    "keep_awake",
+    "keys",
+];
+
+const WINDOW_OPTIONS: [&str; 10] = [
+    "width",
+    "presets",
+    "center",
+    "center_lone",
+    "focus_follows_mouse",
+    "warp_mouse",
+    "opacity",
+    "inactive_opacity",
+    "animations",
+    "switcher",
 ];
 
 const NOTIFICATIONS: [(&str, Notifications); 3] = [
@@ -46,6 +70,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
     let mut reader = Reader {
         src,
         diagnostics: Vec::new(),
+        start: None,
     };
     for error in &errors {
         let line = error.span().map_or(0, |span| reader.line(span));
@@ -55,6 +80,20 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
 
     let mut config = Config::default();
     reader.root(doc.get_ref(), &mut config);
+    if let (Some(key), Some(line)) = (config.mode.clone(), reader.start)
+        && config.find(&key).is_none()
+    {
+        let names: Vec<&str> = config.modes.iter().map(|m| m.name.as_str()).collect();
+        let hint = if names.is_empty() {
+            "there are no modes yet; add a [[mode]] or leave mode empty".to_owned()
+        } else {
+            format!("modes you have: {}", names.join(", "))
+        };
+        reader
+            .diagnostics
+            .push(Diagnostic::new(line, format!("there is no mode called “{key}”")).hint(hint));
+        config.mode = None;
+    }
     reader.diagnostics.sort_by_key(|d| d.line);
     (config, reader.diagnostics)
 }
@@ -62,6 +101,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
 struct Reader<'s> {
     src: &'s str,
     diagnostics: Vec<Diagnostic>,
+    start: Option<usize>,
 }
 
 impl Reader<'_> {
@@ -118,11 +158,32 @@ impl Reader<'_> {
                         self.idle(t, &mut config.idle)
                     }
                 }
-                "mode" => {
+                "desktop" => {
                     if let Some(t) = self.section(key, value) {
-                        self.modes(t, config)
+                        self.desktop(t, &mut config.desktop)
                     }
                 }
+                "theme" => {
+                    if let Some(t) = self.section(key, value) {
+                        let mut name = None;
+                        let mut author = None;
+                        for (key, value) in t.iter() {
+                            match key.get_ref().as_ref() {
+                                "name" => name = self.string(key, value).map(str::to_owned),
+                                "author" => author = self.string(key, value).map(str::to_owned),
+                                _ => self.unknown(key, "option", &["name", "author"]),
+                            }
+                        }
+                        config.theme = name.map(|name| (name, author));
+                    }
+                }
+                "windows" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.windows(t, &mut config.windows)
+                    }
+                }
+                "rule" => self.rules(key, value, config),
+                "mode" => self.modes(key, value, config),
                 _ => self.unknown(key, "section", &SECTIONS),
             }
         }
@@ -132,8 +193,9 @@ impl Reader<'_> {
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
                 "mode" => {
-                    if let Some(mode) = self.choice(key, value, &MODES) {
-                        config.mode = mode
+                    if let Some(name) = self.string(key, value) {
+                        config.mode = (!name.trim().is_empty()).then(|| slug(name));
+                        self.start = Some(self.line(value.span()));
                     }
                 }
                 _ => self.unknown(key, "option", &["mode"]),
@@ -192,10 +254,34 @@ impl Reader<'_> {
                         bar.battery_percent = v
                     }
                 }
+                "position" => {
+                    let edges = [("top", Edge::Top), ("bottom", Edge::Bottom)];
+                    if let Some(v) = self.choice(key, value, &edges) {
+                        bar.position = v
+                    }
+                }
+                "floating" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.floating = v
+                    }
+                }
+                "opacity" => {
+                    if let Some(v) = self.fraction(key, value, 0.0..=1.0) {
+                        bar.opacity = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
-                    &["workspaces", "seconds", "date", "battery_percent"],
+                    &[
+                        "workspaces",
+                        "seconds",
+                        "date",
+                        "battery_percent",
+                        "position",
+                        "floating",
+                        "opacity",
+                    ],
                 ),
             }
         }
@@ -302,13 +388,7 @@ impl Reader<'_> {
             let Some(combo) = self.string(key, value) else {
                 continue;
             };
-            let valid = !combo.is_empty()
-                && !combo.starts_with('+')
-                && !combo.ends_with('+')
-                && combo
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '_');
-            if valid {
+            if combo_is_valid(combo) {
                 *shortcuts.get_mut(shortcut) = combo.to_owned();
             } else {
                 self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);
@@ -352,20 +432,10 @@ impl Reader<'_> {
                         idle.suspend_after = v
                     }
                 }
-                "awake_in_play" => {
-                    if let Some(v) = self.boolean(key, value) {
-                        idle.awake_in_play = v
-                    }
-                }
                 _ => self.unknown(
                     key,
                     "option",
-                    &[
-                        "lock_after",
-                        "screen_off_after",
-                        "suspend_after",
-                        "awake_in_play",
-                    ],
+                    &["lock_after", "screen_off_after", "suspend_after"],
                 ),
             }
         }
@@ -389,30 +459,213 @@ impl Reader<'_> {
         }
     }
 
-    fn modes(&mut self, table: &DeTable, config: &mut Config) {
+    fn windows(&mut self, table: &DeTable, windows: &mut Windows) {
+        let widths = Width::ALL.map(|w| (w.key(), w));
+        let centers = Center::ALL.map(|c| (c.key(), c));
         for (key, value) in table.iter() {
-            match Mode::from_key(key.get_ref()) {
-                Some(mode) => {
-                    if let Some(t) = self.section(key, value) {
-                        self.mode(t, config.mode_mut(mode))
+            match key.get_ref().as_ref() {
+                "width" => windows.width = self.choice(key, value, &widths).or(windows.width),
+                "presets" => {
+                    if let Some(names) = self.strings(key, value) {
+                        let found: Vec<Width> = names
+                            .iter()
+                            .filter_map(|n| widths.iter().find(|(k, _)| k == n).map(|(_, w)| *w))
+                            .collect();
+                        if found.len() == names.len() && !found.is_empty() {
+                            windows.presets = Some(found);
+                        } else {
+                            self.wrong::<()>(key, value, r#"a list like ["1/3", "1/2", "2/3"]"#);
+                        }
                     }
                 }
-                None => self.unknown(key, "mode", &["work", "play", "evening"]),
+                "center" => windows.center = self.choice(key, value, &centers).or(windows.center),
+                "center_lone" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        windows.center_lone = v
+                    }
+                }
+                "focus_follows_mouse" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        windows.focus_follows_mouse = v
+                    }
+                }
+                "warp_mouse" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        windows.warp_mouse = v
+                    }
+                }
+                "opacity" => {
+                    windows.opacity = self.fraction(key, value, 0.2..=1.0).or(windows.opacity)
+                }
+                "inactive_opacity" => {
+                    windows.inactive_opacity = self
+                        .fraction(key, value, 0.2..=1.0)
+                        .or(windows.inactive_opacity)
+                }
+                "switcher" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        windows.switcher = v
+                    }
+                }
+                "animations" => {
+                    windows.animations = self.fraction(key, value, 0.0..=4.0).or(windows.animations)
+                }
+                _ => self.unknown(key, "option", &WINDOW_OPTIONS),
             }
         }
+    }
+
+    fn rules(&mut self, key: &Key, value: &Value, config: &mut Config) {
+        let DeValue::Array(items) = value.get_ref() else {
+            self.wrong::<()>(key, value, "a list of [[rule]] sections");
+            return;
+        };
+        let widths = Width::ALL.map(|w| (w.key(), w));
+        for item in items {
+            let DeValue::Table(table) = item.get_ref() else {
+                continue;
+            };
+            let mut rule = Rule {
+                app: String::new(),
+                floating: None,
+                width: None,
+                opacity: None,
+            };
+            for (key, value) in table.iter() {
+                match key.get_ref().as_ref() {
+                    "app" => {
+                        if let Some(v) = self.string(key, value) {
+                            rule.app = v.trim().to_owned()
+                        }
+                    }
+                    "floating" => rule.floating = self.boolean(key, value),
+                    "width" => rule.width = self.choice(key, value, &widths),
+                    "opacity" => rule.opacity = self.fraction(key, value, 0.2..=1.0),
+                    _ => self.unknown(key, "option", &["app", "floating", "width", "opacity"]),
+                }
+            }
+            if rule.app.is_empty() {
+                self.diagnostics.push(
+                    Diagnostic::new(self.line(item.span()), "a rule needs an app")
+                        .hint("add app = \"pavucontrol\", the app id niri shows"),
+                );
+            } else {
+                config.rules.push(rule);
+            }
+        }
+    }
+
+    fn desktop(&mut self, table: &DeTable, desktop: &mut Desktop) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "wallpaper" => {
+                    if let Some(v) = self.string(key, value) {
+                        desktop.wallpaper = v.to_owned()
+                    }
+                }
+                "accent" => {
+                    if let Some(v) = self.accent(key, value) {
+                        desktop.accent = v
+                    }
+                }
+                "theme" => {
+                    if let Some(v) = self.string(key, value) {
+                        desktop.theme = Some(v.to_owned())
+                    }
+                }
+                _ => self.unknown(key, "option", &["wallpaper", "accent", "theme"]),
+            }
+        }
+    }
+
+    fn modes(&mut self, key: &Key, value: &Value, config: &mut Config) {
+        match value.get_ref() {
+            DeValue::Array(items) => {
+                for item in items {
+                    let DeValue::Table(table) = item.get_ref() else {
+                        self.wrong::<()>(key, item, "a [[mode]] section");
+                        continue;
+                    };
+                    let mut mode = ModeSettings::blank("");
+                    self.mode(table, &mut mode);
+                    if mode.name.trim().is_empty() {
+                        self.diagnostics.push(
+                            Diagnostic::new(self.line(item.span()), "a mode needs a name")
+                                .hint("add name = \"Work\" or any other name"),
+                        );
+                        continue;
+                    }
+                    self.add(config, mode, item.span());
+                }
+            }
+            DeValue::Table(table) => {
+                let mut entries: Vec<_> = table.iter().collect();
+                entries.sort_by_key(|(name, _)| name.span().start);
+                for (name, value) in entries {
+                    if let Some(t) = self.section(name, value) {
+                        let mut title = name.get_ref().to_string();
+                        if let Some(first) = title.get_mut(..1) {
+                            first.make_ascii_uppercase();
+                        }
+                        let mut mode = ModeSettings::template(&title);
+                        self.mode(t, &mut mode);
+                        self.add(config, mode, value.span());
+                    }
+                }
+            }
+            _ => {
+                self.wrong::<()>(key, value, "a list of [[mode]] sections");
+            }
+        }
+    }
+
+    fn add(&mut self, config: &mut Config, mode: ModeSettings, span: Range<usize>) {
+        if config.find(&mode.name).is_some() {
+            let message = format!("two modes are called “{}”", mode.name.trim());
+            self.diagnostics.push(
+                Diagnostic::new(self.line(span), message).hint("give each mode its own name"),
+            );
+            return;
+        }
+        config.modes.push(mode);
     }
 
     fn mode(&mut self, table: &DeTable, settings: &mut ModeSettings) {
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
+                "name" => {
+                    if let Some(v) = self.string(key, value) {
+                        settings.name = v.trim().to_owned()
+                    }
+                }
+                "icon" => {
+                    if let Some(v) = self.string(key, value) {
+                        settings.icon = v.to_owned()
+                    }
+                }
                 "wallpaper" => {
                     if let Some(v) = self.string(key, value) {
-                        settings.wallpaper = v.to_owned()
+                        settings.wallpaper = Some(v.to_owned())
                     }
                 }
                 "accent" => {
                     if let Some(v) = self.accent(key, value) {
-                        settings.accent = v
+                        settings.accent = Some(v)
+                    }
+                }
+                "performance" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        settings.performance = v
+                    }
+                }
+                "keep_awake" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        settings.keep_awake = v
+                    }
+                }
+                "keys" => {
+                    if let Some(v) = self.keys(key, value) {
+                        settings.keys = v
                     }
                 }
                 "notifications" => {
@@ -425,11 +678,7 @@ impl Reader<'_> {
                         settings.open = v
                     }
                 }
-                _ => self.unknown(
-                    key,
-                    "option",
-                    &["wallpaper", "accent", "notifications", "open"],
-                ),
+                _ => self.unknown(key, "option", &MODE_OPTIONS),
             }
         }
     }
@@ -464,6 +713,46 @@ impl Reader<'_> {
         match parsed {
             Some(n) if (i64::from(low)..=i64::from(high)).contains(&n) => Some(n as u16),
             _ => self.wrong(key, value, &format!("a whole number from {low} to {high}")),
+        }
+    }
+
+    fn keys(&mut self, key: &Key, value: &Value) -> Option<Vec<(String, String)>> {
+        let DeValue::Table(table) = value.get_ref() else {
+            return self.wrong(key, value, r#"keys like { "Mod+T" = "foot" }"#);
+        };
+        let mut keys = Vec::new();
+        for (combo, command) in table.iter() {
+            let Some(command) = self.string(combo, command) else {
+                continue;
+            };
+            if combo_is_valid(combo.get_ref()) {
+                keys.push((combo.get_ref().to_string(), command.to_owned()));
+            } else {
+                self.diagnostics.push(
+                    Diagnostic::new(
+                        self.line(combo.span()),
+                        format!("“{}” is not a key combination", combo.get_ref()),
+                    )
+                    .hint("write it like Mod+T or Mod+Shift+Return"),
+                );
+            }
+        }
+        Some(keys)
+    }
+
+    fn fraction(&mut self, key: &Key, value: &Value, range: RangeInclusive<f32>) -> Option<f32> {
+        let parsed = match value.get_ref() {
+            DeValue::Float(f) => f.as_str().parse::<f32>().ok(),
+            DeValue::Integer(n) => n.as_str().parse::<f32>().ok(),
+            _ => None,
+        };
+        match parsed {
+            Some(v) if range.contains(&v) => Some(v),
+            _ => self.wrong(
+                key,
+                value,
+                &format!("a number from {} to {}", range.start(), range.end()),
+            ),
         }
     }
 
@@ -562,6 +851,15 @@ impl Reader<'_> {
             .count()
             + 1
     }
+}
+
+fn combo_is_valid(combo: &str) -> bool {
+    !combo.is_empty()
+        && !combo.starts_with('+')
+        && !combo.ends_with('+')
+        && combo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '_')
 }
 
 fn suggest<'a>(input: &str, known: &[&'a str]) -> Option<&'a str> {

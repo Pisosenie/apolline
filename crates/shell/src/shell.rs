@@ -1,5 +1,6 @@
-use apolline_config::{Config, Editor, Notifications};
-use apolline_theme::{Mode, metrics, neutral};
+use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications};
+use apolline_theme::{metrics, neutral};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -10,15 +11,19 @@ use iced::{ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::apps::{self, App};
 use crate::bar::{self, Bar};
+use crate::clipboard::{self, Clip};
+use crate::clips::Picker;
 use crate::control::{self, Command, Shared, me};
-use crate::controls::{self, Change, Controls};
+use crate::controls::{self, Change, Controls, Nudge, Osd};
 use crate::fragment::{self, Fragment};
 use crate::idle::{self, Stage};
+use crate::keymap::{self, Entry};
 use crate::launcher::{Launcher, Target};
 use crate::logind;
 use crate::media::{self, Action, Track};
 use crate::niri;
 use crate::notify::{self, Closed, Notification};
+use crate::osd;
 use crate::panel::{self, Panel, Power};
 use crate::popup;
 use crate::power::{self, Battery};
@@ -34,13 +39,13 @@ const QUIET_AFTER_TOUCH: Duration = Duration::from_millis(1500);
 pub enum Message {
     Tick,
     Key(keyboard::Event, bool),
-    Mode(Mode),
+    Mode(Option<usize>),
     Workspace(usize, Option<u64>),
     Captured(window::Screenshot),
     Niri(apolline_niri::Event),
     NiriReply(Result<(), String>),
     Control(Command),
-    Wallpaper(Mode, Result<image::Handle, String>),
+    Wallpaper(String, Result<image::Handle, String>),
     Battery(Option<Battery>),
     Media(Option<Track>),
     Boosted(Option<String>),
@@ -51,9 +56,20 @@ pub enum Message {
     ClearAll,
     Idle(Stage, bool),
     KeepAwake(bool),
+    Osd(Option<Osd>),
+    OsdDone(u64),
+    Clip(Clip),
+    FocusWindow(u64),
+    CloseWindow(u64),
+    ClipQuery(String),
+    ClipCopy(Option<usize>),
+    ClipPin(usize),
+    ClipRemove(usize),
+    KeysQuery(String),
     Overlay(Option<Overlay>),
     Opened,
-    Thumb(Mode, Option<image::Handle>),
+    Thumb(String, Option<image::Handle>),
+    SettingsPage(&'static str),
     Apps(Vec<App>),
     Query(String),
     Submit,
@@ -75,6 +91,8 @@ pub enum Overlay {
     Switcher,
     Launcher,
     Panel,
+    Clipboard,
+    Keys,
 }
 
 #[derive(Default)]
@@ -88,7 +106,7 @@ pub struct Shell {
     config_path: PathBuf,
     config_stamp: Option<SystemTime>,
     demo: bool,
-    mode: Mode,
+    mode: Option<usize>,
     status: Status,
     niri: Option<apolline_niri::State>,
     outputs: Vec<String>,
@@ -98,30 +116,39 @@ pub struct Shell {
     held: Vec<Notification>,
     history: Vec<Notification>,
     awake: bool,
+    osd: Option<(Osd, u64)>,
+    clips: Vec<Clip>,
+    picker: Picker,
+    keymap: Vec<Entry>,
+    keys_query: String,
+    apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
     controls: Controls,
     touched: Option<Instant>,
     power_menu: bool,
     armed: Option<Power>,
-    thumbs: [Option<image::Handle>; 3],
+    thumbs: HashMap<String, image::Handle>,
     workspace: usize,
-    wallpaper: Option<(Mode, image::Handle)>,
+    wallpaper: Option<(String, image::Handle)>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
 }
 
 impl Shell {
-    pub fn new(mode: Option<Mode>, demo: bool) -> (Self, Task<Message>) {
+    pub fn new(mode: Option<String>, demo: bool) -> (Self, Task<Message>) {
         let config_path = apolline_config::default_path();
         let (config, diagnostics) = Config::load(&config_path);
 
-        let mode = mode.unwrap_or(config.mode);
+        let mode = match mode {
+            Some(name) => config.find(&name),
+            None => config.start(),
+        };
         let niri = niri::connected().then(apolline_niri::State::default);
         let sample = demo && niri.is_none();
         let status = if sample {
-            Status::sample(mode)
+            Status::sample()
         } else {
             Status::default()
         };
@@ -140,6 +167,16 @@ impl Shell {
             held: Vec::new(),
             history: Vec::new(),
             awake: false,
+            osd: None,
+            clips: if sample {
+                clipboard::sample()
+            } else {
+                Vec::new()
+            },
+            picker: Picker::default(),
+            keymap: Vec::new(),
+            keys_query: String::new(),
+            apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
             controls: if sample {
@@ -150,7 +187,7 @@ impl Shell {
             touched: None,
             power_menu: false,
             armed: None,
-            thumbs: [None, None, None],
+            thumbs: HashMap::new(),
             config,
             wallpaper: None,
             ticks: 0,
@@ -159,39 +196,63 @@ impl Shell {
         };
         shell.report(&diagnostics);
         fragment::sync(&shell.look());
+        shell.launcher.set_modes(shell.mode_names());
         let load = Task::batch([
             shell.load_wallpaper(),
-            shell.load_thumbs(&Mode::ALL),
+            shell.load_thumbs(),
             shell.read_controls(),
+            Task::perform(apps::scan(), Message::Apps),
         ]);
         (shell, load)
     }
 
     fn reload_config(&mut self) -> Task<Message> {
         let (config, diagnostics) = Config::load(&self.config_path);
-        let moved: Vec<Mode> = Mode::ALL
-            .into_iter()
-            .filter(|&m| config.mode(m).wallpaper != self.config.mode(m).wallpaper)
-            .collect();
+        let key = self.current().map(ModeSettings::key);
+        let before = self.config.wallpaper(self.mode).to_owned();
         self.config = config;
+        self.mode = key.and_then(|key| self.config.find(&key));
+        self.launcher.set_modes(self.mode_names());
         self.report(&diagnostics);
         fragment::sync(&self.look());
         self.release_held();
-        let wallpaper = if moved.contains(&self.mode) {
+        let wallpaper = if self.config.wallpaper(self.mode) != before {
             self.load_wallpaper()
         } else {
             Task::none()
         };
-        Task::batch([wallpaper, self.load_thumbs(&moved)])
+        Task::batch([wallpaper, self.load_thumbs()])
     }
 
-    fn load_thumbs(&self, modes: &[Mode]) -> Task<Message> {
-        Task::batch(modes.iter().map(|&mode| {
-            let source = wallpaper::resolve(&self.config.mode(mode).wallpaper);
-            Task::perform(wallpaper::thumbnail(source), move |thumb| {
-                Message::Thumb(mode, thumb)
-            })
-        }))
+    fn current(&self) -> Option<&ModeSettings> {
+        self.mode.and_then(|i| self.config.modes.get(i))
+    }
+
+    fn mode_names(&self) -> Vec<(String, String)> {
+        self.config
+            .modes
+            .iter()
+            .map(|m| (m.name.clone(), m.icon.clone()))
+            .collect()
+    }
+
+    fn load_thumbs(&self) -> Task<Message> {
+        let mut names: Vec<String> = (0..self.config.modes.len())
+            .map(|i| self.config.wallpaper(Some(i)).to_owned())
+            .collect();
+        names.push(self.config.desktop.wallpaper.clone());
+        names.sort();
+        names.dedup();
+        Task::batch(
+            names
+                .into_iter()
+                .filter(|name| !self.thumbs.contains_key(name))
+                .map(|name| {
+                    Task::perform(wallpaper::thumbnail(name.clone()), move |thumb| {
+                        Message::Thumb(name.clone(), thumb)
+                    })
+                }),
+        )
     }
 
     fn report(&mut self, diagnostics: &[apolline_config::Diagnostic]) {
@@ -211,7 +272,7 @@ impl Shell {
     pub fn is_ready(&self) -> bool {
         self.wallpaper
             .as_ref()
-            .is_some_and(|(mode, _)| *mode == self.mode)
+            .is_some_and(|(name, _)| name == self.config.wallpaper(self.mode))
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -245,22 +306,102 @@ impl Shell {
             Message::Control(Command::Switcher) => return self.toggle(Overlay::Switcher),
             Message::Control(Command::Launcher) => return self.toggle(Overlay::Launcher),
             Message::Control(Command::Panel) => return self.toggle(Overlay::Panel),
+            Message::Control(Command::Clipboard) => return self.toggle(Overlay::Clipboard),
+            Message::Control(Command::Keys) => return self.toggle(Overlay::Keys),
+            Message::KeysQuery(query) => self.keys_query = query,
+            Message::FocusWindow(id) => {
+                if self.niri.is_some() {
+                    return niri::send(apolline_niri::Request::FocusWindow(id));
+                }
+                for window in &mut self.status.windows {
+                    window.2 = window.0 == id;
+                }
+            }
+            Message::CloseWindow(id) => {
+                if self.niri.is_some() {
+                    return niri::send(apolline_niri::Request::CloseWindow(id));
+                }
+                self.status.windows.retain(|window| window.0 != id);
+            }
+            Message::Clip(clip) => clipboard::remember(&mut self.clips, clip),
+            Message::ClipQuery(query) => return self.picker.search(query),
+            Message::ClipCopy(index) => {
+                if let Some(index) = index.or_else(|| self.picker.chosen(&self.clips))
+                    && let Some(clip) = self.clips.get(index)
+                {
+                    let content = clip.content.clone();
+                    clipboard::copy(&content);
+                    clipboard::remember(&mut self.clips, Clip::new(content));
+                    return self.set_overlay(None);
+                }
+            }
+            Message::ClipPin(index) => {
+                if let Some(clip) = self.clips.get_mut(index) {
+                    clip.pinned = !clip.pinned;
+                }
+            }
+            Message::ClipRemove(index) => {
+                if index < self.clips.len() {
+                    self.clips.remove(index);
+                    let count = self.picker.visible(&self.clips).len();
+                    self.picker.selected = self.picker.selected.min(count.saturating_sub(1));
+                }
+            }
+            Message::Control(Command::Nudge(nudge)) => return self.nudge(nudge),
+            Message::Osd(Some(osd)) => return self.show(osd),
+            Message::OsdDone(serial) => {
+                if self.osd.as_ref().is_some_and(|(_, shown)| *shown == serial) {
+                    self.osd = None;
+                }
+            }
             Message::Overlay(overlay) => return self.set_overlay(overlay),
             Message::Opened if self.overlay == Some(Overlay::Launcher) => {
                 return self.launcher.focus();
             }
-            Message::Thumb(mode, thumb) => self.thumbs[mode as usize] = thumb,
-            Message::Mode(mode) | Message::Control(Command::Mode(mode)) => {
+            Message::Opened if self.overlay == Some(Overlay::Clipboard) => {
+                return self.picker.focus();
+            }
+            Message::Opened if self.overlay == Some(Overlay::Keys) => {
+                return iced::widget::operation::focus(keymap::SEARCH);
+            }
+            Message::Thumb(name, Some(thumb)) => {
+                self.thumbs.insert(name, thumb);
+            }
+            Message::SettingsPage(page) => {
+                let close = self.set_overlay(None);
+                return Task::batch([
+                    close,
+                    self.spawn(&format!("{} settings --page {page}", me())),
+                ]);
+            }
+            Message::Control(Command::Mode(name)) => match self.config.find(&name) {
+                Some(index) => return self.switch(Some(index)),
+                None => eprintln!("apolline: there is no mode called “{name}”"),
+            },
+            Message::Control(Command::NoMode) => return self.switch(None),
+            Message::Mode(mode) => {
                 return self.switch(mode);
             }
-            Message::Control(Command::NextMode) => return self.switch(self.mode.next()),
+            Message::Control(Command::NextMode) => {
+                let next = match self.mode {
+                    None if !self.config.modes.is_empty() => Some(0),
+                    Some(i) if i + 1 < self.config.modes.len() => Some(i + 1),
+                    _ => None,
+                };
+                return self.switch(next);
+            }
             Message::Workspace(_, Some(id)) => {
                 return niri::send(apolline_niri::Request::FocusWorkspace(id));
             }
             Message::Workspace(index, None) => self.workspace = index,
             Message::Niri(event) => {
+                let switched = matches!(event, apolline_niri::Event::KeyboardLayoutSwitched { .. });
                 let state = self.niri.get_or_insert_default();
                 state.apply(event);
+                if switched && let Some(name) = state.layout().map(str::to_owned) {
+                    return self.show(Osd::Layout(name));
+                }
+                let state = self.niri.get_or_insert_default();
                 let outputs = state.outputs();
                 if outputs != self.outputs {
                     self.outputs = outputs;
@@ -268,13 +409,16 @@ impl Shell {
                 }
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
-            Message::Wallpaper(mode, Ok(handle)) if mode == self.mode => {
-                self.wallpaper = Some((mode, handle));
+            Message::Wallpaper(name, Ok(handle)) if name == self.config.wallpaper(self.mode) => {
+                self.wallpaper = Some((name, handle));
+                fragment::sync(&self.look());
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
             Message::Battery(battery) => self.system.get_or_insert_default().battery = battery,
             Message::Media(media) => self.system.get_or_insert_default().media = media,
-            Message::Boosted(previous) if self.mode == Mode::Play => self.boosted = previous,
+            Message::Boosted(previous) if self.current().is_some_and(|m| m.performance) => {
+                self.boosted = previous
+            }
             Message::Boosted(Some(previous)) => {
                 return Task::future(profile::restore(previous)).discard();
             }
@@ -325,6 +469,7 @@ impl Shell {
                 } else {
                     apps
                 };
+                self.apps = apps.clone();
                 self.launcher.set_apps(apps);
             }
             Message::Query(query) => return self.launcher.search(query),
@@ -386,6 +531,24 @@ impl Shell {
 
     fn key(&mut self, key: Key, text: Option<&str>, captured: bool) -> Task<Message> {
         let launcher = self.overlay == Some(Overlay::Launcher);
+        if self.overlay == Some(Overlay::Clipboard) {
+            return self.clipboard_key(key, text, captured);
+        }
+        if self.overlay == Some(Overlay::Keys) {
+            match key.as_ref() {
+                Key::Named(Named::Escape) => return self.set_overlay(None),
+                _ if captured => {}
+                Key::Named(Named::Backspace) => {
+                    self.keys_query.pop();
+                }
+                _ => {
+                    if let Some(typed) = text.filter(|t| t.chars().all(|c| !c.is_control())) {
+                        self.keys_query.push_str(typed);
+                    }
+                }
+            }
+            return Task::none();
+        }
         match key.as_ref() {
             Key::Named(Named::Escape) if self.overlay.is_some() => return self.set_overlay(None),
             Key::Named(Named::Escape) if self.demo => return iced::exit(),
@@ -404,12 +567,19 @@ impl Shell {
                     return self.launcher.search(query);
                 }
             }
-            Key::Character("1") => return self.switch(Mode::Work),
-            Key::Character("2") => return self.switch(Mode::Play),
-            Key::Character("3") => return self.switch(Mode::Evening),
+            Key::Character("0") => return self.switch(None),
+            Key::Character(digit @ ("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")) => {
+                let index = digit.parse::<usize>().unwrap_or(1) - 1;
+                if index < self.config.modes.len() {
+                    return self.switch(Some(index));
+                }
+            }
             Key::Character("m") if self.demo => return self.toggle(Overlay::Switcher),
+            Key::Character("=" | "+") if self.demo => return self.nudge(Nudge::VolumeUp),
+            Key::Character("-") if self.demo => return self.nudge(Nudge::VolumeDown),
             Key::Character("q") if self.demo => return self.toggle(Overlay::Panel),
             Key::Named(Named::Space) if self.demo => return self.toggle(Overlay::Launcher),
+            Key::Character("/") if self.demo => return self.toggle(Overlay::Keys),
             Key::Named(Named::ArrowLeft) => self.workspace = self.workspace.saturating_sub(1),
             Key::Named(Named::ArrowRight) => {
                 self.workspace = (self.workspace + 1).min(self.status.workspaces.saturating_sub(1));
@@ -417,6 +587,32 @@ impl Shell {
             _ => {}
         }
         Task::none()
+    }
+
+    fn clipboard_key(&mut self, key: Key, text: Option<&str>, captured: bool) -> Task<Message> {
+        match key.as_ref() {
+            Key::Named(Named::Escape) => self.set_overlay(None),
+            Key::Named(Named::ArrowDown) => self.picker.step(1, &self.clips),
+            Key::Named(Named::ArrowUp) => self.picker.step(-1, &self.clips),
+            Key::Named(Named::Delete) => match self.picker.chosen(&self.clips) {
+                Some(index) => self.update(Message::ClipRemove(index)),
+                None => Task::none(),
+            },
+            _ if captured => Task::none(),
+            Key::Named(Named::Enter) => self.update(Message::ClipCopy(None)),
+            Key::Named(Named::Backspace) => {
+                let mut query = self.picker.query.clone();
+                query.pop();
+                self.picker.search(query)
+            }
+            _ => match text.filter(|t| t.chars().all(|c| !c.is_control())) {
+                Some(typed) => {
+                    let query = format!("{}{typed}", self.picker.query);
+                    self.picker.search(query)
+                }
+                None => Task::none(),
+            },
+        }
     }
 
     fn toggle(&mut self, overlay: Overlay) -> Task<Message> {
@@ -443,6 +639,13 @@ impl Shell {
                 self.held.clear();
                 self.read_controls()
             }
+            Some(Overlay::Clipboard) => self.picker.open(),
+            Some(Overlay::Keys) => {
+                let niri = std::fs::read_to_string(fragment::niri_config()).unwrap_or_default();
+                self.keymap = keymap::entries(&self.config, self.mode, &niri);
+                self.keys_query.clear();
+                iced::widget::operation::focus(keymap::SEARCH)
+            }
             _ => Task::none(),
         }
     }
@@ -453,6 +656,12 @@ impl Shell {
             Target::App(command) => self.spawn(&command),
             Target::Mode(mode) => self.switch(mode),
             Target::Settings => self.spawn(&format!("{} settings", me())),
+            Target::Keys => {
+                return Task::batch([close, self.set_overlay(Some(Overlay::Keys))]);
+            }
+            Target::Clipboard => {
+                return Task::batch([close, self.set_overlay(Some(Overlay::Clipboard))]);
+            }
             Target::Power(power) => self.spawn(&power.command()),
         };
         Task::batch([close, task])
@@ -479,6 +688,37 @@ impl Shell {
         .discard()
     }
 
+    fn nudge(&mut self, nudge: Nudge) -> Task<Message> {
+        if self.sample() {
+            let osd = nudge.sample(&mut self.controls);
+            return self.show(osd);
+        }
+        Task::perform(controls::nudge(nudge), Message::Osd)
+    }
+
+    fn show(&mut self, osd: Osd) -> Task<Message> {
+        match &osd {
+            Osd::Volume(volume) => self.controls.volume = Some(*volume),
+            Osd::Brightness(level) => self.controls.brightness = Some(*level),
+            _ => {}
+        }
+        let serial = self.osd.as_ref().map_or(0, |(_, serial)| serial + 1);
+        self.osd = Some((osd, serial));
+        Task::perform(tokio::time::sleep(osd::SHOWN_FOR), move |()| {
+            Message::OsdDone(serial)
+        })
+    }
+
+    pub fn bar_at_bottom(&self) -> bool {
+        self.config.bar.position == Edge::Bottom
+    }
+
+    pub fn osd_view(&self) -> Option<Element<'_, Message>> {
+        self.osd
+            .as_ref()
+            .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode)))
+    }
+
     fn idle(&mut self, stage: Stage) -> Task<Message> {
         match stage {
             Stage::Lock => self.lock(),
@@ -498,11 +738,11 @@ impl Shell {
             return;
         }
         let shared = Shared {
-            mode: Some(self.mode),
+            mode: self.current().map(ModeSettings::key),
             waiting: self.held.len() + self.popups.len(),
         };
-        if self.published != Some(shared) {
-            control::publish(shared);
+        if self.published.as_ref() != Some(&shared) {
+            control::publish(&shared);
             self.published = Some(shared);
         }
     }
@@ -550,13 +790,17 @@ impl Shell {
         if self.config.alerts.do_not_disturb {
             Notifications::Hold
         } else {
-            self.config.mode(self.mode).notifications
+            self.config.notifications(self.mode)
         }
     }
 
-    fn switch(&mut self, mode: Mode) -> Task<Message> {
+    fn switch(&mut self, mode: Option<usize>) -> Task<Message> {
         let close = self.set_overlay(None);
-        let profile = match (self.mode == Mode::Play, mode == Mode::Play) {
+        let fast = |mode: Option<usize>| {
+            mode.and_then(|i| self.config.modes.get(i))
+                .is_some_and(|m| m.performance)
+        };
+        let profile = match (fast(self.mode), fast(mode)) {
             (false, true) => Task::perform(profile::boost(), Message::Boosted),
             (true, false) => match self.boosted.take() {
                 Some(previous) => Task::future(profile::restore(previous)).discard(),
@@ -565,10 +809,6 @@ impl Shell {
             _ => Task::none(),
         };
         self.mode = mode;
-        if self.sample() {
-            self.status = Status::sample(mode);
-            self.workspace = self.status.active;
-        }
         fragment::sync(&self.look());
         self.release_held();
         Task::batch([close, self.load_wallpaper(), self.open_apps(), profile])
@@ -615,8 +855,16 @@ impl Shell {
         let palette = self.config.palette(self.mode);
         match self.overlay {
             Some(Overlay::Switcher) => switcher::view(self.mode, &self.config, &self.thumbs),
-            Some(Overlay::Launcher) => self.launcher.view(palette, self.mode),
+            Some(Overlay::Launcher) => self.launcher.view(
+                palette,
+                self.current()
+                    .map(|m| (m.name.as_str(), crate::icon::Icon::named(&m.icon))),
+            ),
+            Some(Overlay::Clipboard) => self.picker.view(&self.clips, palette),
+            Some(Overlay::Keys) => keymap::view(&self.keymap, &self.keys_query, palette),
             Some(Overlay::Panel) => panel::view(Panel {
+                at_bottom: self.config.bar.position == Edge::Bottom,
+                modes: &self.config.modes,
                 mode: self.mode,
                 palette,
                 controls: &self.controls,
@@ -648,13 +896,11 @@ impl Shell {
     }
 
     fn open_apps(&self) -> Task<Message> {
-        let Some(state) = &self.niri else {
+        let (Some(state), Some(mode)) = (&self.niri, self.current()) else {
             return Task::none();
         };
         Task::batch(
-            self.config
-                .mode(self.mode)
-                .open
+            mode.open
                 .iter()
                 .filter(|command| !state.is_running(command))
                 .map(|command| niri::send(apolline_niri::Request::Spawn(command.clone()))),
@@ -662,10 +908,9 @@ impl Shell {
     }
 
     fn load_wallpaper(&self) -> Task<Message> {
-        let mode = self.mode;
-        let path = wallpaper::resolve(&self.config.mode(mode).wallpaper);
-        Task::perform(wallpaper::load(path), move |result| {
-            Message::Wallpaper(mode, result)
+        let name = self.config.wallpaper(self.mode).to_owned();
+        Task::perform(wallpaper::load(name.clone()), move |result| {
+            Message::Wallpaper(name.clone(), result)
         })
     }
 
@@ -682,6 +927,11 @@ impl Shell {
                 .style(|_| container::background(style::color(neutral::INK)))
                 .into(),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn bar_look(&self) -> (Edge, bool) {
+        (self.config.bar.position, self.config.bar.floating)
     }
 
     #[cfg(target_os = "linux")]
@@ -713,7 +963,8 @@ impl Shell {
             None => (self.status.clone(), self.workspace),
         };
         let bar = bar::view(Bar {
-            mode: self.mode,
+            mode: self.current(),
+            has_modes: !self.config.modes.is_empty(),
             palette: self.config.palette(self.mode),
             active,
             status,
@@ -726,10 +977,19 @@ impl Shell {
             now: self.now,
             look: self.config.bar,
             panel_open: self.overlay == Some(Overlay::Panel),
+            apps: &self.apps,
         });
-        container(bar)
-            .padding(Padding::new(metrics::BAR_INSET).bottom(0))
-            .into()
+        let look = self.config.bar;
+        let inset = if look.floating {
+            metrics::BAR_INSET
+        } else {
+            0.0
+        };
+        let padding = match look.position {
+            Edge::Top => Padding::new(inset).bottom(0),
+            Edge::Bottom => Padding::new(inset).top(0),
+        };
+        container(bar).padding(padding).into()
     }
 }
 
@@ -739,16 +999,20 @@ fn stamp(path: &std::path::Path) -> Option<SystemTime> {
 
 impl Shell {
     pub fn subscription(&self) -> iced::Subscription<Message> {
-        let resting = self.awake
-            || self.sample()
-            || (self.mode == Mode::Play && self.config.idle.awake_in_play);
+        let resting = self.awake || self.sample() || self.current().is_some_and(|m| m.keep_awake);
         let stages = if resting {
             Vec::new()
         } else {
             idle::stages(&self.config.idle)
         };
+        let clipboard = if self.sample() {
+            iced::Subscription::none()
+        } else {
+            clipboard::subscription().map(Message::Clip)
+        };
         iced::Subscription::batch([
             subscription(),
+            clipboard,
             idle::subscription(stages).map(|(stage, idle)| Message::Idle(stage, idle)),
         ])
     }

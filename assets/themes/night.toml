@@ -1,0 +1,21 @@
+[theme]
+name = "Night"
+author = "Apolline"
+
+[desktop]
+wallpaper = "night.jpg"
+accent = "auto"
+
+[layout]
+gaps = 8
+radius = 10
+borders = true
+shadows = true
+
+[windows]
+animations = 0.75
+
+[bar]
+position = "bottom"
+floating = true
+opacity = 0.6

@@ -116,6 +116,103 @@ pub async fn read() -> Controls {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Nudge {
+    VolumeUp,
+    VolumeDown,
+    Mute,
+    MicMute,
+    BrightnessUp,
+    BrightnessDown,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Osd {
+    Volume(Volume),
+    Mic(bool),
+    Brightness(u8),
+    Layout(String),
+}
+
+impl Nudge {
+    pub fn parse(words: &[&str]) -> Option<Self> {
+        Some(match words {
+            ["volume", "up"] => Nudge::VolumeUp,
+            ["volume", "down"] => Nudge::VolumeDown,
+            ["volume", "mute"] => Nudge::Mute,
+            ["mic", "mute"] => Nudge::MicMute,
+            ["brightness", "up"] => Nudge::BrightnessUp,
+            ["brightness", "down"] => Nudge::BrightnessDown,
+            _ => return None,
+        })
+    }
+
+    fn commands(self) -> &'static [&'static [&'static str]] {
+        const SINK: &str = "@DEFAULT_AUDIO_SINK@";
+        match self {
+            Nudge::VolumeUp => &[
+                &["wpctl", "set-mute", SINK, "0"],
+                &["wpctl", "set-volume", "-l", "1.0", SINK, "5%+"],
+            ],
+            Nudge::VolumeDown => &[&["wpctl", "set-volume", SINK, "5%-"]],
+            Nudge::Mute => &[&["wpctl", "set-mute", SINK, "toggle"]],
+            Nudge::MicMute => &[&["wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"]],
+            Nudge::BrightnessUp => &[&["brightnessctl", "-c", "backlight", "set", "5%+"]],
+            Nudge::BrightnessDown => {
+                &[&["brightnessctl", "-c", "backlight", "-n", "1", "set", "5%-"]]
+            }
+        }
+    }
+
+    pub fn sample(self, controls: &mut Controls) -> Osd {
+        let volume = controls.volume.get_or_insert(Volume {
+            level: 0.5,
+            muted: false,
+        });
+        match self {
+            Nudge::VolumeUp => {
+                volume.level = step(volume.level, 0.05);
+                volume.muted = false;
+            }
+            Nudge::VolumeDown => volume.level = step(volume.level, -0.05),
+            Nudge::Mute => volume.muted = !volume.muted,
+            Nudge::MicMute => return Osd::Mic(true),
+            Nudge::BrightnessUp | Nudge::BrightnessDown => {
+                let step: i16 = if self == Nudge::BrightnessUp { 5 } else { -5 };
+                let level = i16::from(controls.brightness.unwrap_or(50)) + step;
+                let level = level.clamp(1, 100) as u8;
+                controls.brightness = Some(level);
+                return Osd::Brightness(level);
+            }
+        }
+        Osd::Volume(*volume)
+    }
+}
+
+fn step(level: f32, by: f32) -> f32 {
+    ((level + by) * 100.0).round().clamp(0.0, 100.0) / 100.0
+}
+
+pub async fn nudge(nudge: Nudge) -> Option<Osd> {
+    for command in nudge.commands() {
+        run(command[0], &command[1..]).await?;
+    }
+    match nudge {
+        Nudge::VolumeUp | Nudge::VolumeDown | Nudge::Mute => {
+            let text = run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]).await?;
+            parse_volume(&text).map(Osd::Volume)
+        }
+        Nudge::MicMute => {
+            let text = run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SOURCE@"]).await?;
+            parse_volume(&text).map(|mic| Osd::Mic(mic.muted))
+        }
+        Nudge::BrightnessUp | Nudge::BrightnessDown => {
+            let text = run("brightnessctl", &["-m", "-c", "backlight"]).await?;
+            parse_brightness(&text).map(Osd::Brightness)
+        }
+    }
+}
+
 pub async fn change(change: Change) {
     let (program, args): (&str, Vec<String>) = match change {
         Change::Volume(level) => (
@@ -244,6 +341,35 @@ mod tests {
             Some("WH-1000XM5")
         );
         assert_eq!(parse_device(""), None);
+    }
+
+    #[test]
+    fn media_keys_parse_and_round_trip() {
+        let keys = [
+            ("volume up", Nudge::VolumeUp),
+            ("volume down", Nudge::VolumeDown),
+            ("volume mute", Nudge::Mute),
+            ("mic mute", Nudge::MicMute),
+            ("brightness up", Nudge::BrightnessUp),
+            ("brightness down", Nudge::BrightnessDown),
+        ];
+        for (line, nudge) in keys {
+            let words: Vec<&str> = line.split(' ').collect();
+            assert_eq!(Nudge::parse(&words), Some(nudge));
+        }
+        assert_eq!(Nudge::parse(&["volume", "loud"]), None);
+        let mut controls = Controls::sample();
+        assert_eq!(
+            Nudge::VolumeUp.sample(&mut controls),
+            Osd::Volume(Volume {
+                level: 0.67,
+                muted: false
+            })
+        );
+        assert_eq!(
+            Nudge::BrightnessDown.sample(&mut controls),
+            Osd::Brightness(65)
+        );
     }
 
     #[test]

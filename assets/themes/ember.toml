@@ -1,0 +1,21 @@
+[theme]
+name = "Ember"
+author = "Apolline"
+
+[desktop]
+wallpaper = "ember.jpg"
+accent = "auto"
+
+[layout]
+gaps = 14
+radius = 16
+borders = true
+shadows = true
+
+[windows]
+inactive_opacity = 0.88
+
+[bar]
+position = "top"
+floating = true
+opacity = 0.5

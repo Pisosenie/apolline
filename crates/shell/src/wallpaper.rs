@@ -60,8 +60,9 @@ fn search_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-pub async fn load(source: Source) -> Result<Handle, String> {
+pub async fn load(name: String) -> Result<Handle, String> {
     let decode = move || {
+        let source = resolve(&name);
         let image = match &source {
             Source::File(path) => {
                 ::image::open(path).map_err(|err| format!("{}: {err}", path.display()))
@@ -70,6 +71,9 @@ pub async fn load(source: Source) -> Result<Handle, String> {
                 ::image::load_from_memory(bytes).map_err(|err| format!("{name}: {err}"))
             }
         }?;
+        if matches!(source, Source::File(_)) {
+            learn(&name, &image.thumbnail(THUMB.0, THUMB.1).to_rgba8());
+        }
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
         Ok(Handle::from_rgba(width, height, rgba.into_raw()))
@@ -79,17 +83,29 @@ pub async fn load(source: Source) -> Result<Handle, String> {
         .map_err(|err| err.to_string())?
 }
 
-pub async fn thumbnail(source: Source) -> Option<Handle> {
+pub async fn thumbnail(name: String) -> Option<Handle> {
     let decode = move || {
+        let source = resolve(&name);
         let image = match &source {
             Source::File(path) => ::image::open(path).ok()?,
             Source::Bundled(_, bytes) => ::image::load_from_memory(bytes).ok()?,
         };
-        let thumb = image.thumbnail(760, 475).to_rgba8();
+        let thumb = image.thumbnail(THUMB.0, THUMB.1).to_rgba8();
+        if matches!(source, Source::File(_)) {
+            learn(&name, &thumb);
+        }
         let (width, height) = thumb.dimensions();
         Some(Handle::from_rgba(width, height, thumb.into_raw()))
     };
     tokio::task::spawn_blocking(decode).await.ok().flatten()
+}
+
+const THUMB: (u32, u32) = (760, 475);
+
+fn learn(name: &str, thumb: &::image::RgbaImage) {
+    if let Some(accent) = apolline_theme::accent_of(thumb.as_raw()) {
+        apolline_config::remember_accent(name, accent);
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use apolline_theme::{Mode, Palette, neutral};
+use apolline_theme::{Palette, neutral};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
@@ -22,8 +22,10 @@ const LIST: &str = "launcher-list";
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
     App(String),
-    Mode(Mode),
+    Mode(Option<usize>),
     Settings,
+    Clipboard,
+    Keys,
     Power(Power),
 }
 
@@ -32,6 +34,7 @@ pub struct Launcher {
     pub query: String,
     pub selected: usize,
     apps: Vec<App>,
+    modes: Vec<(String, String)>,
 }
 
 struct Entry<'a> {
@@ -47,30 +50,24 @@ enum Pic<'a> {
     Icon(Icon),
 }
 
-const ACTIONS: [(&str, &str, Icon, Target); 6] = [
-    (
-        "Work",
-        "Switch to Work mode",
-        Icon::Briefcase,
-        Target::Mode(Mode::Work),
-    ),
-    (
-        "Play",
-        "Switch to Play mode · games, focus, boost",
-        Icon::Gamepad,
-        Target::Mode(Mode::Play),
-    ),
-    (
-        "Evening",
-        "Switch to Evening mode",
-        Icon::Moon,
-        Target::Mode(Mode::Evening),
-    ),
+const ACTIONS: [(&str, &str, Icon, Target); 5] = [
     (
         "Settings",
         "Apolline settings",
         Icon::Settings,
         Target::Settings,
+    ),
+    (
+        "Keyboard shortcuts",
+        "Every key, searchable",
+        Icon::Command,
+        Target::Keys,
+    ),
+    (
+        "Clipboard history",
+        "What you copied lately",
+        Icon::Clipboard,
+        Target::Clipboard,
     ),
     (
         "Lock screen",
@@ -98,6 +95,10 @@ impl Launcher {
 
     pub fn focus(&self) -> Task<Message> {
         focus(SEARCH)
+    }
+
+    pub fn set_modes(&mut self, modes: Vec<(String, String)>) {
+        self.modes = modes;
     }
 
     pub fn set_apps(&mut self, apps: Vec<App>) {
@@ -132,6 +133,36 @@ impl Launcher {
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
         if !query.is_empty() {
+            let modes = self.modes.iter().enumerate().map(|(index, (name, glyph))| {
+                (
+                    name.clone(),
+                    format!("Switch to the {name} mode"),
+                    Icon::named(glyph),
+                    Target::Mode(Some(index)),
+                )
+            });
+            let leave = (!self.modes.is_empty()).then(|| {
+                (
+                    "No mode".to_owned(),
+                    "Back to the plain desktop".to_owned(),
+                    Icon::Circle,
+                    Target::Mode(None),
+                )
+            });
+            for (title, about, glyph, target) in modes.chain(leave) {
+                if let Some(score) = apps::rank(query, &title, &about) {
+                    ranked.push((
+                        score + 60,
+                        Entry {
+                            title,
+                            about,
+                            picture: Pic::Icon(glyph),
+                            target,
+                            game: false,
+                        },
+                    ));
+                }
+            }
             for (title, about, glyph, target) in ACTIONS {
                 if installed && target == Target::Settings {
                     continue;
@@ -169,7 +200,7 @@ impl Launcher {
         ranked.into_iter().map(|(_, entry)| entry).collect()
     }
 
-    pub fn view(&self, palette: Palette, mode: Mode) -> Element<'_, Message> {
+    pub fn view(&self, palette: Palette, mode: Option<(&str, Icon)>) -> Element<'_, Message> {
         let entries = self.entries();
         let games = entries.iter().filter(|e| e.game).count();
 
@@ -182,18 +213,20 @@ impl Launcher {
                 .size(18)
                 .padding(0)
                 .style(style::bare_field(palette)),
-            container(
-                row![
-                    icon(Icon::of(mode), 13.0, palette.accent),
-                    text(mode.name())
-                        .size(12)
-                        .color(style::color(palette.accent)),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center)
-            )
-            .padding([4, 10])
-            .style(style::pill(palette.accent_soft)),
+            mode.map(|(name, glyph)| {
+                container(
+                    row![
+                        icon(glyph, 13.0, palette.accent),
+                        text(name.to_owned())
+                            .size(12)
+                            .color(style::color(palette.accent)),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding([4, 10])
+                .style(style::pill(palette.accent_soft))
+            }),
         ]
         .spacing(14)
         .align_y(Alignment::Center);
@@ -384,6 +417,10 @@ mod tests {
     fn launcher() -> Launcher {
         let mut launcher = Launcher::default();
         launcher.set_apps(apps::sample());
+        launcher.set_modes(vec![
+            ("Work".into(), "briefcase".into()),
+            ("Play".into(), "gamepad".into()),
+        ]);
         launcher
     }
 
@@ -400,7 +437,9 @@ mod tests {
     fn typing_finds_apps_and_actions() {
         let mut launcher = launcher();
         let _ = launcher.search("play".into());
-        assert_eq!(launcher.chosen(), Some(Target::Mode(Mode::Play)));
+        assert_eq!(launcher.chosen(), Some(Target::Mode(Some(1))));
+        let _ = launcher.search("no mode".into());
+        assert_eq!(launcher.chosen(), Some(Target::Mode(None)));
         let _ = launcher.search("fire".into());
         assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
         let _ = launcher.search("lock".into());
@@ -419,6 +458,7 @@ mod tests {
             icon: None,
             game: false,
             keywords: String::new(),
+            class: None,
         });
         launcher.set_apps(apps);
         let _ = launcher.search("sett".into());

@@ -1,0 +1,18 @@
+[theme]
+name = "Fog"
+author = "Apolline"
+
+[desktop]
+wallpaper = "fog.jpg"
+accent = "auto"
+
+[layout]
+gaps = 10
+radius = 12
+borders = true
+shadows = true
+
+[bar]
+position = "top"
+floating = true
+opacity = 0.55

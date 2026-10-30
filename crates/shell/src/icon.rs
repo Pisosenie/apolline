@@ -1,4 +1,4 @@
-use apolline_theme::{Mode, Rgba};
+use apolline_theme::Rgba;
 use iced::widget::{Svg, svg};
 
 use crate::style;
@@ -23,6 +23,9 @@ macro_rules! icons {
 icons! {
     AppWindow = "app-window",
     Arrow = "arrow-right",
+    ArrowDown = "arrow-down",
+    ArrowUp = "arrow-up",
+    Book = "book-open",
     BatteryCharging = "battery-charging",
     BatteryFull = "battery-full",
     BatteryLow = "battery-low",
@@ -33,20 +36,30 @@ icons! {
     Bluetooth = "bluetooth",
     BluetoothOff = "bluetooth-off",
     Briefcase = "briefcase",
+    Brush = "paintbrush",
     Camera = "camera",
     Check = "check",
     ChevronRight = "chevron-right",
+    Circle = "circle-dashed",
+    Clipboard = "clipboard",
     Coffee = "coffee",
+    Download = "download",
+    Folder = "folder-open",
     Code = "file-code",
+    CodeXml = "code-xml",
     Command = "command",
     Done = "circle-check",
     External = "external-link",
     Gamepad = "gamepad-2",
+    Headphones = "headphones",
     Image = "image",
     Info = "info",
     Keyboard = "keyboard",
     Layers = "layers",
+    Link = "link",
     Lock = "lock",
+    Mic = "mic",
+    MicOff = "mic-off",
     LogOut = "log-out",
     Monitor = "monitor",
     Moon = "moon",
@@ -54,17 +67,21 @@ icons! {
     Palette = "palette",
     PanelTop = "panel-top",
     Pause = "pause",
+    Pin = "pin",
     Play = "play",
     Plus = "plus",
     Pointer = "mouse-pointer-2",
     Power = "power",
+    Presentation = "presentation",
     Restart = "rotate-ccw",
     Search = "search",
     Send = "send",
     Settings = "settings",
     SkipBack = "skip-back",
     SkipForward = "skip-forward",
+    Sparkles = "sparkles",
     Sun = "sun",
+    Target = "target",
     Warning = "triangle-alert",
     Volume = "volume-2",
     VolumeLow = "volume-1",
@@ -76,12 +93,11 @@ icons! {
 }
 
 impl Icon {
-    pub fn of(mode: Mode) -> Self {
-        match mode {
-            Mode::Work => Icon::Briefcase,
-            Mode::Play => Icon::Gamepad,
-            Mode::Evening => Icon::Moon,
-        }
+    pub fn named(name: &str) -> Self {
+        MODE_ICONS
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map_or(Icon::Sparkles, |(_, icon)| *icon)
     }
 
     pub fn battery(percent: u8, charging: bool) -> Self {
@@ -103,6 +119,25 @@ impl Icon {
         }
     }
 }
+
+pub const MODE_ICONS: [(&str, Icon); 16] = [
+    ("briefcase", Icon::Briefcase),
+    ("gamepad", Icon::Gamepad),
+    ("moon", Icon::Moon),
+    ("target", Icon::Target),
+    ("presentation", Icon::Presentation),
+    ("code", Icon::CodeXml),
+    ("book", Icon::Book),
+    ("music", Icon::Music),
+    ("headphones", Icon::Headphones),
+    ("coffee", Icon::Coffee),
+    ("sparkles", Icon::Sparkles),
+    ("sun", Icon::Sun),
+    ("zap", Icon::Zap),
+    ("palette", Icon::Palette),
+    ("monitor", Icon::Monitor),
+    ("camera", Icon::Camera),
+];
 
 pub fn icon<'a>(icon: Icon, size: f32, color: Rgba) -> Svg<'a> {
     let tint = style::color(color);

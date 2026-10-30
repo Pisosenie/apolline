@@ -1,0 +1,21 @@
+[theme]
+name = "Minimal"
+author = "Apolline"
+
+[desktop]
+wallpaper = "fog.jpg"
+accent = "#5dd39e"
+
+[layout]
+gaps = 0
+radius = 0
+borders = true
+shadows = false
+
+[windows]
+animations = 2
+
+[bar]
+position = "top"
+floating = false
+opacity = 0.9

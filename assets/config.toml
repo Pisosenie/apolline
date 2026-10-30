@@ -3,7 +3,11 @@
 # Check it at any time with:  apolline check
 
 [general]
-mode = "work"              # work, play or evening
+mode = ""                  # the mode to start in, by name; empty means none
+
+[desktop]
+wallpaper = "fog.jpg"      # fog.jpg, ember.jpg, night.jpg or a path to your own
+accent = "auto"            # "auto" follows the wallpaper, or a color like "#86bdf0"
 
 [layout]
 gaps = 10
@@ -16,6 +20,9 @@ workspaces = "dots"        # dots or numbers
 seconds = false
 date = true
 battery_percent = true
+position = "top"          # top or bottom
+floating = true            # an island with a gap, or edge to edge
+opacity = 0.55             # how solid the glass is, 0 to 1
 
 [notifications]
 do_not_disturb = false     # hold everything but urgent, in every mode
@@ -26,6 +33,8 @@ launcher = "Mod+Space"     # Mod is Super, or Alt when niri runs in a window
 panel = "Mod+A"
 switch = "Mod+Shift+M"
 lock = "Super+Alt+L"
+clipboard = "Mod+Alt+V"
+keys = "Mod+Slash"         # every shortcut, searchable
 
 [lock]
 before_sleep = true        # lock when the laptop goes to sleep
@@ -35,7 +44,6 @@ show_media = true          # what's playing, with a pause button
 lock_after = 5
 screen_off_after = 10
 suspend_after = 0
-awake_in_play = true       # games on a gamepad don't count as idle
 
 # Keyboard, touchpad and mouse are left to your niri config until you set
 # them here or in apolline settings.
@@ -57,20 +65,16 @@ awake_in_play = true       # games on a gamepad don't count as idle
 # acceleration = true
 # speed = 0.0
 
-[mode.work]
-wallpaper = "fog.jpg"
-accent = "auto"            # "auto" takes it from the wallpaper, or a color like "#86bdf0"
-notifications = "mentions" # all, mentions or hold
-open = []
-
-[mode.play]
-wallpaper = "ember.jpg"
-accent = "auto"
-notifications = "hold"
-open = ["steam", "discord"]
-
-[mode.evening]
-wallpaper = "night.jpg"
-accent = "auto"
-notifications = "all"
-open = []
+# Modes are optional. Each one changes the desktop while it's on, and its keys
+# exist only in that mode. Make them in apolline settings, or by hand:
+#
+# [[mode]]
+# name = "Play"
+# icon = "gamepad"         # briefcase, gamepad, moon, target, presentation, code, book, music…
+# wallpaper = "ember.jpg"  # leave out to keep the desktop's
+# accent = "auto"
+# notifications = "hold"   # all, mentions or hold
+# open = ["steam"]
+# performance = true       # power profile, games drive the refresh rate, effects off
+# keep_awake = true
+# keys = { "Mod+G" = "steam", "Mod+Shift+D" = "discord" }

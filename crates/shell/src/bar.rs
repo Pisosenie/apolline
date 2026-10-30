@@ -1,9 +1,10 @@
-use apolline_config::Workspaces;
-use apolline_theme::{Mode, Palette, metrics, neutral};
+use apolline_config::{ModeSettings, Workspaces};
+use apolline_theme::{Palette, metrics, neutral};
 use chrono::{DateTime, Local};
-use iced::widget::{Row, button, container, row, space, text};
+use iced::widget::{Row, button, column, container, mouse_area, row, space, text};
 use iced::{Alignment, Background, Element, Fill, Theme};
 
+use crate::apps::App;
 use crate::controls::Controls;
 use crate::icon::{Icon, icon};
 use crate::media::Track;
@@ -13,7 +14,8 @@ use crate::status::Status;
 use crate::style;
 
 pub struct Bar<'a> {
-    pub mode: Mode,
+    pub mode: Option<&'a ModeSettings>,
+    pub has_modes: bool,
     pub palette: Palette,
     pub active: usize,
     pub status: Status,
@@ -26,35 +28,47 @@ pub struct Bar<'a> {
     pub now: DateTime<Local>,
     pub look: apolline_config::Bar,
     pub panel_open: bool,
+    pub apps: &'a [App],
 }
 
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     let palette = bar.palette;
 
-    let chip = button(
-        row![
-            icon(Icon::of(bar.mode), 14.0, palette.accent),
-            text(bar.mode.name()).size(13).font(style::medium()),
-        ]
-        .spacing(7)
-        .align_y(Alignment::Center),
-    )
-    .padding([4, 11])
-    .style(move |_: &Theme, status| button::Style {
-        background: Some(Background::Color(style::color(match status {
-            button::Status::Hovered | button::Status::Pressed => palette.accent.alpha(0.28),
-            _ => palette.accent_soft,
-        }))),
-        text_color: style::color(palette.accent),
-        border: iced::Border {
-            radius: style::PILL.into(),
-            ..iced::Border::default()
-        },
-        ..button::Style::default()
-    })
-    .on_press(Message::Overlay(Some(Overlay::Switcher)));
+    let chip = bar.has_modes.then(|| {
+        let (glyph, name, tint) = match bar.mode {
+            Some(mode) => (Icon::named(&mode.icon), mode.name.as_str(), palette.accent),
+            None => (Icon::Circle, "No mode", neutral::MUTED),
+        };
+        let soft = if bar.mode.is_some() {
+            palette.accent_soft
+        } else {
+            style::FILL
+        };
+        button(
+            row![
+                icon(glyph, 14.0, tint),
+                text(name).size(13).font(style::medium()),
+            ]
+            .spacing(7)
+            .align_y(Alignment::Center),
+        )
+        .padding([4, 11])
+        .style(move |_: &Theme, status| button::Style {
+            background: Some(Background::Color(style::color(match status {
+                button::Status::Hovered | button::Status::Pressed => tint.alpha(0.28),
+                _ => soft,
+            }))),
+            text_color: style::color(tint),
+            border: iced::Border {
+                radius: style::PILL.into(),
+                ..iced::Border::default()
+            },
+            ..button::Style::default()
+        })
+        .on_press(Message::Overlay(Some(Overlay::Switcher)))
+    });
 
-    let left = row![chip, workspaces(&bar)]
+    let left = row![chip, workspaces(&bar), tasks(&bar)]
         .spacing(10)
         .align_y(Alignment::Center);
 
@@ -140,7 +154,7 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     .height(metrics::BAR_HEIGHT)
     .padding([0, 5])
     .align_y(Alignment::Center)
-    .style(style::bar)
+    .style(style::glass(bar.look.opacity, bar.look.floating))
     .into()
 }
 
@@ -194,6 +208,34 @@ fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             .into()
     }))
     .spacing(0)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
+    let palette = bar.palette;
+    Row::with_children(bar.status.windows.iter().map(|(id, app, focused)| {
+        let focused = *focused;
+        let glyph = crate::windows::picture(bar.apps, app, 16.0, palette);
+        let marker = container(space())
+            .width(if focused { 12 } else { 0 })
+            .height(2)
+            .style(style::pill(palette.accent));
+        let task = button(column![glyph, marker].spacing(2).align_x(Alignment::Center))
+            .padding(iced::Padding::new(4.0).bottom(1.0))
+            .style(move |theme, status| {
+                let mut style = style::ghost(7.0)(theme, status);
+                if focused {
+                    style.background = Some(Background::Color(style::color(style::FILL)));
+                }
+                style
+            })
+            .on_press(Message::FocusWindow(*id));
+        mouse_area(task)
+            .on_middle_press(Message::CloseWindow(*id))
+            .into()
+    }))
+    .spacing(2)
     .align_y(Alignment::Center)
     .into()
 }

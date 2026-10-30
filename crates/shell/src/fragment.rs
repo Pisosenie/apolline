@@ -2,15 +2,10 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use apolline_config::{Config, Keyboard, Mouse, Shortcut, Touchpad};
-use apolline_theme::Mode;
+use apolline_config::{Center, Config, Keyboard, Mouse, Rule, Shortcut, Touchpad, Width, Windows};
 
 const TEMPLATE: &str = include_str!("../../../assets/niri.kdl");
 const PLAY: &str = r##"
-animations {
-    off
-}
-
 window-rule {
     match app-id=r#"^steam_app_"#
     match app-id=r#"^gamescope$"#
@@ -19,9 +14,18 @@ window-rule {
 }
 "##;
 
+const MEDIA_KEYS: [(&str, &str); 6] = [
+    ("XF86AudioRaiseVolume", "volume up"),
+    ("XF86AudioLowerVolume", "volume down"),
+    ("XF86AudioMute", "volume mute"),
+    ("XF86AudioMicMute", "mic mute"),
+    ("XF86MonBrightnessUp", "brightness up"),
+    ("XF86MonBrightnessDown", "brightness down"),
+];
+
 pub struct Fragment<'a> {
     pub config: &'a Config,
-    pub mode: Mode,
+    pub mode: Option<usize>,
     pub outputs: &'a [String],
 }
 
@@ -42,7 +46,8 @@ pub fn niri_config() -> PathBuf {
 }
 
 pub fn render(fragment: &Fragment) -> String {
-    let play = fragment.mode == Mode::Play;
+    let mode = fragment.mode.and_then(|i| fragment.config.modes.get(i));
+    let play = mode.is_some_and(|m| m.performance);
     let layout = fragment.config.layout;
     let on = |yes: bool| if yes { "on" } else { "off" };
     let mut text = TEMPLATE.to_owned();
@@ -51,7 +56,7 @@ pub fn render(fragment: &Fragment) -> String {
 layout {{
     gaps {gaps}
     background-color "transparent"
-
+{columns}
     focus-ring {{
         off
     }}
@@ -86,6 +91,7 @@ window-rule {{
 }}
 "##,
         gaps = layout.gaps,
+        columns = columns(&fragment.config.windows),
         border = on(layout.borders),
         accent = fragment.config.palette(fragment.mode).accent.to_hex(),
         shadow = on(layout.shadows && !play),
@@ -102,11 +108,43 @@ window-rule {{
             )
         })
         .collect();
+    let mut binds = binds;
+    binds.extend(MEDIA_KEYS.iter().map(|(key, words)| {
+        let args: Vec<String> = words.split(' ').map(|w| format!("\"{w}\"")).collect();
+        format!(
+            "{key} allow-when-locked=true {{ spawn \"apolline\" {}; }}",
+            args.join(" ")
+        )
+    }));
+    if let Some(mode) = mode {
+        let free = |combo: &String| {
+            !Shortcut::ALL
+                .into_iter()
+                .any(|s| crate::keys::same(config.shortcuts.get(s), combo))
+        };
+        binds.extend(
+            mode.keys
+                .iter()
+                .filter(|(combo, _)| free(combo))
+                .map(|(combo, command)| {
+                    let title = quote(&format!("{}: {command}", mode.name));
+                    format!(
+                        "{combo} hotkey-overlay-title=\"{title}\" {{ spawn-sh \"{}\"; }}",
+                        quote(command)
+                    )
+                }),
+        );
+    }
     text.push_str(&format!("\n{}", block("binds", &binds)));
+    let windows = &config.windows;
     let devices: Vec<String> = [
         keyboard(&config.keyboard),
         config.touchpad.map(touchpad),
         config.mouse.map(mouse),
+        windows
+            .focus_follows_mouse
+            .then(|| "focus-follows-mouse".to_owned()),
+        windows.warp_mouse.then(|| "warp-mouse-to-focus".to_owned()),
     ]
     .into_iter()
     .flatten()
@@ -115,15 +153,109 @@ window-rule {{
         text.push_str(&format!("\n{}", block("input", &devices)));
     }
     for output in fragment.outputs {
-        let name = output.replace('\\', "\\\\").replace('"', "\\\"");
+        let name = quote(output);
         text.push_str(&format!(
             "\noutput \"{name}\" {{\n    variable-refresh-rate on-demand=true\n}}\n"
         ));
+    }
+    let speed = if play { Some(0.0) } else { windows.animations };
+    if let Some(speed) = speed {
+        let body = if speed <= 0.0 {
+            "off".to_owned()
+        } else {
+            format!("slowdown {:.2}", 1.0 / speed)
+        };
+        text.push_str(&format!("\n{}", block("animations", &[body])));
+    }
+    if let Some(opacity) = windows.opacity {
+        text.push_str(&format!(
+            "\n{}",
+            block("window-rule", &[format!("opacity {opacity:.2}")])
+        ));
+    }
+    if let Some(opacity) = windows.inactive_opacity {
+        let lines = [
+            "match is-active=false".to_owned(),
+            format!("opacity {opacity:.2}"),
+        ];
+        text.push_str(&format!("\n{}", block("window-rule", &lines)));
+    }
+    let switcher = if windows.switcher {
+        let accent = fragment.config.palette(fragment.mode).accent.to_hex();
+        let highlight = [
+            format!("active-color \"{accent}\""),
+            "urgent-color \"#ff6a3d\"".to_owned(),
+            "padding 18".to_owned(),
+            format!("corner-radius {}", layout.radius + 6),
+        ];
+        vec![block("highlight", &highlight)]
+    } else {
+        vec!["off".to_owned()]
+    };
+    text.push_str(&format!("\n{}", block("recent-windows", &switcher)));
+    for rule in &config.rules {
+        text.push_str(&format!("\n{}", app_rule(rule)));
     }
     if play {
         text.push_str(PLAY);
     }
     text
+}
+
+fn columns(windows: &Windows) -> String {
+    let mut lines = Vec::new();
+    if let Some(width) = windows.width {
+        lines.push(block("default-column-width", &[proportion(width)]));
+    }
+    if let Some(presets) = &windows.presets {
+        let widths: Vec<String> = presets.iter().copied().map(proportion).collect();
+        lines.push(block("preset-column-widths", &widths));
+    }
+    if let Some(center) = windows.center {
+        let value = match center {
+            Center::Never => "never",
+            Center::Overflow => "on-overflow",
+            Center::Always => "always",
+        };
+        lines.push(format!("center-focused-column \"{value}\""));
+    }
+    if windows.center_lone {
+        lines.push("always-center-single-column".to_owned());
+    }
+    lines
+        .iter()
+        .flat_map(|line| line.lines())
+        .map(|line| format!("    {line}\n"))
+        .collect()
+}
+
+fn proportion(width: Width) -> String {
+    format!("proportion {:.5}", width.proportion())
+}
+
+fn app_rule(rule: &Rule) -> String {
+    let pattern: String = rule
+        .app
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c.to_string()
+            } else {
+                format!("\\{c}")
+            }
+        })
+        .collect();
+    let mut lines = vec![format!("match app-id=r#\"^{pattern}$\"#")];
+    if let Some(floating) = rule.floating {
+        lines.push(format!("open-floating {floating}"));
+    }
+    if let Some(width) = rule.width {
+        lines.push(format!("default-column-width {{ {}; }}", proportion(width)));
+    }
+    if let Some(opacity) = rule.opacity {
+        lines.push(format!("opacity {opacity:.2}"));
+    }
+    block("window-rule", &lines)
 }
 
 pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
@@ -132,7 +264,13 @@ pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
         Shortcut::Panel => ("Quick settings", "panel"),
         Shortcut::Switch => ("Switch mode", "switch"),
         Shortcut::Lock => ("Lock the screen", "lock"),
+        Shortcut::Clipboard => ("Clipboard history", "clipboard"),
+        Shortcut::Keys => ("Keyboard shortcuts", "keys"),
     }
+}
+
+fn quote(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn keyboard(keyboard: &Keyboard) -> Option<String> {
@@ -194,8 +332,9 @@ fn block(name: &str, lines: &[String]) -> String {
 
 pub fn sync(fragment: &Fragment) {
     let path = path();
-    if path.exists()
-        && let Err(err) = replace(&path, &render(fragment))
+    let text = render(fragment);
+    if fs::read_to_string(&path).is_ok_and(|current| current != text)
+        && let Err(err) = replace(&path, &text)
     {
         eprintln!("apolline: cannot update {}: {err}", path.display());
     }
@@ -261,7 +400,7 @@ mod tests {
         dir
     }
 
-    fn look(config: &Config, mode: Mode) -> Fragment<'_> {
+    fn look(config: &Config, mode: Option<usize>) -> Fragment<'_> {
         Fragment {
             config,
             mode,
@@ -272,23 +411,69 @@ mod tests {
     #[test]
     fn borders_take_the_mode_accent_and_layout_follows_the_config() {
         let (config, _) = Config::parse(
-            "[layout]\ngaps = 4\nradius = 0\nborders = false\n[mode.play]\naccent = \"#c084fc\"\n",
+            "[layout]\ngaps = 4\nradius = 0\nborders = false\n[[mode]]\nname = \"Night\"\naccent = \"#c084fc\"\nkeys = { \"Mod+N\" = \"notify-send \\\"hi\\\"\" }\n",
         );
-        let text = render(&look(&config, Mode::Play));
+        let text = render(&look(&config, Some(0)));
+        assert!(text.contains(
+            "    Mod+N hotkey-overlay-title=\"Night: notify-send \\\"hi\\\"\" { spawn-sh \"notify-send \\\"hi\\\"\"; }\n"
+        ), "{text}");
+        assert!(
+            !render(&look(&config, None)).contains("Mod+N"),
+            "mode keys leave with the mode"
+        );
+        let (clash, _) =
+            Config::parse("[[mode]]\nname = \"X\"\nkeys = { \"Mod+Space\" = \"foot\" }\n");
+        assert_eq!(
+            render(&look(&clash, Some(0))).matches("Mod+Space").count(),
+            1,
+            "a mode key never doubles an Apolline shortcut"
+        );
         assert!(text.contains("active-color \"#c084fc\""));
         assert!(text.contains("    gaps 4\n"));
         assert!(text.contains("geometry-corner-radius 0\n"));
         assert!(text.contains("border {\n        off\n"));
-        let work = render(&look(&Config::default(), Mode::Work));
+        let work = render(&look(&Config::default(), None));
         assert!(work.contains("active-color \"#86bdf0\""));
         assert!(work.contains("border {\n        on\n"));
         assert!(!work.contains("input {"), "input stays with niri until set");
         assert!(work.contains(
-            "binds {\n    Mod+Space hotkey-overlay-title=\"Search apps and games\" { spawn \"apolline\" \"launcher\"; }\n"
+            "    Mod+Space hotkey-overlay-title=\"Search apps and games\" { spawn \"apolline\" \"launcher\"; }\n"
         ));
         assert!(work.contains(
             "    Super+Alt+L hotkey-overlay-title=\"Lock the screen\" { spawn \"apolline\" \"lock\"; }\n"
         ));
+        assert!(work.contains(
+            "    XF86AudioRaiseVolume allow-when-locked=true { spawn \"apolline\" \"volume\" \"up\"; }\n"
+        ));
+    }
+
+    #[test]
+    fn window_settings_and_app_rules_become_niri_config() {
+        let (config, _) = Config::parse(
+            "[windows]\nwidth = \"2/3\"\npresets = [\"1/3\", \"1/2\"]\ncenter = \"overflow\"\ncenter_lone = true\nfocus_follows_mouse = true\nopacity = 0.97\ninactive_opacity = 0.85\nanimations = 2\n\n[[rule]]\napp = \"org.pulseaudio.pavucontrol\"\nfloating = true\nwidth = \"1/3\"\n\n[[mode]]\nname = \"Play\"\nperformance = true\n",
+        );
+        let text = render(&look(&config, None));
+        assert!(text.contains("    default-column-width {\n        proportion 0.66667\n    }\n"));
+        assert!(text.contains("    preset-column-widths {\n        proportion 0.33333\n        proportion 0.50000\n    }\n"));
+        assert!(text.contains(
+            "    center-focused-column \"on-overflow\"\n    always-center-single-column\n"
+        ));
+        assert!(text.contains("    focus-follows-mouse\n"));
+        assert!(text.contains("animations {\n    slowdown 0.50\n}"));
+        assert!(text.contains("window-rule {\n    match is-active=false\n    opacity 0.85\n}"));
+        assert!(text.contains(
+            "window-rule {\n    match app-id=r#\"^org\\.pulseaudio\\.pavucontrol$\"#\n    open-floating true\n    default-column-width { proportion 0.33333; }\n}"
+        ), "{text}");
+        assert!(
+            text.contains("recent-windows {\n    highlight {\n        active-color \"#86bdf0\"")
+        );
+        let play = render(&look(&config, Some(0)));
+        assert_eq!(
+            play.matches("\nanimations {").count(),
+            1,
+            "one animations block"
+        );
+        assert!(play.contains("animations {\n    off\n}"));
     }
 
     #[test]
@@ -296,7 +481,7 @@ mod tests {
         let (config, _) = Config::parse(
             "[keyboard]\nlayouts = [\"us\", \"ru\"]\nswitch = \"caps\"\nrepeat_rate = 40\n\n[touchpad]\ntap = false\nspeed = 0.3\n\n[mouse]\nacceleration = false\n",
         );
-        let text = render(&look(&config, Mode::Work));
+        let text = render(&look(&config, None));
         let input = &text[text.find("\ninput {").expect("an input block")..];
         assert!(input.starts_with(
             "\ninput {\n    keyboard {\n        xkb {\n            layout \"us,ru\"\n            options \"grp:caps_toggle\"\n        }\n        repeat-rate 40\n    }\n"
@@ -313,14 +498,14 @@ mod tests {
     #[test]
     fn play_drops_effects_and_lets_games_drive_the_refresh_rate() {
         let outputs = ["eDP-1".to_owned(), "DP-2".to_owned()];
-        let config = Config::default();
+        let (config, _) = Config::parse("[[mode]]\nname = \"Play\"\nperformance = true\n");
         let calm = render(&Fragment {
             outputs: &outputs,
-            ..look(&config, Mode::Work)
+            ..look(&config, None)
         });
         let play = render(&Fragment {
             outputs: &outputs,
-            ..look(&config, Mode::Play)
+            ..look(&config, Some(0))
         });
 
         for text in [&calm, &play] {
@@ -351,9 +536,10 @@ mod tests {
         fs::write(&niri, "binds {\n    Mod+T { spawn \"foot\"; }\n}").unwrap();
 
         let mut evening = Config::default();
-        evening.mode = Mode::Evening;
-        setup(&fragment, &niri, &look(&Config::default(), Mode::Work)).unwrap();
-        let again = setup(&fragment, &niri, &look(&evening, Mode::Evening)).unwrap();
+        evening.desktop.accent =
+            apolline_config::Accent::Fixed(apolline_theme::Rgba::hex(0xf2b35c));
+        setup(&fragment, &niri, &look(&Config::default(), None)).unwrap();
+        let again = setup(&fragment, &niri, &look(&evening, None)).unwrap();
 
         let text = fs::read_to_string(&niri).unwrap();
         assert_eq!(text.matches("include").count(), 1);
@@ -374,7 +560,7 @@ mod tests {
         let err = setup(
             &dir.join("apolline/niri.kdl"),
             &dir.join("config.kdl"),
-            &look(&Config::default(), Mode::Work),
+            &look(&Config::default(), None),
         )
         .unwrap_err();
         assert!(err.to_string().contains("start niri once"));

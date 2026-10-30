@@ -1,5 +1,3 @@
-use apolline_theme::Mode;
-
 use crate::media::Track;
 use crate::power::Battery;
 
@@ -10,23 +8,25 @@ pub struct Status {
     pub busy: Vec<usize>,
     pub ids: Vec<u64>,
     pub keyboard: String,
+    pub windows: Vec<(u64, String, bool)>,
     pub battery: Option<Battery>,
     pub media: Option<Track>,
 }
 
 impl Status {
-    pub fn sample(mode: Mode) -> Self {
-        let (active, busy, media) = match mode {
-            Mode::Work => (0, vec![0, 1, 2], Some(("Harbor Lights", "Low Tide"))),
-            Mode::Play => (2, vec![0, 2], None),
-            Mode::Evening => (3, vec![3], Some(("Night Drive", "Low Tide"))),
-        };
+    pub fn sample() -> Self {
+        let (active, busy, media) = (1, vec![0, 1, 2], Some(("Night Drive", "Low Tide")));
         Self {
             workspaces: 5,
             active,
             busy,
             ids: Vec::new(),
             keyboard: "EN".into(),
+            windows: vec![
+                (1, "code".into(), true),
+                (2, "firefox".into(), false),
+                (3, "foot".into(), false),
+            ],
             battery: Some(Battery {
                 percent: 82,
                 charging: false,
@@ -48,6 +48,20 @@ impl Status {
                 .collect(),
             ids: workspaces.iter().map(|w| w.id).collect(),
             keyboard: state.layout().map(short_layout).unwrap_or_default(),
+            windows: workspaces
+                .iter()
+                .find(|w| w.is_active)
+                .map(|w| {
+                    state
+                        .windows_on(w.id)
+                        .into_iter()
+                        .map(|window| {
+                            let app = window.app_id.clone().unwrap_or_default();
+                            (window.id, app, window.is_focused)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             battery: None,
             media: None,
         }

@@ -10,6 +10,7 @@ pub struct App {
     pub icon: Option<Picture>,
     pub game: bool,
     pub keywords: String,
+    pub class: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +70,7 @@ pub fn sample() -> Vec<App> {
         icon: None,
         game,
         keywords: String::new(),
+        class: None,
     };
     vec![
         app("Baldur's Gate 3", "Game", true),
@@ -141,6 +143,7 @@ fn parse(id: &str, text: &str) -> Option<App> {
         icon,
         game,
         keywords: field("Keywords").unwrap_or_default().replace(';', " "),
+        class: field("StartupWMClass"),
     })
 }
 
@@ -218,6 +221,24 @@ fn picture(file: PathBuf) -> Picture {
     } else {
         Picture::Raster(file)
     }
+}
+
+pub fn find<'a>(apps: &'a [App], app_id: &str) -> Option<&'a App> {
+    let wanted = app_id.to_lowercase();
+    apps.iter().find(|app| {
+        let id = app.id.to_lowercase();
+        id == wanted
+            || id.rsplit('.').next() == Some(wanted.as_str())
+            || app
+                .class
+                .as_deref()
+                .is_some_and(|c| c.eq_ignore_ascii_case(app_id))
+            || app.exec.split_whitespace().next().is_some_and(|e| {
+                e.rsplit('/')
+                    .next()
+                    .is_some_and(|e| e.eq_ignore_ascii_case(app_id))
+            })
+    })
 }
 
 pub fn score(query: &str, app: &App) -> Option<u32> {

@@ -77,10 +77,18 @@ pub fn mono() -> Font {
 }
 
 pub fn bar(_: &Theme) -> container::Style {
-    container::Style {
+    glass(0.55, true)(&Theme::Dark)
+}
+
+pub fn glass(opacity: f32, floating: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style {
         text_color: Some(color(neutral::TEXT)),
-        background: fill(neutral::GLASS),
-        border: outlined(neutral::HAIRLINE, metrics::RADIUS_BAR),
+        background: fill(neutral::INK.alpha(opacity)),
+        border: if floating {
+            outlined(neutral::HAIRLINE, metrics::RADIUS_BAR)
+        } else {
+            Border::default()
+        },
         ..container::Style::default()
     }
 }

@@ -1,16 +1,22 @@
 mod diagnostic;
 mod edit;
 mod read;
+mod theme;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
-use apolline_theme::{Mode, Palette, Rgba};
+use apolline_theme::{ACCENTS, Palette, Rgba};
 pub use diagnostic::Diagnostic;
 pub use edit::Editor;
+pub use theme::Theme;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
-    pub mode: Mode,
+    pub mode: Option<String>,
+    pub theme: Option<(String, Option<String>)>,
+    pub desktop: Desktop,
     pub layout: Layout,
     pub bar: Bar,
     pub keyboard: Keyboard,
@@ -20,7 +26,96 @@ pub struct Config {
     pub shortcuts: Shortcuts,
     pub lock: Lock,
     pub idle: Idle,
-    modes: [ModeSettings; 3],
+    pub windows: Windows,
+    pub rules: Vec<Rule>,
+    pub modes: Vec<ModeSettings>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Windows {
+    pub width: Option<Width>,
+    pub presets: Option<Vec<Width>>,
+    pub center: Option<Center>,
+    pub center_lone: bool,
+    pub focus_follows_mouse: bool,
+    pub warp_mouse: bool,
+    pub opacity: Option<f32>,
+    pub inactive_opacity: Option<f32>,
+    pub animations: Option<f32>,
+    pub switcher: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Width {
+    Third,
+    Half,
+    TwoThirds,
+    ThreeQuarters,
+    Full,
+}
+
+impl Width {
+    pub const ALL: [Width; 5] = [
+        Width::Third,
+        Width::Half,
+        Width::TwoThirds,
+        Width::ThreeQuarters,
+        Width::Full,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Width::Third => "1/3",
+            Width::Half => "1/2",
+            Width::TwoThirds => "2/3",
+            Width::ThreeQuarters => "3/4",
+            Width::Full => "full",
+        }
+    }
+
+    pub fn proportion(self) -> f32 {
+        match self {
+            Width::Third => 1.0 / 3.0,
+            Width::Half => 0.5,
+            Width::TwoThirds => 2.0 / 3.0,
+            Width::ThreeQuarters => 0.75,
+            Width::Full => 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Center {
+    Never,
+    Overflow,
+    Always,
+}
+
+impl Center {
+    pub const ALL: [Center; 3] = [Center::Never, Center::Overflow, Center::Always];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Center::Never => "never",
+            Center::Overflow => "overflow",
+            Center::Always => "always",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rule {
+    pub app: String,
+    pub floating: Option<bool>,
+    pub width: Option<Width>,
+    pub opacity: Option<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Desktop {
+    pub wallpaper: String,
+    pub accent: Accent,
+    pub theme: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,12 +126,21 @@ pub struct Layout {
     pub shadows: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bar {
     pub workspaces: Workspaces,
     pub seconds: bool,
     pub date: bool,
     pub battery_percent: bool,
+    pub position: Edge,
+    pub floating: bool,
+    pub opacity: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    Top,
+    Bottom,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,6 +186,8 @@ pub struct Shortcuts {
     pub panel: String,
     pub switch: String,
     pub lock: String,
+    pub clipboard: String,
+    pub keys: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,12 +196,16 @@ pub enum Shortcut {
     Panel,
     Switch,
     Lock,
+    Clipboard,
+    Keys,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 4] = [
+    pub const ALL: [Shortcut; 6] = [
+        Shortcut::Keys,
         Shortcut::Launcher,
         Shortcut::Panel,
+        Shortcut::Clipboard,
         Shortcut::Switch,
         Shortcut::Lock,
     ];
@@ -106,6 +216,8 @@ impl Shortcut {
             Shortcut::Panel => "panel",
             Shortcut::Switch => "switch",
             Shortcut::Lock => "lock",
+            Shortcut::Clipboard => "clipboard",
+            Shortcut::Keys => "keys",
         }
     }
 }
@@ -115,7 +227,6 @@ pub struct Idle {
     pub lock_after: u16,
     pub screen_off_after: u16,
     pub suspend_after: u16,
-    pub awake_in_play: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +242,8 @@ impl Shortcuts {
             Shortcut::Panel => &self.panel,
             Shortcut::Switch => &self.switch,
             Shortcut::Lock => &self.lock,
+            Shortcut::Clipboard => &self.clipboard,
+            Shortcut::Keys => &self.keys,
         }
     }
 
@@ -140,6 +253,8 @@ impl Shortcuts {
             Shortcut::Panel => &mut self.panel,
             Shortcut::Switch => &mut self.switch,
             Shortcut::Lock => &mut self.lock,
+            Shortcut::Clipboard => &mut self.clipboard,
+            Shortcut::Keys => &mut self.keys,
         }
     }
 }
@@ -151,6 +266,8 @@ impl Default for Shortcuts {
             panel: "Mod+A".into(),
             switch: "Mod+Shift+M".into(),
             lock: "Super+Alt+L".into(),
+            clipboard: "Mod+Alt+V".into(),
+            keys: "Mod+Slash".into(),
         }
     }
 }
@@ -163,11 +280,18 @@ pub struct Alerts {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModeSettings {
-    pub wallpaper: String,
-    pub accent: Accent,
+    pub name: String,
+    pub icon: String,
+    pub wallpaper: Option<String>,
+    pub accent: Option<Accent>,
     pub notifications: Notifications,
     pub open: Vec<String>,
+    pub performance: bool,
+    pub keep_awake: bool,
+    pub keys: Vec<(String, String)>,
 }
+
+pub const TEMPLATES: [&str; 5] = ["Work", "Play", "Evening", "Focus", "Presentation"];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Accent {
@@ -201,26 +325,80 @@ impl Config {
         }
     }
 
-    pub fn mode(&self, mode: Mode) -> &ModeSettings {
-        &self.modes[mode as usize]
+    pub fn find(&self, key: &str) -> Option<usize> {
+        let key = slug(key);
+        self.modes.iter().position(|mode| mode.key() == key)
     }
 
-    pub fn mode_mut(&mut self, mode: Mode) -> &mut ModeSettings {
-        &mut self.modes[mode as usize]
+    pub fn start(&self) -> Option<usize> {
+        self.mode.as_deref().and_then(|key| self.find(key))
     }
 
-    pub fn palette(&self, mode: Mode) -> Palette {
-        match self.mode(mode).accent {
-            Accent::Auto => Palette::of(mode),
-            Accent::Fixed(color) => Palette::of(mode).with_accent(color),
-        }
+    pub fn wallpaper(&self, mode: Option<usize>) -> &str {
+        mode.and_then(|i| self.modes.get(i))
+            .and_then(|m| m.wallpaper.as_deref())
+            .unwrap_or(&self.desktop.wallpaper)
     }
+
+    pub fn palette(&self, mode: Option<usize>) -> Palette {
+        let accent = mode
+            .and_then(|i| self.modes.get(i))
+            .and_then(|m| m.accent)
+            .unwrap_or(self.desktop.accent);
+        Palette::new(match accent {
+            Accent::Auto => auto_accent(self.wallpaper(mode)),
+            Accent::Fixed(color) => color,
+        })
+    }
+
+    pub fn notifications(&self, mode: Option<usize>) -> Notifications {
+        mode.and_then(|i| self.modes.get(i))
+            .map_or(Notifications::All, |m| m.notifications)
+    }
+}
+
+static SEEN: RwLock<BTreeMap<String, Rgba>> = RwLock::new(BTreeMap::new());
+
+pub fn remember_accent(wallpaper: &str, accent: Rgba) {
+    if let Ok(mut seen) = SEEN.write() {
+        seen.insert(wallpaper.to_owned(), accent);
+    }
+}
+
+pub fn auto_accent(wallpaper: &str) -> Rgba {
+    if let Some(accent) = SEEN
+        .read()
+        .ok()
+        .and_then(|seen| seen.get(wallpaper).copied())
+    {
+        return accent;
+    }
+    match wallpaper {
+        "ember.jpg" => ACCENTS[1],
+        "night.jpg" => ACCENTS[2],
+        _ => ACCENTS[0],
+    }
+}
+
+pub fn slug(name: &str) -> String {
+    name.trim()
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            mode: Mode::Work,
+            mode: None,
+            theme: None,
+            desktop: Desktop {
+                wallpaper: "fog.jpg".into(),
+                accent: Accent::Auto,
+                theme: None,
+            },
             layout: Layout {
                 gaps: 10,
                 radius: 12,
@@ -232,6 +410,9 @@ impl Default for Config {
                 seconds: false,
                 date: true,
                 battery_percent: true,
+                position: Edge::Top,
+                floating: true,
+                opacity: 0.55,
             },
             keyboard: Keyboard::default(),
             touchpad: None,
@@ -249,9 +430,21 @@ impl Default for Config {
                 lock_after: 5,
                 screen_off_after: 10,
                 suspend_after: 0,
-                awake_in_play: true,
             },
-            modes: Mode::ALL.map(ModeSettings::default_for),
+            windows: Windows {
+                width: None,
+                presets: None,
+                center: None,
+                center_lone: false,
+                focus_follows_mouse: false,
+                warp_mouse: false,
+                opacity: None,
+                inactive_opacity: None,
+                animations: None,
+                switcher: true,
+            },
+            rules: Vec::new(),
+            modes: Vec::new(),
         }
     }
 }
@@ -305,16 +498,65 @@ impl Default for Mouse {
 }
 
 impl ModeSettings {
-    fn default_for(mode: Mode) -> Self {
+    pub fn key(&self) -> String {
+        slug(&self.name)
+    }
+
+    pub fn blank(name: &str) -> Self {
         Self {
-            wallpaper: Palette::of(mode).wallpaper.to_owned(),
-            accent: Accent::Auto,
-            notifications: match mode {
-                Mode::Work => Notifications::Mentions,
-                Mode::Play => Notifications::Hold,
-                Mode::Evening => Notifications::All,
-            },
+            name: name.to_owned(),
+            icon: "sparkles".into(),
+            wallpaper: None,
+            accent: None,
+            notifications: Notifications::All,
             open: Vec::new(),
+            performance: false,
+            keep_awake: false,
+            keys: Vec::new(),
+        }
+    }
+
+    pub fn template(name: &str) -> Self {
+        let blank = Self::blank(name);
+        let wallpaper = |w: &str| Some(w.to_owned());
+        match slug(name).as_str() {
+            "work" => Self {
+                icon: "briefcase".into(),
+                wallpaper: wallpaper("fog.jpg"),
+                accent: Some(Accent::Auto),
+                notifications: Notifications::Mentions,
+                ..blank
+            },
+            "play" => Self {
+                icon: "gamepad".into(),
+                wallpaper: wallpaper("ember.jpg"),
+                accent: Some(Accent::Auto),
+                notifications: Notifications::Hold,
+                open: vec!["steam".into()],
+                performance: true,
+                keep_awake: true,
+                ..blank
+            },
+            "evening" => Self {
+                icon: "moon".into(),
+                wallpaper: wallpaper("night.jpg"),
+                accent: Some(Accent::Auto),
+                ..blank
+            },
+            "focus" => Self {
+                icon: "target".into(),
+                accent: Some(Accent::Fixed(ACCENTS[3])),
+                notifications: Notifications::Hold,
+                ..blank
+            },
+            "presentation" => Self {
+                icon: "presentation".into(),
+                accent: Some(Accent::Fixed(ACCENTS[4])),
+                notifications: Notifications::Hold,
+                keep_awake: true,
+                ..blank
+            },
+            _ => blank,
         }
     }
 }
@@ -347,7 +589,8 @@ mod tests {
     fn shipped_config_is_clean() {
         let (config, diagnostics) = parse(include_str!("../../../assets/config.toml"));
         assert_eq!(diagnostics, vec![]);
-        assert_eq!(config.mode(Mode::Play).open, ["steam", "discord"]);
+        assert!(config.modes.is_empty(), "no modes until you make one");
+        assert_eq!(config.start(), None);
     }
 
     #[test]
@@ -362,14 +605,15 @@ mod tests {
     }
 
     #[test]
-    fn misspelled_section_and_mode() {
-        let (_, diagnostics) = parse("[layut]\ngaps = 4\n\n[mode.party]\nopen = []\n");
+    fn misspelled_section_and_mode_option() {
+        let (_, diagnostics) =
+            parse("[layut]\ngaps = 4\n\n[[mode]]\nname = \"Party\"\nwalpaper = \"x.jpg\"\n");
         let hints: Vec<_> = diagnostics
             .iter()
             .map(|d| (d.line, d.hint.clone()))
             .collect();
         assert_eq!(hints[0], (1, Some("did you mean “layout”?".into())));
-        assert_eq!(hints[1], (4, Some("known: work, play, evening".into())));
+        assert_eq!(hints[1], (6, Some("did you mean “wallpaper”?".into())));
     }
 
     #[test]
@@ -388,13 +632,12 @@ mod tests {
 
     #[test]
     fn choices_suggest_the_closest_value() {
-        let (config, diagnostics) =
-            parse("[general]\nmode = \"evenin\"\n\n[mode.work]\nnotifications = \"mention\"\n");
-        assert_eq!(config.mode, Mode::Work);
-        assert_eq!(
-            diagnostics[0].hint.as_deref(),
-            Some("did you mean “evening”?")
+        let (config, diagnostics) = parse(
+            "[general]\nmode = \"evenin\"\n\n[[mode]]\nname = \"Work\"\nnotifications = \"mention\"\n",
         );
+        assert_eq!(config.start(), None);
+        assert_eq!(diagnostics[0].message, "there is no mode called “evenin”");
+        assert_eq!(diagnostics[0].hint.as_deref(), Some("modes you have: Work"));
         assert_eq!(
             diagnostics[1].hint.as_deref(),
             Some("did you mean “mentions”?")
@@ -402,17 +645,44 @@ mod tests {
     }
 
     #[test]
-    fn accent_is_auto_or_a_color() {
-        let (config, diagnostics) =
-            parse("[mode.play]\naccent = \"#3b2a7a\"\n\n[mode.work]\naccent = \"blue\"\n");
-        assert_eq!(
-            config.mode(Mode::Play).accent,
-            Accent::Fixed(Rgba::hex(0x3b2a7a))
+    fn modes_need_names_and_unique_ones() {
+        let (config, diagnostics) = parse(
+            "[[mode]]\nicon = \"moon\"\n\n[[mode]]\nname = \"Night Owl\"\nkeys = { \"Mod+N\" = \"foot\", \"Mod +\" = \"x\" }\n\n[[mode]]\nname = \"night owl\"\n\n[general]\nmode = \"Night Owl\"\n",
         );
-        assert_eq!(config.palette(Mode::Play).accent, Rgba::hex(0x3b2a7a));
-        assert_eq!(config.mode(Mode::Work).accent, Accent::Auto);
+        assert_eq!(config.modes.len(), 1);
+        assert_eq!(config.modes[0].key(), "night-owl");
+        assert_eq!(
+            config.modes[0].keys,
+            [("Mod+N".to_owned(), "foot".to_owned())]
+        );
+        assert_eq!(config.start(), Some(0));
+        let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+        assert_eq!(
+            messages,
+            [
+                "a mode needs a name",
+                "“Mod +” is not a key combination",
+                "two modes are called “night owl”"
+            ]
+        );
+    }
+
+    #[test]
+    fn accents_fall_back_from_mode_to_desktop() {
+        let (config, diagnostics) = parse(
+            "[desktop]\nwallpaper = \"night.jpg\"\n\n[[mode]]\nname = \"Deep\"\naccent = \"#3b2a7a\"\n\n[[mode]]\nname = \"Same\"\naccent = \"blue\"\n",
+        );
+        assert_eq!(config.palette(Some(0)).accent, Rgba::hex(0x3b2a7a));
+        assert_eq!(config.modes[1].accent, None);
+        assert_eq!(
+            config.palette(Some(1)).accent,
+            ACCENTS[2],
+            "auto from night.jpg"
+        );
+        assert_eq!(config.palette(None).accent, ACCENTS[2]);
+        assert_eq!(config.wallpaper(Some(0)), "night.jpg");
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].line, 5);
+        assert_eq!(diagnostics[0].line, 10);
     }
 
     #[test]
@@ -442,6 +712,40 @@ mod tests {
             diagnostics[0].message,
             "“English” is not a keyboard layout code"
         );
+    }
+
+    #[test]
+    fn windows_and_app_rules() {
+        let (config, diagnostics) = parse(
+            "[windows]\nwidth = \"2/3\"\npresets = [\"1/3\", \"1/2\"]\ncenter = \"overflow\"\nopacity = 0.95\ninactive_opacity = 0.8\nanimations = 0\n\n[[rule]]\napp = \"pavucontrol\"\nfloating = true\nwidth = \"1/3\"\n\n[[rule]]\nfloating = true\n",
+        );
+        assert_eq!(config.windows.width, Some(Width::TwoThirds));
+        assert_eq!(
+            config.windows.presets,
+            Some(vec![Width::Third, Width::Half])
+        );
+        assert_eq!(config.windows.center, Some(Center::Overflow));
+        assert_eq!(config.windows.inactive_opacity, Some(0.8));
+        assert_eq!(config.windows.animations, Some(0.0));
+        assert_eq!(config.rules.len(), 1);
+        assert_eq!(config.rules[0].floating, Some(true));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message, "a rule needs an app");
+
+        let mut editor = Editor::parse("").unwrap();
+        editor.add_rule(&config.rules[0]);
+        editor.set("windows", "opacity", 0.9);
+        let (again, problems) = parse(&editor.text());
+        assert_eq!(problems, vec![]);
+        assert_eq!(again.rules, config.rules);
+        assert!(
+            editor
+                .lists("rule")
+                .starts_with("[[rule]]\napp = \"pavucontrol\"")
+        );
+        editor.remove_rule(0);
+        editor.unset("windows", "opacity");
+        assert_eq!(parse(&editor.text()).0.windows.opacity, None);
     }
 
     #[test]

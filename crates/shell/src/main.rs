@@ -1,11 +1,14 @@
 mod apps;
 mod bar;
+mod clipboard;
+mod clips;
 mod control;
 mod controls;
 mod fonts;
 mod fragment;
 mod icon;
 mod idle;
+mod keymap;
 mod keys;
 mod launcher;
 mod lock;
@@ -13,6 +16,7 @@ mod logind;
 mod media;
 mod niri;
 mod notify;
+mod osd;
 mod panel;
 mod popup;
 mod power;
@@ -24,14 +28,16 @@ mod shot;
 mod status;
 mod style;
 mod switcher;
+mod themes;
 mod wallpaper;
+mod windows;
 
 #[cfg(target_os = "linux")]
 mod layers;
 
 #[cfg(not(target_os = "linux"))]
 mod layers {
-    pub fn run(_: Option<apolline_theme::Mode>) -> Result<(), String> {
+    pub fn run(_: Option<String>) -> Result<(), String> {
         Err("layer surfaces need a Wayland session on Linux; use --preview".into())
     }
 }
@@ -39,30 +45,35 @@ mod layers {
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use apolline_config::Config;
-use apolline_theme::Mode;
+use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--open launcher|panel|switch] [--screenshot FILE]
-       apolline mode work|play|evening|next
-       apolline switch | launcher | panel
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|osd] [--screenshot FILE]
+       apolline mode NAME|next|none
+       apolline switch | launcher | panel | clipboard | keys
+       apolline volume up|down|mute | mic mute | brightness up|down
+       apolline theme [list|next|NAME]
        apolline setup
        apolline settings [--page NAME]
-       apolline lock [--preview] [--mode MODE] [--screenshot FILE]
+       apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]";
 
 #[derive(Default)]
 struct Options {
-    mode: Option<Mode>,
+    mode: Option<String>,
     preview: bool,
     screenshot: Option<PathBuf>,
-    open: Option<shell::Overlay>,
+    open: Option<shell::Message>,
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
-        Some("mode" | "switch" | "launcher" | "panel") => return command(&args.join(" ")),
+        Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {
+            return command(&args.join(" "));
+        }
+        Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
+        Some("theme") => return theme(args.get(1).map(String::as_str)),
         Some("setup") => return setup(),
         Some("settings") => return open_settings(&args[1..]),
         Some("lock") => return lock_screen(&args[1..]),
@@ -102,17 +113,25 @@ fn parse(args: &[String]) -> Result<Options, String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--mode" => {
-                let value = args.next().ok_or("--mode needs a value")?;
-                options.mode =
-                    Some(Mode::from_key(value).ok_or_else(|| format!("unknown mode “{value}”"))?);
+                options.mode = Some(args.next().ok_or("--mode needs a name")?.clone());
             }
             "--preview" => options.preview = true,
             "--open" => {
+                let overlay = |overlay| shell::Message::Overlay(Some(overlay));
                 options.open = Some(match args.next().map(String::as_str) {
-                    Some("launcher") => shell::Overlay::Launcher,
-                    Some("panel") => shell::Overlay::Panel,
-                    Some("switch") => shell::Overlay::Switcher,
-                    _ => return Err("--open needs launcher, panel or switch".into()),
+                    Some("launcher") => overlay(shell::Overlay::Launcher),
+                    Some("panel") => overlay(shell::Overlay::Panel),
+                    Some("switch") => overlay(shell::Overlay::Switcher),
+                    Some("clipboard") => overlay(shell::Overlay::Clipboard),
+                    Some("keys") => overlay(shell::Overlay::Keys),
+                    Some("osd") => {
+                        shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
+                    }
+                    _ => {
+                        return Err(
+                            "--open needs launcher, panel, switch, clipboard, keys or osd".into(),
+                        );
+                    }
                 })
             }
             "--screenshot" => {
@@ -131,6 +150,69 @@ fn command(line: &str) -> ExitCode {
             eprintln!("apolline: {err}");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn theme(wanted: Option<&str>) -> ExitCode {
+    let path = apolline_config::default_path();
+    let (config, _) = Config::load(&path);
+    let themes = themes::all();
+    let current = config
+        .desktop
+        .theme
+        .as_deref()
+        .and_then(|name| themes.iter().position(|(t, _)| slug(&t.name) == slug(name)));
+    let index = match wanted {
+        None | Some("list") => {
+            for (i, (theme, _)) in themes.iter().enumerate() {
+                let mark = if current == Some(i) { '*' } else { ' ' };
+                println!("{mark} {}", theme.name);
+            }
+            return ExitCode::SUCCESS;
+        }
+        Some("next") => current.map_or(0, |i| (i + 1) % themes.len()),
+        Some(name) => match themes.iter().position(|(t, _)| slug(&t.name) == slug(name)) {
+            Some(i) => i,
+            None => {
+                eprintln!("apolline: no theme “{name}”; `apolline theme list` shows them");
+                return ExitCode::from(2);
+            }
+        },
+    };
+    let theme = &themes[index].0;
+    let applied = Editor::load(&path).and_then(|mut editor| {
+        theme.apply(&mut editor);
+        editor.save(&path).map_err(|err| err.to_string())
+    });
+    match applied {
+        Ok(()) => {
+            println!("{}", theme.name);
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("apolline: {}: {err}", path.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn media_key(line: &str) -> ExitCode {
+    let nudge = match control::Command::parse(line) {
+        Ok(control::Command::Nudge(nudge)) => nudge,
+        _ => {
+            eprintln!("apolline: unknown command “{line}”\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    if control::send(line).is_ok() {
+        return ExitCode::SUCCESS;
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    match runtime.map(|rt| rt.block_on(controls::nudge(nudge))) {
+        Ok(Some(_)) => ExitCode::SUCCESS,
+        _ => ExitCode::FAILURE,
     }
 }
 
@@ -178,7 +260,7 @@ fn setup() -> ExitCode {
     let (config, _) = Config::load(&apolline_config::default_path());
     let look = fragment::Fragment {
         config: &config,
-        mode: config.mode,
+        mode: config.start(),
         outputs: &[],
     };
     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {

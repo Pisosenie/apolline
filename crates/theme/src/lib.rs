@@ -1,61 +1,16 @@
 mod color;
 
-pub use color::Rgba;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum Mode {
-    #[default]
-    Work,
-    Play,
-    Evening,
-}
-
-impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Work, Mode::Play, Mode::Evening];
-
-    pub fn key(self) -> &'static str {
-        match self {
-            Mode::Work => "work",
-            Mode::Play => "play",
-            Mode::Evening => "evening",
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Mode::Work => "Work",
-            Mode::Play => "Play",
-            Mode::Evening => "Evening",
-        }
-    }
-
-    pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|mode| mode.key() == key)
-    }
-
-    pub fn next(self) -> Self {
-        Self::ALL[(self as usize + 1) % Self::ALL.len()]
-    }
-}
+pub use color::{Rgba, accent_of};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
     pub accent: Rgba,
     pub on_accent: Rgba,
     pub accent_soft: Rgba,
-    pub wallpaper: &'static str,
 }
 
 impl Palette {
-    pub const fn of(mode: Mode) -> Self {
-        match mode {
-            Mode::Work => Self::new(0x86bdf0, 0x0b1724, "fog.jpg"),
-            Mode::Play => Self::new(0xff6a3d, 0x1a0703, "ember.jpg"),
-            Mode::Evening => Self::new(0xf2b35c, 0x1d1204, "night.jpg"),
-        }
-    }
-
-    pub fn with_accent(self, accent: Rgba) -> Self {
+    pub fn new(accent: Rgba) -> Self {
         let dark = neutral::INK;
         let on_accent = if accent.contrast(dark) >= accent.contrast(neutral::TEXT) {
             dark
@@ -66,19 +21,24 @@ impl Palette {
             accent,
             on_accent,
             accent_soft: accent.alpha(SOFT),
-            ..self
-        }
-    }
-
-    const fn new(accent: u32, on_accent: u32, wallpaper: &'static str) -> Self {
-        Self {
-            accent: Rgba::hex(accent),
-            on_accent: Rgba::hex(on_accent),
-            accent_soft: Rgba::hex(accent).alpha(SOFT),
-            wallpaper,
         }
     }
 }
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self::new(ACCENTS[0])
+    }
+}
+
+pub const ACCENTS: [Rgba; 6] = [
+    Rgba::hex(0x86bdf0),
+    Rgba::hex(0xff6a3d),
+    Rgba::hex(0xf2b35c),
+    Rgba::hex(0xc084fc),
+    Rgba::hex(0x5dd39e),
+    Rgba::hex(0xf472b6),
+];
 
 const SOFT: f32 = 0.18;
 
@@ -118,24 +78,38 @@ mod tests {
     const BRIGHT_WALLPAPER: Rgba = Rgba::hex(0x808080);
 
     #[test]
-    fn modes_round_trip_through_keys() {
-        for mode in Mode::ALL {
-            assert_eq!(Mode::from_key(mode.key()), Some(mode));
+    fn every_accent_reads_on_its_own_surfaces() {
+        let panel = neutral::PANEL.over(BRIGHT_WALLPAPER);
+        for accent in ACCENTS {
+            let p = Palette::new(accent);
+            assert!(p.on_accent.contrast(p.accent) >= 4.5, "label on {accent:?}");
+            assert!(p.accent.contrast(panel) >= 4.5, "{accent:?} on panel");
         }
-        assert_eq!(Mode::Evening.next(), Mode::Work);
     }
 
     #[test]
-    fn every_accent_reads_on_its_own_surfaces() {
-        let panel = neutral::PANEL.over(BRIGHT_WALLPAPER);
-        for mode in Mode::ALL {
-            let p = Palette::of(mode);
-            assert!(
-                p.on_accent.contrast(p.accent) >= 4.5,
-                "{mode:?} label on accent"
-            );
-            assert!(p.accent.contrast(panel) >= 4.5, "{mode:?} accent on panel");
+    fn the_accent_comes_from_the_vivid_part_of_the_picture() {
+        let mut pixels = Vec::new();
+        for i in 0..10_000 {
+            let px: [u8; 4] = match i % 10 {
+                0..=5 => [40, 42, 46, 255],
+                6..=8 => [20, 60, 170, 255],
+                _ => [200, 200, 200, 255],
+            };
+            pixels.extend(px);
         }
+        let accent = accent_of(&pixels).unwrap();
+        assert!(accent.b > accent.r && accent.b > accent.g, "{accent:?}");
+        let panel = neutral::PANEL.over(BRIGHT_WALLPAPER);
+        assert!(
+            Palette::new(accent).accent.contrast(panel) >= 4.5,
+            "{accent:?}"
+        );
+        assert_eq!(
+            accent_of(&[128, 128, 128, 255].repeat(500)),
+            None,
+            "grey has no accent"
+        );
     }
 
     #[test]
@@ -146,8 +120,8 @@ mod tests {
 
     #[test]
     fn custom_accent_picks_readable_label() {
-        let light = Palette::of(Mode::Work).with_accent(Rgba::hex(0xffe08a));
-        let dark = Palette::of(Mode::Work).with_accent(Rgba::hex(0x3b2a7a));
+        let light = Palette::new(Rgba::hex(0xffe08a));
+        let dark = Palette::new(Rgba::hex(0x3b2a7a));
         assert_eq!(light.on_accent, neutral::INK);
         assert_eq!(dark.on_accent, neutral::TEXT);
     }
