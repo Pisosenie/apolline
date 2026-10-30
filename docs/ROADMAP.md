@@ -65,7 +65,8 @@ Apolline doesn't race them on widgets:
 - Launcher: apps and Steam games, open windows, sums, actions, keyboard navigation.
 - Lock screen (ext-session-lock + PAM, its own process), idle lock, lock before sleep, screen off.
 - Polkit agent with its own dialog, on polkit's socket-activated helper.
-- Notification daemon, OSD for volume, brightness, microphone and layout, clipboard history.
+- Notification daemon (actions and a click that opens the app, pictures, progress, per-app mute),
+  OSD for volume, brightness, microphone and layout, clipboard history.
 - Settings for everything below, with the file it writes and undo; a welcome window on first start.
 - Modes you make yourself, with their own keys, that can switch themselves on.
 - Windows: niri's Alt+Tab in Apolline colors, window settings, per-app rules.
