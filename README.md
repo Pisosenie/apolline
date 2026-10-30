@@ -136,7 +136,7 @@ Applying a theme rewrites only these keys in your config and leaves the rest alo
 
 `[apps] colors = true`, or *Color apps too* in Settings → Appearance, gives GTK 3, GTK 4 and Qt apps (through qt6ct) your accent and the dark style, and follows your modes. It writes `apolline.css` next to your `gtk.css`, adds one `@import` line to the top of `gtk.css`, a qt6ct palette, and the GNOME `color-scheme` and nearest `accent-color`. Turning it off removes exactly that. A `gtk.css` that is a link (dotfiles managers) is left alone; Apolline tells you the line to add yourself.
 
-`[desktop] font`, `gtk`, `icons`, `cursor` and `cursor_size` pick the font of Apolline itself (from its next start), the GTK theme, the icon theme and the pointer, and hand the same choices to GTK apps through gsettings.
+`[desktop] font`, `gtk`, `icons`, `cursor` and `cursor_size` pick the font of Apolline itself (from its next start), the GTK theme, the icon theme and the pointer, and hand the same choices to GTK apps through gsettings. Take one out and the value you had before comes back, unless you changed it yourself in the meantime.
 
 Wallpapers come from `~/.local/share/apolline/wallpapers`, `~/Pictures/Wallpapers` and any folder you add in Settings → Appearance (`[desktop] folders`). `[desktop] rotate = 60` moves through them every hour (`shuffle = true` for random order); the file keeps the one you picked, and the lock screen shows the current one. With more than one monitor, Settings → Appearance lets each have its own picture (`[desktop] outputs = { "HDMI-A-1" = "wide.jpg" }`); a mode's wallpaper still covers them all.
 
@@ -178,7 +178,7 @@ Apolline is a polkit agent: when an app needs an admin password (pkexec, GParted
 
 ## Login screen
 
-`apolline greet` is a greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) that looks like the lock screen: the time, the people who can log in, the session (from `/usr/share/wayland-sessions`, niri first), the password, restart and power off. Run it in a kiosk compositor such as cage, in `/etc/greetd/config.toml`:
+`apolline greet` is a greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) that looks like the lock screen: the time, the people who can log in (anyone `getent passwd` knows within `login.defs`' range, or a name field when there's no one to list), the session (from `/usr/share/wayland-sessions`, niri first), the password, restart and power off. Run it in a kiosk compositor such as cage, in `/etc/greetd/config.toml`:
 
 ```toml
 [default_session]
