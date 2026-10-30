@@ -1,8 +1,10 @@
 use std::time::Duration;
 
 use apolline_theme::{Palette, font, metrics, neutral};
-use iced::widget::{button, column, container, row, space, text};
-use iced::{Background, Border, Element, Fill, Theme};
+use iced::widget::{button, column, container, image, row, space, text};
+use iced::{Background, Border, ContentFit, Element, Fill, Theme};
+
+use crate::apps::App;
 
 use crate::media::shorten;
 use crate::notify::{Notification, Urgency};
@@ -14,6 +16,7 @@ pub const MAX: usize = 3;
 const HEIGHT: u32 = 84;
 const BUTTONS: u32 = 38;
 const GAP: u32 = 8;
+const FACE: f32 = 36.0;
 
 fn card_height(notification: &Notification) -> u32 {
     if notification.buttons().next().is_some() {
@@ -31,15 +34,40 @@ pub fn height<'a>(cards: impl Iterator<Item = &'a Notification>) -> u32 {
 
 pub fn stack<'a>(
     notifications: impl Iterator<Item = &'a Notification>,
+    apps: &'a [App],
     palette: Palette,
 ) -> Element<'a, Message> {
-    column(notifications.take(MAX).map(|n| card(n, palette)))
+    column(notifications.take(MAX).map(|n| card(n, apps, palette)))
         .spacing(GAP as f32)
         .width(WIDTH as f32)
         .into()
 }
 
-fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
+// What the app sent along, else the app's own icon.
+fn face<'a>(
+    notification: &'a Notification,
+    apps: &'a [App],
+    palette: Palette,
+) -> Element<'a, Message> {
+    match &notification.image {
+        Some(picture) => image(picture.clone())
+            .width(FACE)
+            .height(FACE)
+            .content_fit(ContentFit::Cover)
+            .border_radius(FACE / 2.0)
+            .into(),
+        None => {
+            let app = notification.desktop.as_deref().unwrap_or(&notification.app);
+            crate::windows::picture(apps, app, FACE, palette)
+        }
+    }
+}
+
+fn card<'a>(
+    notification: &'a Notification,
+    apps: &'a [App],
+    palette: Palette,
+) -> Element<'a, Message> {
     let muted = style::color(neutral::MUTED);
     let edge = if notification.urgency == Urgency::Critical {
         palette.accent
@@ -55,13 +83,13 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
                 .size(11)
                 .color(muted),
         ],
-        text(shorten(&notification.summary, 40))
+        text(shorten(&notification.summary, 34))
             .size(14)
             .font(iced::Font {
                 weight: iced::font::Weight::Semibold,
                 ..iced::Font::with_name(crate::style::family())
             }),
-        text(shorten(&notification.body, 52))
+        text(shorten(&notification.body, 44))
             .size(font::SMALL)
             .color(muted),
     ]
@@ -84,6 +112,7 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
             .push(space().height(6))
             .push(row(buttons).spacing(6))
     };
+    let content = row![face(notification, apps, palette), content.width(Fill)].spacing(12);
 
     button(
         container(content)

@@ -1838,6 +1838,7 @@ impl Shell {
     pub fn popups(&self) -> Element<'_, Message> {
         popup::stack(
             self.popups.iter().rev().map(|(n, _)| n),
+            &self.apps,
             self.config.palette(self.mode),
         )
     }

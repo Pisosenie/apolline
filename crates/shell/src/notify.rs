@@ -45,6 +45,8 @@ pub struct Notification {
     pub desktop: Option<String>,
     // (key, label) pairs; "default" is what a click on the card does.
     pub actions: Vec<(String, String)>,
+    // A picture the app sent along, such as who wrote.
+    pub image: Option<iced::widget::image::Handle>,
     pub summary: String,
     pub body: String,
     pub urgency: Urgency,
@@ -123,6 +125,7 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         app,
         desktop: None,
         actions: Vec::new(),
+        image: None,
         summary: capitalize(&first.message),
         body,
         urgency: Urgency::Normal,
@@ -140,6 +143,7 @@ pub fn shot_card(path: &str) -> Notification {
         app: name,
         desktop: None,
         actions: Vec::new(),
+        image: None,
         summary: "Screenshot copied".into(),
         body: "Click to add arrows, boxes or hide a part".into(),
         urgency: Urgency::Normal,
@@ -207,6 +211,66 @@ pub fn invoke(id: u32, key: String) -> Task<Message> {
     .discard()
 }
 
+// The picture a notification carries: raw pixels, a file, or an icon given as a path.
+fn picture(
+    hints: &HashMap<String, OwnedVariant>,
+    app_icon: &str,
+) -> Option<iced::widget::image::Handle> {
+    let pixels = ["image-data", "image_data", "icon_data"]
+        .iter()
+        .find_map(|key| hints.get(*key))
+        .and_then(|value| {
+            let value = value.try_clone().ok()?;
+            <(i32, i32, i32, bool, i32, i32, Vec<u8>)>::try_from(zbus::Variant::from(value)).ok()
+        })
+        .and_then(|(width, height, stride, _, bits, channels, data)| {
+            rgba(width, height, stride, bits, channels, &data)
+        });
+    if let Some((width, height, rgba)) = pixels {
+        return Some(iced::widget::image::Handle::from_rgba(width, height, rgba));
+    }
+    let path = ["image-path", "image_path"]
+        .iter()
+        .find_map(|key| hints.get(*key))
+        .and_then(|v| v.downcast_ref::<String>().ok())
+        .unwrap_or_else(|| app_icon.to_owned());
+    let path = path.strip_prefix("file://").unwrap_or(&path);
+    let file = Path::new(path);
+    (file.is_absolute() && file.is_file()).then(|| iced::widget::image::Handle::from_path(file))
+}
+
+fn rgba(
+    width: i32,
+    height: i32,
+    stride: i32,
+    bits: i32,
+    channels: i32,
+    data: &[u8],
+) -> Option<(u32, u32, Vec<u8>)> {
+    let (w, h, stride) = (
+        usize::try_from(width).ok()?,
+        usize::try_from(height).ok()?,
+        usize::try_from(stride).ok()?,
+    );
+    let channels = usize::try_from(channels)
+        .ok()
+        .filter(|c| matches!(c, 3 | 4))?;
+    if bits != 8 || w == 0 || h == 0 || stride < w * channels {
+        return None;
+    }
+    if data.len() < stride * (h - 1) + w * channels {
+        return None;
+    }
+    let mut out = Vec::with_capacity(w * h * 4);
+    for row in data.chunks(stride).take(h) {
+        for px in row[..w * channels].chunks(channels) {
+            out.extend_from_slice(&px[..3]);
+            out.push(if channels == 4 { px[3] } else { 255 });
+        }
+    }
+    Some((w as u32, h as u32, out))
+}
+
 impl Notification {
     pub fn default_action(&self) -> bool {
         self.actions.iter().any(|(key, _)| key == "default")
@@ -236,7 +300,7 @@ impl Server {
         &mut self,
         app_name: String,
         replaces_id: u32,
-        _app_icon: String,
+        app_icon: String,
         summary: String,
         body: String,
         actions: Vec<String>,
@@ -264,11 +328,13 @@ impl Server {
             .iter()
             .map(|[key, label]| (key.clone(), label.clone()))
             .collect();
+        let image = picture(&hints, &app_icon);
         let notification = Notification {
             id,
             app: app_name,
             desktop,
             actions,
+            image,
             summary,
             body,
             urgency,
@@ -313,6 +379,21 @@ fn serve() -> impl Stream<Item = Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_pictures_become_rgba() {
+        // Two RGB pixels a row, rows padded to 8 bytes.
+        let data = [1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0];
+        let (w, h, out) = rgba(2, 2, 8, 8, 3, &data).unwrap();
+        assert_eq!((w, h), (2, 2));
+        assert_eq!(
+            out,
+            [1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255]
+        );
+        assert_eq!(rgba(2, 2, 8, 8, 3, &data[..10]), None, "too short");
+        assert_eq!(rgba(2, 2, 8, 16, 3, &data), None, "16 bits a channel");
+        assert_eq!(rgba(2, 2, 4, 8, 3, &data), None, "rows shorter than pixels");
+    }
 
     #[test]
     fn modes_decide_what_gets_through() {
