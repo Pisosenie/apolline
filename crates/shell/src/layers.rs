@@ -11,7 +11,7 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 
 use crate::fonts;
 use crate::popup;
-use crate::shell::{self, Message, Overlay, Shell};
+use crate::shell::{Message, Overlay, Shell};
 
 const BAR_SURFACE: u32 = (metrics::BAR_INSET + metrics::BAR_HEIGHT) as u32;
 const POPUP_MARGIN: i32 = 8;
@@ -183,7 +183,7 @@ impl Layers {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        shell::subscription()
+        self.shell.subscription()
     }
 }
 

@@ -21,3 +21,7 @@ zbus.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = "0.19"
+iced_sessionlock = "0.19"
+pam = "0.8"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }

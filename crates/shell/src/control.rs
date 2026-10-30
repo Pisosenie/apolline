@@ -36,11 +36,66 @@ impl Command {
     }
 }
 
-pub fn socket() -> PathBuf {
+pub fn runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
-        .join("apolline.sock")
+}
+
+pub fn socket() -> PathBuf {
+    runtime_dir().join("apolline.sock")
+}
+
+pub fn me() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.to_str()
+                .map(|p| format!("'{}'", p.replace('\'', r"'\''")))
+        })
+        .unwrap_or_else(|| "apolline".to_owned())
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Shared {
+    pub mode: Option<Mode>,
+    pub waiting: usize,
+}
+
+impl Shared {
+    fn text(self) -> String {
+        let mode = self.mode.map_or("", Mode::key);
+        format!("mode {mode}\nwaiting {}\n", self.waiting)
+    }
+
+    fn parse(text: &str) -> Self {
+        let mut shared = Self::default();
+        for line in text.lines() {
+            match line.split_once(' ') {
+                Some(("mode", key)) => shared.mode = Mode::from_key(key),
+                Some(("waiting", count)) => shared.waiting = count.parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+        shared
+    }
+}
+
+pub fn publish(shared: Shared) {
+    let path = runtime_dir().join("apolline.state");
+    let staged = path.with_extension("state.new");
+    if std::fs::write(&staged, shared.text())
+        .and_then(|()| std::fs::rename(&staged, &path))
+        .is_err()
+    {
+        eprintln!("apolline: cannot write {}", path.display());
+    }
+}
+
+pub fn shared() -> Shared {
+    std::fs::read_to_string(runtime_dir().join("apolline.state"))
+        .map(|text| Shared::parse(&text))
+        .unwrap_or_default()
 }
 
 pub fn listen() -> Subscription<Message> {
@@ -109,6 +164,16 @@ fn stream() -> impl Stream<Item = Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_state_round_trips() {
+        let shared = Shared {
+            mode: Some(Mode::Evening),
+            waiting: 2,
+        };
+        assert_eq!(Shared::parse(&shared.text()), shared);
+        assert_eq!(Shared::parse("garbage"), Shared::default());
+    }
 
     #[test]
     fn parses_mode_commands() {

@@ -87,6 +87,7 @@ enum Page {
     Modes,
     Appearance,
     Bar,
+    Lock,
     Notifications,
     Keyboard,
     Pointer,
@@ -95,10 +96,11 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Page; 8] = [
+    const ALL: [Page; 9] = [
         Page::Modes,
         Page::Appearance,
         Page::Bar,
+        Page::Lock,
         Page::Notifications,
         Page::Keyboard,
         Page::Pointer,
@@ -111,6 +113,7 @@ impl Page {
             Page::Modes => "modes",
             Page::Appearance => "appearance",
             Page::Bar => "bar",
+            Page::Lock => "lock",
             Page::Notifications => "notifications",
             Page::Keyboard => "keyboard",
             Page::Pointer => "pointer",
@@ -124,6 +127,7 @@ impl Page {
             Page::Modes => "Modes",
             Page::Appearance => "Appearance",
             Page::Bar => "Bar",
+            Page::Lock => "Lock screen",
             Page::Notifications => "Notifications",
             Page::Keyboard => "Keyboard",
             Page::Pointer => "Mouse & touchpad",
@@ -137,6 +141,7 @@ impl Page {
             Page::Modes => "One key changes wallpaper, apps, notifications and performance.",
             Page::Appearance => "Gaps, corners, borders and shadows of every window.",
             Page::Bar => "What the bar at the top shows.",
+            Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
             Page::Keyboard => "Layouts, how to switch them and how keys repeat.",
             Page::Pointer => "Tapping, scrolling and pointer speed.",
@@ -150,6 +155,7 @@ impl Page {
             Page::Modes => Icon::Layers,
             Page::Appearance => Icon::Palette,
             Page::Bar => Icon::PanelTop,
+            Page::Lock => Icon::Lock,
             Page::Notifications => Icon::Bell,
             Page::Keyboard => Icon::Keyboard,
             Page::Pointer => Icon::Pointer,
@@ -163,6 +169,7 @@ impl Page {
             Page::Modes | Page::About => &[],
             Page::Appearance => &["layout"],
             Page::Bar => &["bar"],
+            Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],
             Page::Pointer => &["touchpad", "mouse"],
@@ -220,6 +227,13 @@ enum Message {
     Record(Option<Shortcut>),
     Key(keyboard::Event),
     ResetShortcut(Shortcut),
+    LockBeforeSleep(bool),
+    LockMedia(bool),
+    LockNow,
+    IdleLock(u16),
+    IdleScreen(u16),
+    IdleSuspend(u16),
+    AwakeInPlay(bool),
     Setup,
     OpenFile,
     Commit,
@@ -426,6 +440,24 @@ impl Settings {
                     .to_owned();
                 self.record(shortcut, combo);
             }
+            Message::LockBeforeSleep(on) => self.edit(|e| e.set("lock", "before_sleep", on)),
+            Message::LockMedia(on) => self.edit(|e| e.set("lock", "show_media", on)),
+            Message::IdleLock(v) => self.stage(|e| e.set("idle", "lock_after", i64::from(v))),
+            Message::IdleScreen(v) => {
+                self.stage(|e| e.set("idle", "screen_off_after", i64::from(v)))
+            }
+            Message::IdleSuspend(v) => self.stage(|e| e.set("idle", "suspend_after", i64::from(v))),
+            Message::AwakeInPlay(on) => self.edit(|e| e.set("idle", "awake_in_play", on)),
+            Message::LockNow => {
+                let line = format!("{} lock &", crate::control::me());
+                return Task::future(async move {
+                    let _ = tokio::process::Command::new("sh")
+                        .args(["-c", &line])
+                        .status()
+                        .await;
+                })
+                .discard();
+            }
             Message::Setup => {
                 let look = Fragment {
                     config: &self.config,
@@ -596,6 +628,7 @@ impl Settings {
             Page::Modes => self.modes(),
             Page::Appearance => self.appearance(),
             Page::Bar => self.bar(),
+            Page::Lock => self.lock(),
             Page::Notifications => self.notifications(),
             Page::Keyboard => self.keyboard(),
             Page::Pointer => self.pointer(),
@@ -1076,6 +1109,7 @@ impl Settings {
                 controls: &self.controls,
                 held: 2,
                 do_not_disturb: self.config.alerts.do_not_disturb,
+                awake: false,
                 now: chrono::Local::now(),
                 look,
                 panel_open: false,
@@ -1121,6 +1155,139 @@ impl Settings {
                     "Percentage",
                     "Next to the battery icon",
                     switch(look.battery_percent, Message::BatteryPercent, palette),
+                )]
+            ),
+        ]
+        .spacing(22)
+        .into()
+    }
+
+    fn lock(&self) -> Element<'_, Message> {
+        let lock = self.config.lock;
+        let palette = self.palette();
+        let preview = self.preview(self.mode, 220.0, {
+            let pill = container(
+                row![
+                    container(text("D").size(10).color(style::color(palette.on_accent)))
+                        .center(18)
+                        .style(style::pill(palette.accent)),
+                    text("Password").size(10).color(style::color(style::FAINT)),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            )
+            .width(150)
+            .padding([4, 6])
+            .style(|_| container::Style {
+                background: Some(Background::Color(style::color(
+                    Rgba::hex(0x0c0d10).alpha(0.5),
+                ))),
+                border: Border {
+                    color: style::color(Rgba::hex(0xffffff).alpha(0.12)),
+                    width: 1.0,
+                    radius: style::PILL.into(),
+                },
+                ..container::Style::default()
+            });
+            let clock = column![
+                text(chrono::Local::now().format("%H:%M").to_string())
+                    .size(68)
+                    .font(style::light()),
+                pill
+            ]
+            .spacing(8);
+            let mut right = column![].align_x(Alignment::End);
+            if lock.show_media {
+                right = right.push(
+                    container(
+                        row![
+                            icon(Icon::Music, 12.0, palette.accent),
+                            text("Night Drive").size(10)
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                    )
+                    .padding([6, 10])
+                    .style(style::pill(Rgba::hex(0x0c0d10).alpha(0.5))),
+                );
+            }
+            column![
+                space::vertical(),
+                row![clock, space::horizontal(), right].align_y(Alignment::End)
+            ]
+            .padding(22)
+            .into()
+        });
+        let lock_now = button(
+            row![
+                icon(Icon::Lock, 14.0, palette.on_accent),
+                text("Lock now").size(13)
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        )
+        .padding([8, 14])
+        .style(style::primary(palette))
+        .on_press(Message::LockNow);
+        column![
+            preview,
+            group(
+                "When",
+                vec![
+                    setting(
+                        "Before sleep",
+                        "Locks the moment the laptop goes to sleep",
+                        switch(lock.before_sleep, Message::LockBeforeSleep, palette),
+                    ),
+                    setting(
+                        "Lock key",
+                        "Change it in Shortcuts",
+                        keycaps(&self.config.shortcuts.lock),
+                    ),
+                    setting("Try it", "Your password unlocks it", lock_now),
+                ]
+            ),
+            group(
+                "When you step away",
+                vec![
+                    setting(
+                        "Lock after",
+                        "Video players keep the screen on while they play",
+                        minutes(self.config.idle.lock_after, Message::IdleLock, palette),
+                    ),
+                    setting(
+                        "Screen off after",
+                        "Any key or touch wakes it",
+                        minutes(self.config.idle.screen_off_after, Message::IdleScreen, palette),
+                    ),
+                    setting(
+                        "Sleep after",
+                        "",
+                        minutes(self.config.idle.suspend_after, Message::IdleSuspend, palette),
+                    ),
+                    setting(
+                        "Stay awake in Play",
+                        "A gamepad doesn't count as touching the computer",
+                        switch(self.config.idle.awake_in_play, Message::AwakeInPlay, palette),
+                    ),
+                ]
+            ),
+            group(
+                "Shows",
+                vec![
+                    setting(
+                        "What's playing",
+                        "With a pause button",
+                        switch(lock.show_media, Message::LockMedia, palette),
+                    ),
+                    fact(Icon::Bell, "Notifications stay hidden, only their count shows"),
+                    fact(Icon::Keyboard, "The keyboard layout sits next to the password"),
+                ]
+            ),
+            group(
+                "Password",
+                vec![note(
+                    "Checked by PAM, the same way you log in: /etc/pam.d/apolline when it's installed, login otherwise.",
                 )]
             ),
         ]
@@ -1827,6 +1994,28 @@ fn value_slider<'a>(
             .width(240)
             .style(style::rail(palette, 4.0)),
         text(format!("{value} {unit}"))
+            .size(12)
+            .font(style::mono())
+            .color(style::color(style::SOFT_TEXT))
+            .width(Length::Fixed(64.0))
+            .align_x(Alignment::End),
+    ]
+    .spacing(12)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn minutes<'a>(value: u16, message: fn(u16) -> Message, palette: Palette) -> Element<'a, Message> {
+    let label = match value {
+        0 => "never".to_owned(),
+        minutes => format!("{minutes} min"),
+    };
+    row![
+        slider(0..=60u16, value, message)
+            .on_release(Message::Commit)
+            .width(240)
+            .style(style::rail(palette, 4.0)),
+        text(label)
             .size(12)
             .font(style::mono())
             .color(style::color(style::SOFT_TEXT))

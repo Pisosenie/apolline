@@ -10,10 +10,12 @@ use iced::{ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::apps::{self, App};
 use crate::bar::{self, Bar};
-use crate::control::{self, Command};
+use crate::control::{self, Command, Shared, me};
 use crate::controls::{self, Change, Controls};
 use crate::fragment::{self, Fragment};
+use crate::idle::{self, Stage};
 use crate::launcher::{Launcher, Target};
+use crate::logind;
 use crate::media::{self, Action, Track};
 use crate::niri;
 use crate::notify::{self, Closed, Notification};
@@ -45,7 +47,10 @@ pub enum Message {
     Notify(Notification),
     Unnotify(u32),
     Dismiss(u32),
-    ShowHeld,
+    Forget(u32),
+    ClearAll,
+    Idle(Stage, bool),
+    KeepAwake(bool),
     Overlay(Option<Overlay>),
     Opened,
     Thumb(Mode, Option<image::Handle>),
@@ -61,6 +66,8 @@ pub enum Message {
     PowerMenu(bool),
     OpenSettings,
     Screenshot,
+    LockNow,
+    Sleeping,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +96,8 @@ pub struct Shell {
     boosted: Option<String>,
     popups: Vec<(Notification, Instant)>,
     held: Vec<Notification>,
+    history: Vec<Notification>,
+    awake: bool,
     overlay: Option<Overlay>,
     launcher: Launcher,
     controls: Controls,
@@ -99,6 +108,7 @@ pub struct Shell {
     workspace: usize,
     wallpaper: Option<(Mode, image::Handle)>,
     ticks: u64,
+    published: Option<Shared>,
     now: DateTime<Local>,
 }
 
@@ -128,6 +138,8 @@ impl Shell {
             boosted: None,
             popups: Vec::new(),
             held: Vec::new(),
+            history: Vec::new(),
+            awake: false,
             overlay: None,
             launcher: Launcher::default(),
             controls: if sample {
@@ -142,6 +154,7 @@ impl Shell {
             config,
             wallpaper: None,
             ticks: 0,
+            published: None,
             now: Local::now(),
         };
         shell.report(&diagnostics);
@@ -223,6 +236,7 @@ impl Shell {
                 } else {
                     Task::none()
                 };
+                self.publish();
                 return Task::batch([reload, self.expire(), controls]);
             }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
@@ -270,6 +284,11 @@ impl Shell {
                     let seconds = u64::from(self.config.alerts.seconds);
                     notification.timeout = Some(Duration::from_secs(seconds));
                 }
+                self.history.retain(|n| n.id != notification.id);
+                if notification.id != notify::CONFIG_CARD {
+                    self.history.insert(0, notification.clone());
+                    self.history.truncate(50);
+                }
                 if notify::lets_through(self.rule(), notification.urgency) {
                     self.popups.push((notification, Instant::now()));
                 } else {
@@ -278,16 +297,27 @@ impl Shell {
             }
             Message::Unnotify(id) => {
                 self.forget(id);
+                self.history.retain(|n| n.id != id);
                 return notify::closed(id, Closed::Requested);
             }
+            Message::Forget(id) => {
+                self.forget(id);
+                self.history.retain(|n| n.id != id);
+                return notify::closed(id, Closed::Dismissed);
+            }
+            Message::ClearAll => {
+                self.held.clear();
+                let gone: Vec<u32> = self.history.drain(..).map(|n| n.id).collect();
+                return Task::batch(
+                    gone.into_iter()
+                        .map(|id| notify::closed(id, Closed::Dismissed)),
+                );
+            }
+            Message::KeepAwake(on) => self.awake = on,
+            Message::Idle(stage, true) => return self.idle(stage),
             Message::Dismiss(id) => {
                 self.forget(id);
                 return notify::closed(id, Closed::Dismissed);
-            }
-            Message::ShowHeld => {
-                let now = Instant::now();
-                self.popups.extend(self.held.drain(..).map(|n| (n, now)));
-                return self.set_overlay(None);
             }
             Message::Apps(apps) => {
                 let apps = if apps.is_empty() && self.demo {
@@ -333,7 +363,7 @@ impl Shell {
                     return Task::none();
                 }
                 let close = self.set_overlay(None);
-                return Task::batch([close, self.spawn(power.command())]);
+                return Task::batch([close, self.spawn(&power.command())]);
             }
             Message::PowerMenu(open) => {
                 self.power_menu = open;
@@ -347,6 +377,8 @@ impl Shell {
                 let close = self.set_overlay(None);
                 return Task::batch([close, self.spawn("niri msg action screenshot")]);
             }
+            Message::LockNow => return self.lock(),
+            Message::Sleeping if self.config.lock.before_sleep => return self.lock(),
             _ => {}
         }
         Task::none()
@@ -407,7 +439,10 @@ impl Shell {
                 self.launcher.open(),
                 Task::perform(apps::scan(), Message::Apps),
             ]),
-            Some(Overlay::Panel) => self.read_controls(),
+            Some(Overlay::Panel) => {
+                self.held.clear();
+                self.read_controls()
+            }
             _ => Task::none(),
         }
     }
@@ -418,7 +453,7 @@ impl Shell {
             Target::App(command) => self.spawn(&command),
             Target::Mode(mode) => self.switch(mode),
             Target::Settings => self.spawn(&format!("{} settings", me())),
-            Target::Power(power) => self.spawn(power.command()),
+            Target::Power(power) => self.spawn(&power.command()),
         };
         Task::batch([close, task])
     }
@@ -442,6 +477,34 @@ impl Shell {
             }
         })
         .discard()
+    }
+
+    fn idle(&mut self, stage: Stage) -> Task<Message> {
+        match stage {
+            Stage::Lock => self.lock(),
+            Stage::ScreenOff => self.spawn("niri msg action power-off-monitors"),
+            Stage::Suspend => self.spawn("systemctl suspend"),
+        }
+    }
+
+    fn lock(&mut self) -> Task<Message> {
+        self.publish();
+        let close = self.set_overlay(None);
+        Task::batch([close, self.spawn(&Power::Lock.command())])
+    }
+
+    fn publish(&mut self) {
+        if self.demo {
+            return;
+        }
+        let shared = Shared {
+            mode: Some(self.mode),
+            waiting: self.held.len() + self.popups.len(),
+        };
+        if self.published != Some(shared) {
+            control::publish(shared);
+            self.published = Some(shared);
+        }
     }
 
     fn player(&mut self, action: Action) -> Task<Message> {
@@ -562,7 +625,8 @@ impl Shell {
                 do_not_disturb: self.config.alerts.do_not_disturb,
                 power_menu: self.power_menu,
                 armed: self.armed,
-                held: self.held.len(),
+                awake: self.awake,
+                history: &self.history,
             }),
             None => space().into(),
         }
@@ -658,6 +722,7 @@ impl Shell {
             controls: &self.controls,
             held: self.held.len(),
             do_not_disturb: self.config.alerts.do_not_disturb,
+            awake: self.awake,
             now: self.now,
             look: self.config.bar,
             panel_open: self.overlay == Some(Overlay::Panel),
@@ -668,21 +733,28 @@ impl Shell {
     }
 }
 
-fn me() -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| {
-            path.to_str()
-                .map(|p| format!("'{}'", p.replace('\'', r"'\''")))
-        })
-        .unwrap_or_else(|| "apolline".to_owned())
-}
-
 fn stamp(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-pub fn subscription() -> iced::Subscription<Message> {
+impl Shell {
+    pub fn subscription(&self) -> iced::Subscription<Message> {
+        let resting = self.awake
+            || self.sample()
+            || (self.mode == Mode::Play && self.config.idle.awake_in_play);
+        let stages = if resting {
+            Vec::new()
+        } else {
+            idle::stages(&self.config.idle)
+        };
+        iced::Subscription::batch([
+            subscription(),
+            idle::subscription(stages).map(|(stage, idle)| Message::Idle(stage, idle)),
+        ])
+    }
+}
+
+fn subscription() -> iced::Subscription<Message> {
     iced::Subscription::batch([
         iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
         iced::window::open_events().map(|_| Message::Opened),
@@ -697,5 +769,6 @@ pub fn subscription() -> iced::Subscription<Message> {
         power::subscription(),
         media::subscription(),
         notify::subscription(),
+        logind::subscription(),
     ])
 }

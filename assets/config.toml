@@ -25,6 +25,17 @@ seconds = 5                # how long a popup stays
 launcher = "Mod+Space"     # Mod is Super, or Alt when niri runs in a window
 panel = "Mod+A"
 switch = "Mod+Shift+M"
+lock = "Super+Alt+L"
+
+[lock]
+before_sleep = true        # lock when the laptop goes to sleep
+show_media = true          # what's playing, with a pause button
+
+[idle]                     # minutes without touching anything, 0 means never
+lock_after = 5
+screen_off_after = 10
+suspend_after = 0
+awake_in_play = true       # games on a gamepad don't count as idle
 
 # Keyboard, touchpad and mouse are left to your niri config until you set
 # them here or in apolline settings.

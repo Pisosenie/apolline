@@ -80,7 +80,7 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
     .into()
 }
 
-fn ago(elapsed: Duration) -> String {
+pub fn ago(elapsed: Duration) -> String {
     match elapsed.as_secs() / 60 {
         0 => "now".into(),
         minutes @ 1..60 => format!("{minutes} min"),

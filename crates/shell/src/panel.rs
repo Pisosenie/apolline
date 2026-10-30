@@ -1,10 +1,15 @@
 use apolline_theme::{Mode, Palette, metrics, neutral};
-use iced::widget::{Row, button, column, container, mouse_area, opaque, row, slider, space, text};
+use iced::widget::{
+    Column, Row, button, column, container, mouse_area, opaque, row, scrollable, slider, space,
+    text,
+};
 use iced::{Alignment, Element, Fill, Length, Padding};
 
 use crate::controls::{Change, Controls, Radio};
 use crate::icon::{Icon, icon};
-use crate::media::{Action, Track};
+use crate::media::{Action, Track, shorten};
+use crate::notify::Notification;
+use crate::popup;
 use crate::power::Battery;
 use crate::shell::Message;
 use crate::style;
@@ -20,12 +25,12 @@ pub enum Power {
 }
 
 impl Power {
-    pub fn command(self) -> &'static str {
+    pub fn command(self) -> String {
         match self {
-            Power::Lock => "swaylock -f || loginctl lock-session",
-            Power::LogOut => "niri msg action quit",
-            Power::Restart => "systemctl reboot",
-            Power::Shutdown => "systemctl poweroff",
+            Power::Lock => format!("{} lock", crate::control::me()),
+            Power::LogOut => "niri msg action quit".into(),
+            Power::Restart => "systemctl reboot".into(),
+            Power::Shutdown => "systemctl poweroff".into(),
         }
     }
 
@@ -61,7 +66,8 @@ pub struct Panel<'a> {
     pub do_not_disturb: bool,
     pub power_menu: bool,
     pub armed: Option<Power>,
-    pub held: usize,
+    pub awake: bool,
+    pub history: &'a [Notification],
 }
 
 pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
@@ -102,18 +108,23 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         palette,
         Some(Message::DoNotDisturb(!panel.do_not_disturb)),
     );
-    let shot = tile(
-        Icon::Image,
-        "Screenshot",
-        "Pick an area".to_owned(),
-        false,
+    let awake = tile(
+        Icon::Coffee,
+        "Keep awake",
+        if panel.awake {
+            "No lock, no sleep"
+        } else {
+            "Off"
+        }
+        .to_owned(),
+        panel.awake,
         palette,
-        Some(Message::Screenshot),
+        Some(Message::KeepAwake(!panel.awake)),
     );
     body = body.push(
         column![
             row![wifi, bluetooth].spacing(10),
-            row![quiet, shot].spacing(10),
+            row![quiet, awake].spacing(10),
         ]
         .spacing(10),
     );
@@ -149,9 +160,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     if let Some(track) = panel.track {
         body = body.push(player(track, palette));
     }
-    if panel.held > 0 {
-        body = body.push(held(panel.held));
-    }
+    body = body.push(history(panel.history));
 
     let card = container(body.width(WIDTH))
         .padding(16)
@@ -210,6 +219,7 @@ fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         battery,
         space::horizontal(),
         row![
+            round(Icon::Camera, Message::Screenshot, false),
             round(Icon::Settings, Message::OpenSettings, false),
             round(Icon::Lock, Message::Power(Power::Lock), false),
             round(
@@ -456,25 +466,77 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
     .into()
 }
 
-fn held<'a>(count: usize) -> Element<'a, Message> {
-    let label = match count {
-        1 => "1 notification is waiting".to_owned(),
-        n => format!("{n} notifications are waiting"),
+fn history<'a>(items: &'a [Notification]) -> Element<'a, Message> {
+    let mut header = row![
+        text("NOTIFICATIONS")
+            .size(10)
+            .font(style::semibold())
+            .color(style::color(style::FAINT)),
+        space::horizontal(),
+    ]
+    .align_y(Alignment::Center);
+    if !items.is_empty() {
+        header = header.push(
+            button(text("Clear").size(11).color(style::color(style::FAINT)))
+                .padding([2, 8])
+                .style(style::ghost(6.0))
+                .on_press(Message::ClearAll),
+        );
+    }
+    let list: Element<'a, Message> = if items.is_empty() {
+        text("Nothing new")
+            .size(12)
+            .color(style::color(style::FAINT))
+            .into()
+    } else {
+        let entries = Column::with_children(items.iter().map(entry)).spacing(6);
+        container(
+            scrollable(entries)
+                .direction(style::thin())
+                .style(style::scroller),
+        )
+        .max_height(270)
+        .into()
     };
-    button(
+    column![header, list].spacing(8).into()
+}
+
+fn entry(notification: &Notification) -> Element<'_, Message> {
+    let mut words = column![
         row![
-            icon(Icon::Bell, 16.0, neutral::TEXT),
-            text(label).size(13),
+            text(shorten(&notification.app, 28))
+                .size(11)
+                .color(style::color(style::FAINT)),
             space::horizontal(),
-            text("Show").size(12).color(style::color(style::FAINT)),
-            icon(Icon::ChevronRight, 14.0, style::FAINT),
+            text(popup::ago(notification.received.elapsed()))
+                .size(11)
+                .color(style::color(style::FAINT)),
+        ],
+        text(shorten(&notification.summary, 40))
+            .size(13)
+            .font(style::semibold()),
+    ]
+    .spacing(2)
+    .width(Fill);
+    if !notification.body.is_empty() {
+        words = words.push(
+            text(shorten(&notification.body, 48))
+                .size(12)
+                .color(style::color(style::FAINT)),
+        );
+    }
+    container(
+        row![
+            words,
+            button(icon(Icon::X, 12.0, style::FAINT))
+                .padding(5)
+                .style(style::ghost(6.0))
+                .on_press(Message::Forget(notification.id)),
         ]
-        .spacing(10)
-        .align_y(Alignment::Center),
+        .spacing(8)
+        .align_y(Alignment::Start),
     )
-    .width(Fill)
     .padding([10, 12])
-    .style(style::secondary)
-    .on_press(Message::ShowHeld)
+    .style(style::card)
     .into()
 }

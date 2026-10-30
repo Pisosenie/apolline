@@ -4,7 +4,7 @@ use apolline_theme::{Mode, font, metrics};
 use iced::widget::{container, stack};
 use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, window};
 
-use crate::shell::{self, Message, Overlay, Shell};
+use crate::shell::{Message, Overlay, Shell};
 use crate::{fonts, shot};
 
 pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>, open: Option<Overlay>) -> iced::Result {
@@ -79,6 +79,6 @@ impl Preview {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        shell::subscription()
+        self.shell.subscription()
     }
 }

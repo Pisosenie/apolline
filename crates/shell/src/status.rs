@@ -54,7 +54,7 @@ impl Status {
     }
 }
 
-fn short_layout(name: &str) -> String {
+pub fn short_layout(name: &str) -> String {
     name.chars()
         .filter(|c| c.is_alphabetic())
         .take(2)

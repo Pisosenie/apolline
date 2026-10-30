@@ -130,8 +130,12 @@ impl Launcher {
     fn entries(&self) -> Vec<Entry<'_>> {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
+        let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
         if !query.is_empty() {
             for (title, about, glyph, target) in ACTIONS {
+                if installed && target == Target::Settings {
+                    continue;
+                }
                 if let Some(score) = apps::rank(query, title, about) {
                     ranked.push((
                         score + 50,
@@ -401,6 +405,28 @@ mod tests {
         assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
         let _ = launcher.search("lock".into());
         assert_eq!(launcher.chosen(), Some(Target::Power(Power::Lock)));
+    }
+
+    #[test]
+    fn installed_settings_replace_the_built_in_action() {
+        let mut launcher = launcher();
+        let mut apps = apps::sample();
+        apps.push(App {
+            id: "apolline-settings".into(),
+            name: "Apolline Settings".into(),
+            about: "Desktop settings".into(),
+            exec: "apolline settings".into(),
+            icon: None,
+            game: false,
+            keywords: String::new(),
+        });
+        launcher.set_apps(apps);
+        let _ = launcher.search("sett".into());
+        assert_eq!(launcher.entries().len(), 1);
+        assert_eq!(
+            launcher.chosen(),
+            Some(Target::App("apolline settings".into()))
+        );
     }
 
     #[test]

@@ -1,0 +1,63 @@
+# Maintainer: Danil Zorin <45851636+Pisosenie@users.noreply.github.com>
+pkgname=apolline-git
+_name=apolline
+pkgver=r0
+pkgrel=1
+pkgdesc='A desktop shell for niri built around modes: Work, Play and Evening'
+arch=('x86_64' 'aarch64')
+url='https://github.com/Pisosenie/apolline'
+license=('MIT OR Apache-2.0')
+depends=('niri' 'pam' 'libxkbcommon' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+optdepends=(
+  'wireplumber: volume in quick settings'
+  'networkmanager: Wi-Fi in quick settings'
+  'bluez-utils: Bluetooth in quick settings'
+  'brightnessctl: brightness in quick settings'
+  'upower: battery in the bar'
+  'power-profiles-daemon: performance profile in Play'
+)
+makedepends=('cargo' 'git')
+provides=("$_name")
+conflicts=("$_name")
+backup=('etc/pam.d/apolline')
+install=apolline.install
+source=("$_name::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_name"
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release -p apolline-shell
+}
+
+check() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release --workspace
+}
+
+package() {
+  cd "$_name"
+  install -Dm755 target/release/apolline "$pkgdir/usr/bin/apolline"
+  install -Dm644 assets/pam/apolline "$pkgdir/etc/pam.d/apolline"
+  install -Dm644 assets/apolline-settings.desktop "$pkgdir/usr/share/applications/apolline-settings.desktop"
+  install -Dm644 assets/apolline.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/apolline.svg"
+  install -Dm644 assets/config.toml "$pkgdir/usr/share/doc/$_name/config.toml"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_name/README.md"
+  install -Dm644 LICENSE-MIT "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
+  install -Dm644 LICENSE-APACHE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"
+  install -Dm644 assets/icons/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-LUCIDE"
+  install -Dm644 assets/fonts/OFL.txt "$pkgdir/usr/share/licenses/$pkgname/OFL-GEIST"
+}

@@ -22,6 +22,7 @@ pub struct Bar<'a> {
     pub controls: &'a Controls,
     pub held: usize,
     pub do_not_disturb: bool,
+    pub awake: bool,
     pub now: DateTime<Local>,
     pub look: apolline_config::Bar,
     pub panel_open: bool,
@@ -122,7 +123,7 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             button(bell)
                 .padding([5, 8])
                 .style(style::ghost(style::PILL))
-                .on_press(Message::ShowHeld),
+                .on_press(Message::Overlay(Some(Overlay::Panel))),
         );
     }
     right = right.push(tray(&bar));
@@ -207,6 +208,9 @@ fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
                 .font(style::semibold())
                 .color(style::color(neutral::MUTED)),
         );
+    }
+    if bar.awake {
+        items = items.push(icon(Icon::Coffee, 15.0, bar.palette.accent));
     }
     if let Some(wifi) = &bar.controls.wifi {
         let glyph = if wifi.on && wifi.connected.is_some() {

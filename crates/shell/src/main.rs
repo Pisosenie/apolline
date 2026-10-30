@@ -5,8 +5,11 @@ mod controls;
 mod fonts;
 mod fragment;
 mod icon;
+mod idle;
 mod keys;
 mod launcher;
+mod lock;
+mod logind;
 mod media;
 mod niri;
 mod notify;
@@ -44,6 +47,7 @@ const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--o
        apolline switch | launcher | panel
        apolline setup
        apolline settings [--page NAME]
+       apolline lock [--preview] [--mode MODE] [--screenshot FILE]
        apolline check [FILE]";
 
 #[derive(Default)]
@@ -61,6 +65,7 @@ fn main() -> ExitCode {
         Some("mode" | "switch" | "launcher" | "panel") => return command(&args.join(" ")),
         Some("setup") => return setup(),
         Some("settings") => return open_settings(&args[1..]),
+        Some("lock") => return lock_screen(&args[1..]),
         _ => {}
     }
 
@@ -144,6 +149,23 @@ fn open_settings(args: &[String]) -> ExitCode {
         }
     }
     match settings::run(screenshot, page) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn lock_screen(args: &[String]) -> ExitCode {
+    let options = match parse(args) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("apolline: {message}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    match lock::run(options.preview, options.mode, options.screenshot) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("apolline: {err}");

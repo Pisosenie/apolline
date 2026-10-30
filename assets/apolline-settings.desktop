@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Apolline Settings
+GenericName=Desktop settings
+Comment=Modes, look, keyboard, shortcuts and the lock screen
+Exec=apolline settings
+Icon=apolline
+Categories=Settings;DesktopSettings;
+Keywords=wallpaper;keyboard;touchpad;mouse;shortcuts;lock;modes;niri;
+StartupNotify=false

@@ -1,0 +1,4 @@
+#%PAM-1.0
+# Install as /etc/pam.d/apolline. Without it the lock screen uses the login service.
+auth     include  login
+account  include  login

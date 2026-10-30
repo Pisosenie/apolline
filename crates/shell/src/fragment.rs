@@ -131,6 +131,7 @@ pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
         Shortcut::Launcher => ("Search apps and games", "launcher"),
         Shortcut::Panel => ("Quick settings", "panel"),
         Shortcut::Switch => ("Switch mode", "switch"),
+        Shortcut::Lock => ("Lock the screen", "lock"),
     }
 }
 
@@ -284,6 +285,9 @@ mod tests {
         assert!(!work.contains("input {"), "input stays with niri until set");
         assert!(work.contains(
             "binds {\n    Mod+Space hotkey-overlay-title=\"Search apps and games\" { spawn \"apolline\" \"launcher\"; }\n"
+        ));
+        assert!(work.contains(
+            "    Super+Alt+L hotkey-overlay-title=\"Lock the screen\" { spawn \"apolline\" \"lock\"; }\n"
         ));
     }
 

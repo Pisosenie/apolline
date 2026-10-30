@@ -22,6 +22,7 @@ macro_rules! icons {
 
 icons! {
     AppWindow = "app-window",
+    Arrow = "arrow-right",
     BatteryCharging = "battery-charging",
     BatteryFull = "battery-full",
     BatteryLow = "battery-low",
@@ -32,8 +33,10 @@ icons! {
     Bluetooth = "bluetooth",
     BluetoothOff = "bluetooth-off",
     Briefcase = "briefcase",
+    Camera = "camera",
     Check = "check",
     ChevronRight = "chevron-right",
+    Coffee = "coffee",
     Code = "file-code",
     Command = "command",
     Done = "circle-check",

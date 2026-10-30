@@ -5,8 +5,8 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Bar, Config, Diagnostic, Keyboard, Layout, ModeSettings, Mouse, Notifications,
-    Shortcut, Shortcuts, Switch, Touchpad, Workspaces,
+    Accent, Alerts, Bar, Config, Diagnostic, Idle, Keyboard, Layout, Lock, ModeSettings, Mouse,
+    Notifications, Shortcut, Shortcuts, Switch, Touchpad, Workspaces,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -21,7 +21,7 @@ const MODES: [(&str, Mode); 3] = [
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 9] = [
+const SECTIONS: [&str; 11] = [
     "general",
     "layout",
     "bar",
@@ -30,6 +30,8 @@ const SECTIONS: [&str; 9] = [
     "mouse",
     "notifications",
     "shortcuts",
+    "lock",
+    "idle",
     "mode",
 ];
 
@@ -104,6 +106,16 @@ impl Reader<'_> {
                 "shortcuts" => {
                     if let Some(t) = self.section(key, value) {
                         self.shortcuts(t, &mut config.shortcuts)
+                    }
+                }
+                "lock" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.lock(t, &mut config.lock)
+                    }
+                }
+                "idle" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.idle(t, &mut config.idle)
                     }
                 }
                 "mode" => {
@@ -300,6 +312,61 @@ impl Reader<'_> {
                 *shortcuts.get_mut(shortcut) = combo.to_owned();
             } else {
                 self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);
+            }
+        }
+    }
+
+    fn lock(&mut self, table: &DeTable, lock: &mut Lock) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "before_sleep" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.before_sleep = v
+                    }
+                }
+                "show_media" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.show_media = v
+                    }
+                }
+                _ => self.unknown(key, "option", &["before_sleep", "show_media"]),
+            }
+        }
+    }
+
+    fn idle(&mut self, table: &DeTable, idle: &mut Idle) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "lock_after" => {
+                    if let Some(v) = self.number(key, value, 0..=240) {
+                        idle.lock_after = v
+                    }
+                }
+                "screen_off_after" => {
+                    if let Some(v) = self.number(key, value, 0..=240) {
+                        idle.screen_off_after = v
+                    }
+                }
+                "suspend_after" => {
+                    if let Some(v) = self.number(key, value, 0..=240) {
+                        idle.suspend_after = v
+                    }
+                }
+                "awake_in_play" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        idle.awake_in_play = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &[
+                        "lock_after",
+                        "screen_off_after",
+                        "suspend_after",
+                        "awake_in_play",
+                    ],
+                ),
             }
         }
     }

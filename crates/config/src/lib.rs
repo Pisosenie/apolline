@@ -18,6 +18,8 @@ pub struct Config {
     pub mouse: Option<Mouse>,
     pub alerts: Alerts,
     pub shortcuts: Shortcuts,
+    pub lock: Lock,
+    pub idle: Idle,
     modes: [ModeSettings; 3],
 }
 
@@ -79,6 +81,7 @@ pub struct Shortcuts {
     pub launcher: String,
     pub panel: String,
     pub switch: String,
+    pub lock: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,18 +89,39 @@ pub enum Shortcut {
     Launcher,
     Panel,
     Switch,
+    Lock,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 3] = [Shortcut::Launcher, Shortcut::Panel, Shortcut::Switch];
+    pub const ALL: [Shortcut; 4] = [
+        Shortcut::Launcher,
+        Shortcut::Panel,
+        Shortcut::Switch,
+        Shortcut::Lock,
+    ];
 
     pub fn key(self) -> &'static str {
         match self {
             Shortcut::Launcher => "launcher",
             Shortcut::Panel => "panel",
             Shortcut::Switch => "switch",
+            Shortcut::Lock => "lock",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Idle {
+    pub lock_after: u16,
+    pub screen_off_after: u16,
+    pub suspend_after: u16,
+    pub awake_in_play: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lock {
+    pub before_sleep: bool,
+    pub show_media: bool,
 }
 
 impl Shortcuts {
@@ -106,6 +130,7 @@ impl Shortcuts {
             Shortcut::Launcher => &self.launcher,
             Shortcut::Panel => &self.panel,
             Shortcut::Switch => &self.switch,
+            Shortcut::Lock => &self.lock,
         }
     }
 
@@ -114,6 +139,7 @@ impl Shortcuts {
             Shortcut::Launcher => &mut self.launcher,
             Shortcut::Panel => &mut self.panel,
             Shortcut::Switch => &mut self.switch,
+            Shortcut::Lock => &mut self.lock,
         }
     }
 }
@@ -124,6 +150,7 @@ impl Default for Shortcuts {
             launcher: "Mod+Space".into(),
             panel: "Mod+A".into(),
             switch: "Mod+Shift+M".into(),
+            lock: "Super+Alt+L".into(),
         }
     }
 }
@@ -214,6 +241,16 @@ impl Default for Config {
                 seconds: 5,
             },
             shortcuts: Shortcuts::default(),
+            lock: Lock {
+                before_sleep: true,
+                show_media: true,
+            },
+            idle: Idle {
+                lock_after: 5,
+                screen_off_after: 10,
+                suspend_after: 0,
+                awake_in_play: true,
+            },
             modes: Mode::ALL.map(ModeSettings::default_for),
         }
     }

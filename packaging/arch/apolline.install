@@ -1,0 +1,4 @@
+post_install() {
+  echo '==> Run `apolline setup` once as your user to add Apolline to your niri config,'
+  echo '    then log out and back in to niri.'
+}
