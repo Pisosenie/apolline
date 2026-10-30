@@ -7,7 +7,7 @@ use toml::de::{DeString, DeTable, DeValue};
 use crate::{
     Accent, Alerts, Appear, Bar, Blur, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard,
     Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch,
-    Touchpad, Width, Windows, Workspaces, slug,
+    Touchpad, Trigger, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -35,7 +35,7 @@ const SECTIONS: [&str; 16] = [
     "mode",
 ];
 
-const MODE_OPTIONS: [&str; 9] = [
+const MODE_OPTIONS: [&str; 10] = [
     "name",
     "icon",
     "wallpaper",
@@ -45,6 +45,7 @@ const MODE_OPTIONS: [&str; 9] = [
     "performance",
     "keep_awake",
     "keys",
+    "when",
 ];
 
 const WINDOW_OPTIONS: [&str; 13] = [
@@ -711,6 +712,21 @@ impl Reader<'_> {
                 "keep_awake" => {
                     if let Some(v) = self.boolean(key, value) {
                         settings.keep_awake = v
+                    }
+                }
+                "when" => {
+                    if let Some(items) = self.strings(key, value) {
+                        let parsed: Vec<Option<Trigger>> =
+                            items.iter().map(|item| Trigger::parse(item)).collect();
+                        if parsed.iter().all(Option::is_some) {
+                            settings.when = parsed.into_iter().flatten().collect();
+                        } else {
+                            self.wrong::<()>(
+                                key,
+                                value,
+                                r#"a list like ["game"], ["battery"], ["20:00-07:00"] or ["monitor HDMI-A-1"]"#,
+                            );
+                        }
                     }
                 }
                 "keys" => {

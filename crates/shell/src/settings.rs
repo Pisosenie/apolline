@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use apolline_config::{
     Accent, Appear, Blur, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
-    Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Width, Workspaces,
+    Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Trigger, Width, Workspaces,
     auto_accent,
 };
 use apolline_theme::{ACCENTS, Palette, Rgba, font, neutral};
@@ -242,6 +242,13 @@ enum Message {
     Notifications(usize, Notifications),
     Performance(bool),
     KeepAwake(bool),
+    WhenGame(bool),
+    WhenBattery(bool),
+    HoursDraft(String),
+    MonitorDraft(String),
+    SetHours,
+    SetMonitor,
+    DropTrigger(usize),
     StartHere(bool),
     KeyCommand(String),
     RecordModeKey,
@@ -352,6 +359,8 @@ struct Settings {
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
+    hours_draft: String,
+    monitor_draft: String,
     queue: Vec<String>,
     all_walls: bool,
     typing: String,
@@ -417,6 +426,8 @@ impl Settings {
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
+            hours_draft: String::new(),
+            monitor_draft: String::new(),
             queue: Vec::new(),
             all_walls: false,
             typing: String::new(),
@@ -613,6 +624,33 @@ impl Settings {
             Message::Notifications(index, n) => self.edit(|e| e.set_mode_notifications(index, n)),
             Message::Performance(on) => self.edit(|e| e.set_mode(index, "performance", on)),
             Message::KeepAwake(on) => self.edit(|e| e.set_mode(index, "keep_awake", on)),
+            Message::WhenGame(on) => self.set_trigger(index, Trigger::Game, on),
+            Message::WhenBattery(on) => self.set_trigger(index, Trigger::Battery, on),
+            Message::HoursDraft(draft) => self.hours_draft = draft,
+            Message::MonitorDraft(draft) => self.monitor_draft = draft,
+            Message::SetHours => match Trigger::parse(self.hours_draft.trim()) {
+                Some(hours @ Trigger::Hours { .. }) => {
+                    self.set_trigger(index, hours, true);
+                    self.hours_draft.clear();
+                }
+                _ => self.error = Some("Hours look like 20:00-07:00".into()),
+            },
+            Message::SetMonitor => {
+                let name = self.monitor_draft.trim().to_owned();
+                if !name.is_empty() {
+                    self.set_trigger(index, Trigger::Monitor(name), true);
+                    self.monitor_draft.clear();
+                }
+            }
+            Message::DropTrigger(at) => {
+                if let Some(mode) = self.config.modes.get(index) {
+                    let mut when = mode.when.clone();
+                    if at < when.len() {
+                        when.remove(at);
+                        self.write_triggers(index, &when);
+                    }
+                }
+            }
             Message::StartHere(on) => {
                 let name = self.config.modes.get(index).map(|m| m.name.clone());
                 self.edit(|e| {
@@ -1726,6 +1764,7 @@ impl Settings {
                     ),
                 ]
             ),
+            group("Turns itself on", self.triggers(mode, palette)),
             group("Keys only in this mode", keys),
             padded(manage),
         ]
@@ -3306,6 +3345,135 @@ impl Settings {
             ));
         }
         form.into()
+    }
+
+    fn set_trigger(&mut self, index: usize, trigger: Trigger, on: bool) {
+        let Some(mode) = self.config.modes.get(index) else {
+            return;
+        };
+        let mut when: Vec<Trigger> = mode
+            .when
+            .iter()
+            .filter(|t| std::mem::discriminant(*t) != std::mem::discriminant(&trigger))
+            .cloned()
+            .collect();
+        if on {
+            when.push(trigger);
+        }
+        self.write_triggers(index, &when);
+    }
+
+    fn write_triggers(&mut self, index: usize, when: &[Trigger]) {
+        let list: Vec<String> = when.iter().map(Trigger::text).collect();
+        self.edit(|e| {
+            if list.is_empty() {
+                e.unset_mode(index, "when");
+            } else {
+                e.set_mode_list(index, "when", &list);
+            }
+        });
+    }
+
+    fn triggers(&self, mode: &ModeSettings, palette: Palette) -> Vec<Element<'_, Message>> {
+        let has = |wanted: &Trigger| {
+            mode.when
+                .iter()
+                .any(|t| std::mem::discriminant(t) == std::mem::discriminant(wanted))
+        };
+        let mut rows = vec![
+            setting(
+                "While a game runs",
+                "Steam, Proton, gamescope or Wine; it ends when the last game closes",
+                switch(has(&Trigger::Game), Message::WhenGame, palette),
+            ),
+            setting(
+                "On battery",
+                "Unplugging turns it on, plugging in brings back the mode you had",
+                switch(has(&Trigger::Battery), Message::WhenBattery, palette),
+            ),
+        ];
+        let field = |placeholder: &'static str,
+                     value: &str,
+                     on_input: fn(String) -> Message,
+                     submit: Message| {
+            row![
+                text_input(placeholder, value)
+                    .on_input(on_input)
+                    .on_submit(submit.clone())
+                    .padding([8, 12])
+                    .size(13)
+                    .width(200)
+                    .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::secondary)
+                    .on_press(submit),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+        };
+        rows.push(setting(
+            "At these hours",
+            "Like 20:00-07:00; it may run past midnight",
+            field(
+                "20:00-07:00",
+                &self.hours_draft,
+                Message::HoursDraft,
+                Message::SetHours,
+            ),
+        ));
+        rows.push(setting(
+            "When a monitor is connected",
+            "Its name from niri msg outputs, like HDMI-A-1",
+            field(
+                "HDMI-A-1",
+                &self.monitor_draft,
+                Message::MonitorDraft,
+                Message::SetMonitor,
+            ),
+        ));
+        let listed: Vec<(usize, &Trigger)> = mode
+            .when
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| matches!(t, Trigger::Hours { .. } | Trigger::Monitor(_)))
+            .collect();
+        if !listed.is_empty() {
+            let chips = Row::with_children(listed.into_iter().map(|(at, trigger)| {
+                let label = match trigger {
+                    Trigger::Hours { from, until } => {
+                        format!(
+                            "{} – {}",
+                            apolline_config::clock(*from),
+                            apolline_config::clock(*until)
+                        )
+                    }
+                    Trigger::Monitor(name) => format!("{name} connected"),
+                    _ => trigger.text(),
+                };
+                container(
+                    row![
+                        text(label).size(12),
+                        button(icon(Icon::X, 12.0, style::FAINT))
+                            .padding(2)
+                            .style(style::ghost(6.0))
+                            .on_press(Message::DropTrigger(at)),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding([4, 10])
+                .style(style::pill(Rgba::hex(0xffffff).alpha(0.06)))
+                .into()
+            }))
+            .spacing(6)
+            .wrap();
+            rows.push(padded(chips));
+        }
+        rows.push(note(
+            "When the reason ends, the mode you had before comes back. Switching by hand always wins.",
+        ));
+        rows
     }
 
     fn color_apps(&self, palette: Palette) -> Element<'_, Message> {

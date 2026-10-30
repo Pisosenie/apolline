@@ -1,4 +1,4 @@
-use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications};
+use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications, Trigger};
 use apolline_theme::{metrics, neutral};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -122,6 +122,8 @@ pub struct Shell {
     status: Status,
     niri: Option<apolline_niri::State>,
     outputs: Vec<String>,
+    fired: Vec<bool>,
+    auto: Option<(usize, Option<usize>)>,
     system: Option<System>,
     boosted: Option<String>,
     popups: Vec<(Notification, Instant)>,
@@ -175,6 +177,8 @@ impl Shell {
             status,
             niri,
             outputs: Vec::new(),
+            fired: Vec::new(),
+            auto: None,
             system: None,
             boosted: None,
             popups: Vec::new(),
@@ -361,7 +365,8 @@ impl Shell {
                     Task::none()
                 };
                 self.publish();
-                return Task::batch([reload, self.expire(), controls]);
+                let triggers = self.triggers();
+                return Task::batch([reload, self.expire(), controls, triggers]);
             }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
                 return self.key(key, text.as_deref(), captured);
@@ -1049,6 +1054,65 @@ impl Shell {
         } else {
             self.config.notifications(self.mode)
         }
+    }
+
+    fn triggers(&mut self) -> Task<Message> {
+        if self.demo {
+            return Task::none();
+        }
+        let game = self.niri.as_ref().is_some_and(|state| {
+            state.recent().iter().any(|w| {
+                w.app_id.as_deref().is_some_and(|app| {
+                    app.starts_with("steam_app_") || app == "gamescope" || app.ends_with(".exe")
+                })
+            })
+        });
+        let battery = self
+            .system
+            .as_ref()
+            .and_then(|s| s.battery)
+            .is_some_and(|b| !b.charging);
+        let now = {
+            use chrono::Timelike;
+            (self.now.hour() * 60 + self.now.minute()) as u16
+        };
+        let active: Vec<bool> = self
+            .config
+            .modes
+            .iter()
+            .map(|mode| {
+                mode.when.iter().any(|trigger| match trigger {
+                    Trigger::Game => game,
+                    Trigger::Battery => battery,
+                    Trigger::Hours { from, until } => Trigger::covers(*from, *until, now),
+                    Trigger::Monitor(name) => self.outputs.contains(name),
+                })
+            })
+            .collect();
+        if self.fired.len() != active.len() {
+            self.fired = vec![false; active.len()];
+            self.auto = None;
+        }
+        let mut task = Task::none();
+        let ended = (0..active.len()).find(|&i| self.fired[i] && !active[i]);
+        if let (Some(i), Some((on, before))) = (ended, self.auto)
+            && on == i
+        {
+            self.auto = None;
+            if self.mode == Some(i) {
+                task = self.switch(before);
+            }
+        }
+        let started = (0..active.len()).find(|&i| active[i] && !self.fired[i]);
+        if let Some(i) = started
+            && self.mode != Some(i)
+        {
+            let before = self.auto.map_or(self.mode, |(_, before)| before);
+            task = Task::batch([task, self.switch(Some(i))]);
+            self.auto = Some((i, before));
+        }
+        self.fired = active;
+        task
     }
 
     fn switch(&mut self, mode: Option<usize>) -> Task<Message> {

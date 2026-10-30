@@ -357,6 +357,62 @@ pub struct ModeSettings {
     pub performance: bool,
     pub keep_awake: bool,
     pub keys: Vec<(String, String)>,
+    pub when: Vec<Trigger>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Trigger {
+    Game,
+    Battery,
+    Hours { from: u16, until: u16 },
+    Monitor(String),
+}
+
+impl Trigger {
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        match text {
+            "game" => return Some(Trigger::Game),
+            "battery" => return Some(Trigger::Battery),
+            _ => {}
+        }
+        if let Some(name) = text.strip_prefix("monitor ") {
+            let name = name.trim();
+            return (!name.is_empty()).then(|| Trigger::Monitor(name.to_owned()));
+        }
+        let (from, until) = text.split_once('-')?;
+        Some(Trigger::Hours {
+            from: minutes(from)?,
+            until: minutes(until)?,
+        })
+    }
+
+    pub fn text(&self) -> String {
+        match self {
+            Trigger::Game => "game".into(),
+            Trigger::Battery => "battery".into(),
+            Trigger::Hours { from, until } => format!("{}-{}", clock(*from), clock(*until)),
+            Trigger::Monitor(name) => format!("monitor {name}"),
+        }
+    }
+
+    pub fn covers(from: u16, until: u16, now: u16) -> bool {
+        if from <= until {
+            (from..until).contains(&now)
+        } else {
+            now >= from || now < until
+        }
+    }
+}
+
+fn minutes(text: &str) -> Option<u16> {
+    let (h, m) = text.trim().split_once(':')?;
+    let (h, m): (u16, u16) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+pub fn clock(minutes: u16) -> String {
+    format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
 pub const TEMPLATES: [&str; 5] = ["Work", "Play", "Evening", "Focus", "Presentation"];
@@ -589,6 +645,7 @@ impl ModeSettings {
             performance: false,
             keep_awake: false,
             keys: Vec::new(),
+            when: Vec::new(),
         }
     }
 
@@ -654,6 +711,32 @@ mod tests {
 
     fn parse(src: &str) -> (Config, Vec<Diagnostic>) {
         Config::parse(src)
+    }
+
+    #[test]
+    fn modes_say_when_they_switch_themselves_on() {
+        let (config, problems) = Config::parse(
+            "[[mode]]\nname = \"Play\"\nwhen = [\"game\", \"monitor HDMI-A-1\"]\n\n[[mode]]\nname = \"Evening\"\nwhen = [\"20:00-07:00\", \"battery\"]\n\n[[mode]]\nname = \"Bad\"\nwhen = [\"25:00-01:00\"]\n",
+        );
+        assert_eq!(
+            config.modes[0].when,
+            [Trigger::Game, Trigger::Monitor("HDMI-A-1".into())]
+        );
+        assert_eq!(
+            config.modes[1].when,
+            [
+                Trigger::Hours {
+                    from: 1200,
+                    until: 420
+                },
+                Trigger::Battery
+            ]
+        );
+        assert_eq!(config.modes[1].when[0].text(), "20:00-07:00");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(Trigger::covers(1200, 420, 1380) && Trigger::covers(1200, 420, 60));
+        assert!(!Trigger::covers(1200, 420, 720));
+        assert!(Trigger::covers(540, 1080, 600) && !Trigger::covers(540, 1080, 1080));
     }
 
     #[test]
