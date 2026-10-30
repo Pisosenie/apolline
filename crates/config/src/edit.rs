@@ -193,17 +193,11 @@ impl Editor {
     }
 
     pub fn remove_module(&mut self, index: usize) {
-        let modules = list(self.doc.as_table_mut(), "module");
-        if index < modules.len() {
-            modules.remove(index);
-        }
+        remove_kept(list(self.doc.as_table_mut(), "module"), index, "command");
     }
 
     pub fn remove_rule(&mut self, index: usize) {
-        let rules = list(self.doc.as_table_mut(), "rule");
-        if index < rules.len() {
-            rules.remove(index);
-        }
+        remove_kept(list(self.doc.as_table_mut(), "rule"), index, "app");
     }
 
     pub fn unset(&mut self, section: &str, key: &str) {
@@ -332,12 +326,34 @@ fn keys(list: &[(String, String)]) -> InlineTable {
 }
 
 fn list<'a>(parent: &'a mut Table, key: &str) -> &'a mut ArrayOfTables {
-    if !parent.get(key).is_some_and(Item::is_array_of_tables) {
-        parent.insert(key, Item::ArrayOfTables(ArrayOfTables::new()));
+    let item = parent
+        .entry(key)
+        .or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+    if !item.is_array_of_tables() {
+        let tables = std::mem::take(item)
+            .into_array_of_tables()
+            .unwrap_or_default();
+        *item = Item::ArrayOfTables(tables);
     }
-    parent[key]
-        .as_array_of_tables_mut()
-        .expect("just inserted a list")
+    item.as_array_of_tables_mut().expect("just made a list")
+}
+
+// The reader skips entries without their key, so its n-th entry is the n-th that has one.
+fn remove_kept(tables: &mut ArrayOfTables, index: usize, key: &str) {
+    let at = tables
+        .iter()
+        .enumerate()
+        .filter(|(_, table)| {
+            table
+                .get(key)
+                .and_then(Item::as_str)
+                .is_some_and(|v| !v.trim().is_empty())
+        })
+        .nth(index)
+        .map(|(at, _)| at);
+    if let Some(at) = at {
+        tables.remove(at);
+    }
 }
 
 fn table<'a>(parent: &'a mut Table, key: &str) -> &'a mut Table {
@@ -380,6 +396,23 @@ mod tests {
         assert_eq!(problems, vec![]);
         assert_eq!(config.desktop.accent, Accent::Fixed(Rgba::hex(0xc084fc)));
         assert!(config.modes.is_empty());
+    }
+
+    #[test]
+    fn removal_counts_only_the_entries_that_were_read() {
+        let text = "[[module]]\nevery = 5\n\n[[module]]\ncommand = \"date\"\n\n[[module]]\ncommand = \"uptime\"\n";
+        let mut editor = Editor::parse(text).unwrap();
+        editor.remove_module(1);
+        let (config, _) = Config::parse(&editor.text());
+        let left: Vec<&str> = config.modules.iter().map(|m| m.command.as_str()).collect();
+        assert_eq!(left, ["date"]);
+
+        let mut editor = Editor::parse("rule = [{ app = \"foot\" }, { app = \"mpv\" }]\n").unwrap();
+        editor.remove_rule(0);
+        let (config, problems) = Config::parse(&editor.text());
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.rules.len(), 1, "an inline list is kept, not wiped");
+        assert_eq!(config.rules[0].app, "mpv");
     }
 
     #[test]
