@@ -31,6 +31,7 @@ pub struct Bar<'a> {
     pub apps: &'a [App],
     pub pinned: Vec<Pinned>,
     pub modules: Vec<(usize, &'a str, bool)>,
+    pub recording: Option<std::time::Duration>,
 }
 
 pub struct Pinned {
@@ -150,6 +151,27 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
                 .padding([5, 8])
                 .style(style::ghost(style::PILL))
                 .on_press(Message::Overlay(Some(Overlay::Panel))),
+        );
+    }
+    if let Some(elapsed) = bar.recording {
+        let secs = elapsed.as_secs();
+        right = right.push(
+            button(
+                row![
+                    container(space())
+                        .width(8)
+                        .height(8)
+                        .style(style::pill(style::DANGER)),
+                    text(format!("{}:{:02}", secs / 60, secs % 60))
+                        .size(12)
+                        .font(style::mono()),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            )
+            .padding([4, 8])
+            .style(style::ghost(8.0))
+            .on_press(Message::StopRecording),
         );
     }
     for (index, line, clickable) in &bar.modules {

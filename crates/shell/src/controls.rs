@@ -183,6 +183,7 @@ pub enum Osd {
     Mic(bool),
     Brightness(u8),
     Layout(String),
+    Note(String),
 }
 
 impl Nudge {

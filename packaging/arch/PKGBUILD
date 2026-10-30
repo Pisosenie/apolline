@@ -18,6 +18,7 @@ optdepends=(
   'polkit: the admin password dialog'
   'greetd: the login screen, apolline greet'
   'cage: a kiosk compositor to run apolline greet in'
+  'wf-recorder: screen recording from the launcher'
 )
 makedepends=('cargo' 'git')
 provides=("$_name")

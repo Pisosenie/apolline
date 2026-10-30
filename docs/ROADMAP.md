@@ -116,7 +116,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   a password field, pairing with a passkey, forgetting old ones.
 - A click on the clock: the month, today's weather from Open-Meteo, events from an ICS or CalDAV
   calendar, no account sign-in.
-- Capture: region and window screenshots with quick marks, a screen recorder, a color picker.
+- Capture: screenshots, a color picker and screen recording are done from the launcher; quick marks on a
+  screenshot and "save the last 30 seconds" are next.
 - A bar module of your own — done (`[[module]]`: command, every, click).
 
 ### 6. Getting it to people

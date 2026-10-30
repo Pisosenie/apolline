@@ -74,6 +74,8 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     ConfigChanged,
+    Picked(Option<String>),
+    StopRecording,
     Module(usize, String),
     ModuleClick(usize),
     NightLight(bool),
@@ -183,6 +185,7 @@ pub struct Shell {
     fade: Option<(image::Handle, Instant)>,
     night: (bool, Option<bool>),
     module_text: Vec<(usize, String)>,
+    recording: Option<crate::capture::Recording>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -264,6 +267,7 @@ impl Shell {
             fade: None,
             night: (false, None),
             module_text: Vec::new(),
+            recording: None,
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -464,6 +468,10 @@ impl Shell {
         match message {
             Message::Tick => {
                 self.now = Local::now();
+                if self.recording.as_mut().is_some_and(|r| r.quit()) {
+                    self.recording = None;
+                    return self.show(Osd::Note("The recording stopped: wf-recorder quit".into()));
+                }
                 self.ticks += 1;
                 let controls = if self.overlay == Some(Overlay::Panel) {
                     self.read_controls()
@@ -533,6 +541,14 @@ impl Shell {
                 }
             }
             Message::NightLight(on) => self.night.1 = Some(on),
+            Message::Picked(Some(hex)) => {
+                let content = clipboard::Content::Text(hex.clone());
+                clipboard::copy(&content);
+                clipboard::remember(&mut self.clips, Clip::new(content));
+                return self.show(Osd::Note(format!("Copied {hex}")));
+            }
+            Message::Picked(None) => {}
+            Message::StopRecording => return self.toggle_recording(),
             Message::Module(index, text) => {
                 self.module_text.retain(|(i, _)| *i != index);
                 if !text.is_empty() {
@@ -1061,6 +1077,13 @@ impl Shell {
                 let quoted = format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
                 self.spawn(&format!("{opener} {quoted}"))
             }
+            Target::Capture(capture) => match capture.command() {
+                Some(command) => self.spawn(command),
+                None if capture == crate::capture::Capture::Color => {
+                    Task::perform(crate::capture::pick_color(), Message::Picked)
+                }
+                None => return Task::batch([close, self.toggle_recording()]),
+            },
             Target::Copy(text) => {
                 let content = clipboard::Content::Text(text);
                 clipboard::copy(&content);
@@ -1352,6 +1375,26 @@ impl Shell {
         self.rotated = Some((next, Instant::now()));
         self.sync();
         self.load_wallpaper()
+    }
+
+    fn toggle_recording(&mut self) -> Task<Message> {
+        match self.recording.take() {
+            Some(recording) => {
+                let file = recording.stop();
+                let name = file
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.show(Osd::Note(format!("Saved {name}")))
+            }
+            None => match crate::capture::Recording::start() {
+                Ok(recording) => {
+                    self.recording = Some(recording);
+                    Task::none()
+                }
+                Err(err) => self.show(Osd::Note(err)),
+            },
+        }
     }
 
     fn night_scheduled(&self) -> bool {
@@ -1673,6 +1716,7 @@ impl Shell {
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
+            recording: self.recording.as_ref().map(|r| r.started.elapsed()),
             modules: self
                 .module_text
                 .iter()
@@ -1703,6 +1747,7 @@ fn stamp(path: &std::path::Path) -> Option<SystemTime> {
 impl Shell {
     pub fn subscription(&self) -> iced::Subscription<Message> {
         let busy = self.demo
+            || self.recording.is_some()
             || self.config.bar.seconds
             || self.overlay.is_some()
             || !self.popups.is_empty();

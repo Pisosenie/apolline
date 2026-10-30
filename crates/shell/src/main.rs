@@ -2,6 +2,7 @@ mod apps;
 mod bar;
 mod calc;
 mod calendar;
+mod capture;
 mod clipboard;
 mod clips;
 mod control;

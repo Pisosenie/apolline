@@ -39,6 +39,7 @@ pub fn view(osd: &Osd, palette: Palette) -> Element<'_, Message> {
             .to_owned(),
         ),
         Osd::Layout(name) => (Icon::Keyboard, None, name.clone()),
+        Osd::Note(words) => (Icon::Done, None, words.clone()),
     };
     let body: Element<'_, Message> = match level {
         Some(level) => {

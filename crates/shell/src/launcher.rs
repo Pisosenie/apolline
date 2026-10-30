@@ -9,6 +9,7 @@ use iced::{Alignment, Element, Fill, Length, Task};
 
 use crate::apps::{self, App, Picture};
 use crate::calc;
+use crate::capture::Capture;
 use crate::icon::{Icon, icon};
 use crate::panel::Power;
 use crate::shell::{Message, Overlay};
@@ -30,6 +31,7 @@ pub enum Target {
     Settings,
     Clipboard,
     Keys,
+    Capture(crate::capture::Capture),
     Power(Power),
 }
 
@@ -72,7 +74,37 @@ fn emoji() -> impl Iterator<Item = (&'static str, &'static str)> {
         .filter_map(|line| line.split_once(' '))
 }
 
-const ACTIONS: [(&str, &str, Icon, Target); 5] = [
+const ACTIONS: [(&str, &str, Icon, Target); 10] = [
+    (
+        "Screenshot an area",
+        "Pick a part of the screen",
+        Icon::Scan,
+        Target::Capture(Capture::Area),
+    ),
+    (
+        "Screenshot the screen",
+        "The whole focused screen",
+        Icon::Monitor,
+        Target::Capture(Capture::Screen),
+    ),
+    (
+        "Screenshot the window",
+        "Only the focused window",
+        Icon::AppWindow,
+        Target::Capture(Capture::Window),
+    ),
+    (
+        "Pick a color",
+        "Click anywhere; the hex code is copied",
+        Icon::Pipette,
+        Target::Capture(Capture::Color),
+    ),
+    (
+        "Record the screen",
+        "Start or stop; saved to ~/Videos",
+        Icon::Video,
+        Target::Capture(Capture::Record),
+    ),
     (
         "Settings",
         "Apolline settings",
