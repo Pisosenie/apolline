@@ -707,6 +707,13 @@ impl Shell {
             Message::Wallpaper(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
                 self.wallpapers.retain(|(n, _)| *n != name);
                 self.wallpapers.push((name, handle));
+                let wanted = self.wanted_wallpapers();
+                if wanted
+                    .iter()
+                    .all(|w| self.wallpapers.iter().any(|(n, _)| n == w))
+                {
+                    self.wallpapers.retain(|(n, _)| wanted.contains(n));
+                }
                 self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
@@ -1489,7 +1496,6 @@ impl Shell {
 
     fn load_wallpaper(&mut self) -> Task<Message> {
         let wanted = self.wanted_wallpapers();
-        self.wallpapers.retain(|(name, _)| wanted.contains(name));
         let missing: Vec<String> = wanted
             .into_iter()
             .filter(|name| !self.wallpapers.iter().any(|(n, _)| n == name))
