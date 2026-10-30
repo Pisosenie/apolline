@@ -3335,6 +3335,7 @@ impl Settings {
                     .collect(),
                 modules: Vec::new(),
                 recording: None,
+                next: None,
             })
             .map(|_| Message::Noop);
             let inset = if look.floating { 10.0 } else { 0.0 };

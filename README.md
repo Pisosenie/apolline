@@ -176,7 +176,7 @@ The shell also locks on `loginctl lock-session`, right before the laptop sleeps,
 
 ## Calendar and weather
 
-A click on the clock opens the month. `[bar] weather = "Berlin"` (or `"52.52,13.40"`) adds today and the next three days from Open-Meteo, with no key. `[bar] calendars = ["~/calendars/home.ics", "webcal://…"]` puts your events in it: a dot on each busy day, and the picked day's list under the month. Files and links (https or webcal, such as a calendar's secret iCal address) are read every ten minutes, and nothing signs in anywhere. Repeating events, moved and skipped meetings and time zones come out as the calendar meant them.
+A click on the clock opens the month. `[bar] weather = "Berlin"` (or `"52.52,13.40"`) adds today and the next three days from Open-Meteo, with no key. `[bar] calendars = ["~/calendars/home.ics", "webcal://…"]` puts your events in it: a dot on each busy day, and the picked day's list under the month. Files and links (https or webcal, such as a calendar's secret iCal address) are read every ten minutes, and nothing signs in anywhere. Repeating events, moved and skipped meetings and time zones come out as the calendar meant them. Half an hour before something starts, and while it's on, the bar shows it next to the clock.
 
 ## Admin passwords
 

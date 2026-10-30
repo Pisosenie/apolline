@@ -2017,6 +2017,10 @@ impl Shell {
             apps: &self.apps,
             pinned: self.pinned(),
             recording: self.recording.as_ref().map(|r| r.started.elapsed()),
+            next: self
+                .agenda
+                .soon(self.now.naive_local())
+                .map(|(o, wait)| (o.summary.as_str(), wait)),
             modules: self
                 .module_text
                 .iter()

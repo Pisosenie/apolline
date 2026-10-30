@@ -32,6 +32,8 @@ pub struct Bar<'a> {
     pub pinned: Vec<Pinned>,
     pub modules: Vec<(usize, &'a str, bool)>,
     pub recording: Option<std::time::Duration>,
+    // The calendar's next thing, and in how many minutes (None: it's on now).
+    pub next: Option<(&'a str, Option<i64>)>,
 }
 
 pub struct Pinned {
@@ -99,6 +101,22 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .size(13)
             .font(style::semibold()),
     );
+    if let Some((what, wait)) = bar.next {
+        let when = match wait {
+            None => "now".to_owned(),
+            Some(minutes) => format!("in {minutes} min"),
+        };
+        clock = clock.push(
+            row![
+                container(space().width(6).height(6)).style(style::pill(palette.accent)),
+                text(format!("{} · {when}", crate::media::shorten(what, 22)))
+                    .size(12)
+                    .color(style::color(neutral::MUTED)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        );
+    }
     let clock = button(clock)
         .padding([4, 10])
         .style(style::ghost(8.0))

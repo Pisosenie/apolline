@@ -38,6 +38,27 @@ impl Agenda {
         self.days.contains_key(&day)
     }
 
+    // What's on now, or what starts within half an hour, for the bar.
+    pub fn soon(&self, now: NaiveDateTime) -> Option<(&Occurrence, Option<i64>)> {
+        let timed = self
+            .on(now.date())
+            .iter()
+            .filter_map(|o| Some((o, now.date().and_time(o.start?))));
+        let mut upcoming = None;
+        for (occurrence, start) in timed {
+            let end = occurrence.end.map(|end| now.date().and_time(end));
+            if start <= now && end.is_some_and(|end| now < end) {
+                return Some((occurrence, None));
+            }
+            // Whole minutes, rounded up: 9:50:30 to 10:00 is "in 10 min".
+            let wait = ((start - now).num_seconds() + 59) / 60;
+            if start > now && wait <= 30 && upcoming.is_none() {
+                upcoming = Some((occurrence, Some(wait)));
+            }
+        }
+        upcoming
+    }
+
     fn add(&mut self, day: NaiveDate, occurrence: Occurrence) {
         let list = self.days.entry(day).or_default();
         if !list.contains(&occurrence) {
@@ -633,6 +654,20 @@ END:VCALENDAR\r
                 "{summary} at {at}: {found:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_bar_hears_of_what_is_on_or_coming() {
+        let agenda = agenda(&[ICS.to_owned()], day(2026, 10, 31));
+        let at = |h: u32, m: u32| day(2026, 10, 7).and_hms_opt(h, m, 0).unwrap();
+        assert_eq!(agenda.soon(at(9, 0)), None, "an hour off is too far");
+        let (standup, wait) = agenda.soon(at(9, 50)).unwrap();
+        assert_eq!(
+            (standup.summary.as_str(), wait),
+            ("Standup, team", Some(10))
+        );
+        assert_eq!(agenda.soon(at(10, 5)).map(|(_, w)| w), Some(None), "on now");
+        assert_eq!(agenda.soon(at(10, 20)), None, "over");
     }
 
     #[test]
