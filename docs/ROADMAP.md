@@ -21,153 +21,115 @@ on update.
 
 - **One command, nothing to babysit.** A package and `apolline setup`; updates never overwrite your files.
 - **A window instead of scripts.** Every option has a control and a live preview; the file still works
-  and shows what changed.
+  and shows what changed, and Ctrl+Z takes any change back.
 - **Colors from your wallpaper** without pywal and a theme folder per look.
-- **Eye candy you can dial:** window opacity, inactive dimming, corner radius, shadows, animation speed,
-  per app if you want, each one a slider and a line in the config.
+- **Eye candy you can dial:** opacity, dimming, corners, shadows, gradient borders, blur, how windows
+  move and appear, per app if you want, each one a control and a line in the config.
 - **Fast with the keyboard:** Alt+Tab, launcher, clipboard, every shortcut listed and searchable.
-- **Games first-class:** a performance mode, VRR, no popups, the screen stays awake on a gamepad.
+- **Games first-class:** a mode that turns on by itself when a game starts, VRR, no popups, the screen
+  stays awake.
 
-## Next to Noctalia and DankMaterialShell
+## Next to Noctalia and Dux
 
-They are the shells people already run on niri, both QML on Quickshell, both with more widgets than
-Apolline. Apolline doesn't race them on widgets:
+Noctalia (now a native C++ shell with plugins and its own greeter) and Dux, formerly DankMaterialShell
+(Quickshell and Go), are what people run on niri today, both with more widgets than Apolline.
+Apolline doesn't race them on widgets:
 
-- **Modes change the whole desktop, not just colors.** Notifications, apps, performance and keys change
-  together, and a mode can switch itself on.
-- **Updates don't break it.** Your niri config keeps one include line, and CI runs Apolline against
-  every new niri release.
-- **One native binary.** The README shows idle CPU and memory next to theirs, measured the same way.
+- **Modes change the whole desktop and switch themselves.** Notifications, apps, performance, look and
+  keys change together, and a mode can turn on while a game runs, on battery, at set hours or when a
+  monitor is plugged in. Neither of them has rule-driven profiles.
+- **Updates don't break it.** No Qt private API to break on a minor update; your niri config keeps one
+  include line, and CI will run Apolline against every new niri release.
+- **No surprise writes.** Coloring apps is opt-in, every file it writes is listed next to the switch,
+  and turning it off removes exactly that. A gtk.css that is a dotfiles link is never touched.
+- **Light at rest.** 0.2% CPU and under 100 MB idle on the CPU renderer; no GPU driver needed for the bar
+  or the lock screen.
 
 ## Principles
 
 1. **Finished on first login.** Nothing to set up before it looks good. No modes until you make one.
 2. **No guessing.** Every option has a control, a sentence that says what it does, and the exact
    lines it writes. Typos in the file are reported with the line and a suggestion; the rest applies.
-3. **Your niri config stays yours.** Apolline adds one include line and keeps a copy; it never edits
-   your file again. Its own fragment is regenerated, so removing Apolline is removing one line.
+3. **Your config stays yours.** Apolline adds one include line to niri and keeps a copy; it never edits
+   your files again without a switch you turned on, and every such write can be undone.
 4. **Keyboard first, mouse friendly.** Every overlay works with arrows, Enter and Esc, and closes
    on a click outside. Every shortcut is shown where the action is.
 5. **Fast and quiet.** No polling where an event exists, nothing kept on disk that you didn't ask for.
 
 ## Done
 
-- Bar with workspaces, clock, tray, notifications bell; one per monitor.
-- Quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume, brightness, player,
-  notification history, screenshot, power.
-- Launcher with apps and Steam games, actions, keyboard navigation.
-- Lock screen (ext-session-lock + PAM), idle lock, lock before sleep, screen off.
-- Settings: appearance, bar, lock and idle, notifications, keyboard, mouse and touchpad, shortcuts
-  with conflicts against niri, health check.
+- Bar: workspaces, pinned apps and open windows, clock, tray, notifications bell; top or bottom,
+  floating or edge to edge, glass or frosted; one per monitor.
+- Quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume and output device, microphone,
+  brightness, player, notification history, screenshot, power.
+- Launcher: apps and Steam games, open windows, sums, actions, keyboard navigation.
+- Lock screen (ext-session-lock + PAM, its own process), idle lock, lock before sleep, screen off.
+- Polkit agent with its own dialog, on polkit's socket-activated helper.
 - Notification daemon, OSD for volume, brightness, microphone and layout, clipboard history.
+- Settings for everything below, with the file it writes and undo; a welcome window on first start.
+- Modes you make yourself, with their own keys, that can switch themselves on.
+- Windows: niri's Alt+Tab in Apolline colors, window settings, per-app rules.
+- Rice: themes (gallery, save, share, `apolline theme next`), accent from the wallpaper, a wallpaper
+  gallery from your folders, gradient borders, motion and open effects, blur, GTK and Qt apps in the accent.
 - Arch package.
-- Modes you make yourself, with their own keys.
-- Windows: niri's Alt+Tab with previews in Apolline colors, windows on the bar, window settings,
-  opacity and animation speed, per-app rules.
-- Themes: a gallery, save my look, add someone's file; the accent picked from your wallpaper;
-  the bar at the top or bottom, floating or edge to edge, as see-through as you like.
 
 ## Next
 
-### 1. Modes you make yourself — done
-Out of the box there are no modes: one desktop, its wallpaper and accent. A mode is a named set
-of changes you switch to with one key.
+### 1. Modes — done
+Out of the box there are no modes: one desktop, its wallpaper and accent. A mode is a named set of
+changes you switch to with one key: wallpaper, accent, notifications, apps to open, performance,
+keep awake and its own shortcuts. It can switch itself on while a game runs, on battery, at set hours
+or when a monitor is plugged in; when that ends, the mode you had comes back, and switching by hand
+always wins.
 
-- Start from a template (Work, Play, Evening, Focus, Presentation) or from nothing.
-- Each mode: name, icon, accent, wallpaper, which notifications get through, apps to open,
-  performance (power profile, games drive refresh, effects off), keep the screen awake,
-  and **its own shortcuts** that exist only while the mode is on.
-- Switch from the bar chip, quick settings, the launcher, `Mod+Shift+M` or `apolline mode NAME`;
-  `none` leaves the mode. The bar shows no chip until the first mode exists.
-- Settings → Modes: list, add from a template, reorder, delete, edit everything above with a live
-  preview of the bar and the lock screen.
-
-**Next: modes that switch themselves.** A mode can have triggers, and when the trigger ends the mode
-you had before comes back:
-- a game starts (Steam, Proton, gamescope, Wine) and ends;
-- a time of day;
-- running on battery;
-- a monitor is plugged in or out.
-
-Switching by hand always wins: triggers act only when something changes. Settings → Modes shows each
-mode's triggers and what turned the current one on.
+**Next:** Settings → Modes shows what turned the current mode on; a mode can switch the theme.
 
 ### 2. Many windows, comfortably — done
-niri lays windows out in a scrolling strip; Apolline makes moving around it obvious.
+niri's Alt+Tab with live previews in Apolline colors, open windows and pinned apps on the bar, window
+settings, opacity and animation speed, per-app rules, windows in the launcher.
 
-- **Alt+Tab**: niri's own switcher with live previews, in recent order, colored and rounded by
-  Apolline. Hold Alt, tap Tab, let go; Alt+` stays within one app.
-- **Windows on the bar**: icons of the windows on this workspace, the focused one marked.
-  Click focuses, middle click closes.
-- Settings → Windows: width of new windows, the presets `Mod+R` cycles through, centering
-  a lone window, focus follows mouse, warp the pointer to the focused window.
-- Window look: opacity of focused and unfocused windows, animation speed (or none), all in
-  `[layout]`/`[windows]` with sliders in Appearance.
-- Per-app rules: floating, width, opacity.
-
-**Next:** type a window title in the launcher and Enter focuses it; pin apps to the bar next to the
-windows, so a pinned app is one click away whether it runs or not.
-
-### 3. Rice: themes you can share — first part done
-What HyDE is loved for, without the scripts.
-
-- **Themes**: a look in one file — wallpaper, accent, corners, gaps, borders, shadows, opacity,
-  animation speed and the bar. Settings → Themes: five bundled looks applied with a click,
-  "save my look", add someone's file, open the folder to share one.
-- **Colors from the wallpaper**: the accent is the picture's most present vivid hue, kept soft enough
-  to sit next to the bundled accents and lightened until it reads on glass. Bundled wallpapers keep
-  their hand-picked accents.
-- **The bar your way**: top or bottom, floating or edge to edge, how see-through.
-
+### 3. Rice — mostly done
 **Next:**
-- **Three ways to color**: restrained (one accent on neutral glass), from the wallpaper, or picked
-  by hand — in the desktop and in every mode.
-- **Layers**: theme, then your tweaks, then the mode. Applying a theme never loses a tweak; Settings
-  shows which layer a value comes from and keeps an undo history.
+- **Layers you can see**: theme, then your tweaks, then the mode; Settings shows which layer a value
+  comes from.
 - **Themes as folders**: `theme.toml`, its wallpapers and an optional niri snippet;
-  `apolline theme install FILE|URL`. A mode can switch the theme. (`apolline theme NAME|next|list`
-  already switches from a script or a key.)
+  `apolline theme install FILE|URL`.
 - **Per-surface style**: `[style.bar]`, `[style.launcher]`, `[style.panel]` for radius, opacity,
-  padding and text size, plus layouts per surface: the launcher as a list or a grid, quick settings
-  as tiles or a column.
-- **niri eye candy as presets**: focus-ring gradients, animation curves, open and close effects,
-  shaders where niri has them, each with a preview.
+  padding and text size; the launcher as a list or a grid.
+- **Wallpapers**: a different one per monitor, rotation through a folder, a thumbnail cache on disk.
 - **Fonts, icons, cursor and GTK theme** pickers that write the files apps actually read.
-- **The same colors in apps**: a theme can carry small templates (GTK accent CSS, Qt colors, any
-  app's config) that Apolline fills with the palette whenever it changes. Apolline ships none for
-  terminals; the Apolline terminal (its own project) reads the palette itself.
-- **Wallpapers**: a gallery of `~/.local/share/apolline/wallpapers` and any folder you add,
-  a different wallpaper per monitor.
+- **More apps in the accent**: KDE apps through kdeglobals, live reload of running GTK apps, Flatpak.
+  Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.
 
-### 4. First run and finding things
-- A welcome window on the first start: connect to niri (the include line), pick a wallpaper
-  and accent, optionally add modes from templates, see the five shortcuts that matter.
-- A searchable cheat sheet of every shortcut, Apolline's and niri's, grouped by what they do — done (`Mod+/`).
-- A polkit agent, so apps that ask for an admin password get a dialog in Apolline colors instead of
-  silently failing.
-- A login screen for greetd that looks like the lock screen: users, session, keyboard layout, power.
-- The launcher answers more than apps: math (`2^10`, `15% of 340`) and emoji by name.
+### 4. Finding things and getting in
+- The launcher answers more: emoji by name, unit and currency conversion, files, and a dmenu mode
+  (`apolline pick` reads lines from stdin) for your own scripts.
+- Fingerprint next to the password on the lock screen and in the polkit dialog, both at once.
+- A login screen for greetd that looks like the lock screen: users, session, keyboard layout, power,
+  and no flash on the way into the session.
 
 ### 5. Displays and comfort
-- Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, from niri's own output list.
+- Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,
+  validated with `niri validate` before it applies.
 - Night light on a schedule.
-- Sound: output and input device picker in quick settings.
-- Wi-Fi and Bluetooth beyond on and off: nearby networks with a password field, pairing new devices,
-  forgetting old ones.
-- A click on the clock: the month, and today's weather from Open-Meteo, no account needed.
+- Wi-Fi and Bluetooth beyond on and off, over D-Bus instead of command-line tools: nearby networks with
+  a password field, pairing with a passkey, forgetting old ones.
+- A click on the clock: the month, today's weather from Open-Meteo, events from an ICS or CalDAV
+  calendar, no account sign-in.
+- Capture: region and window screenshots with quick marks, a screen recorder, a color picker.
 - A bar module of your own: a command that prints a new line whenever its text changes.
 
 ### 6. Getting it to people
 - Screenshots and a short video in the README, `apolline-git` on the AUR, CI that builds and tests
   on every push.
-- Idle CPU and memory in the README, measured next to Noctalia and DankMaterialShell.
 - CI against every niri release, replaying recorded IPC sessions, so a niri update never breaks the bar.
+- Idle CPU and memory measured on real hardware next to Noctalia and Dux, the same way each time.
 - A Fedora COPR after the AUR.
 
 ## Not now
 
 - **Plugins.** They freeze the API while it still changes every week. A bar module of your own covers
-  most of what people write plugins for.
+  most of what people write plugins for; when plugins come, each gets a CPU and memory budget.
 - **A dock.** niri's strip plus windows and pinned apps on the bar already do its job.
 - **An AI panel, a process monitor, a notepad.** Other apps do these well.
 - **Later:** screen recording with "save the last 30 seconds" for games, and live wallpapers (video,

@@ -1,6 +1,8 @@
 # Apolline
 
-A desktop shell for [niri](https://github.com/YaLTeR/niri): bar, launcher, quick settings, notifications, clipboard history, lock screen and a settings window, made to look finished on the first login. Modes are optional: make your own and one key switches wallpaper, accent, notifications, apps, performance and even the shortcuts.
+A desktop shell for [niri](https://github.com/YaLTeR/niri): bar, launcher, quick settings, notifications, clipboard history, lock screen, polkit agent and a settings window, made to look finished on the first login. Modes are optional: make your own and one key, or a game starting, the battery, the clock or a monitor, switches wallpaper, accent, notifications, apps, performance and even the shortcuts.
+
+Idle, the shell uses about 0.2% CPU and under 100 MB: the bar, overlays and lock screen draw on the CPU renderer, which repaints only what changed and needs no GPU driver. Set `ICED_BACKEND=wgpu` to draw them on the GPU instead.
 
 Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar as layer-shell surfaces; anywhere else it opens a preview window. Under [niri](https://github.com/YaLTeR/niri) the bar shows live workspaces and the keyboard layout, and a click on a workspace switches to it. Battery comes from UPower and the playing track from any MPRIS player. Arch first.
 
@@ -35,7 +37,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 
 | Key | Opens |
 |---|---|
-| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), modes, settings, lock |
+| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), open windows, sums like `15% of 340` (Enter copies the answer), modes, settings, lock |
 | `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume, brightness, mode, the player, past notifications, screenshot, power |
 | `Mod+Shift+M` | the mode switcher |
 | `Mod+Alt+V` | clipboard history |
@@ -46,7 +48,7 @@ Change them in settings → Shortcuts, which also tells you what each one replac
 
 ## Windows
 
-niri's own Alt+Tab shows live previews of recent windows; Apolline colors it with the accent and rounds it like the windows (Alt+` stays within one app). The bar shows the windows of the current workspace: click to focus, middle click to close.
+niri's own Alt+Tab shows live previews of recent windows; Apolline colors it with the accent and rounds it like the windows (Alt+` stays within one app). The bar shows the windows of the current workspace: click to focus, middle click to close. Pinned apps sit before them: a click jumps to the app's window, or starts it; right-click any icon on the bar to pin or unpin it (`[bar] pinned = ["firefox", "steam"]`).
 
 Settings → Windows, or `[windows]` in the config: the width new windows open at, the widths `Mod+R` cycles through, centering, focus follows mouse, the opacity of focused and other windows, and animation speed. `[[rule]]` entries do the same per app:
 
@@ -96,13 +98,33 @@ floating = true            # or edge to edge
 opacity = 0.3
 ```
 
+Themes can also carry the eye candy: `gradient = true` in `[layout]` lets the focused border flow across the workspace, and in `[windows]` `motion` is `snappy`, `smooth` or `bouncy`, `appear` is `pop`, `slide` or `fade`, and `blur` is `wallpaper` or `all` for see-through windows; `[bar] blur = true` frosts the bar. Performance modes turn all of it off.
+
 Applying a theme rewrites only these keys in your config and leaves the rest alone. With `accent = "auto"` and your own wallpaper, the accent is the picture's most present vivid color, softened to sit next to the built-in accents and lightened until it reads on the bar's glass; window borders in niri follow it.
+
+## Apps in your colors
+
+`[apps] colors = true`, or *Color apps too* in Settings → Appearance, gives GTK 3, GTK 4 and Qt apps (through qt6ct) your accent and the dark style, and follows your modes. It writes `apolline.css` next to your `gtk.css`, adds one `@import` line to the top of `gtk.css`, a qt6ct palette, and the GNOME `color-scheme` and nearest `accent-color`. Turning it off removes exactly that. A `gtk.css` that is a link (dotfiles managers) is left alone; Apolline tells you the line to add yourself.
+
+Wallpapers come from `~/.local/share/apolline/wallpapers`, `~/Pictures/Wallpapers` and any folder you add in Settings → Appearance (`[desktop] folders`).
 
 ## Modes
 
 There are none until you make one, in Settings → Modes from a template (Work, Play, Evening, Focus, Presentation) or from nothing, or as `[[mode]]` in the config. A mode can change the wallpaper and accent, hold back notifications, open apps, keep the screen awake, add **its own shortcuts** that exist only while it's on, and turn on performance.
 
-Switch from the bar, quick settings, the launcher, `Mod+Shift+M`, or `apolline mode NAME|next|none`. A switch recolors window borders, opens the mode's apps that aren't running yet and rewrites the mode's keys into niri.
+Switch from the bar, quick settings, the launcher, `Mod+Shift+M`, or `apolline mode NAME|next|none`. A mode can also switch itself on:
+
+```toml
+[[mode]]
+name = "Play"
+when = ["game"]                  # Steam, Proton, gamescope or Wine running
+
+[[mode]]
+name = "Evening"
+when = ["20:00-07:00", "battery", "monitor HDMI-A-1"]
+```
+
+When the reason ends, the mode you had before comes back. Triggers act only when something changes, so switching by hand always wins. A switch recolors window borders, opens the mode's apps that aren't running yet and rewrites the mode's keys into niri.
 
 Performance turns off animations and window shadows, lets games (Steam and Proton, gamescope, Wine) drive the monitor's variable refresh rate, and sets the power profile to performance — and back to what it was when you leave, unless you changed it yourself in between. Variable refresh rate is set for monitors your niri config doesn't already describe; for those, add `variable-refresh-rate on-demand=true` to their `output` block.
 
@@ -112,13 +134,17 @@ Performance turns off animations and window shadows, lets games (Steam and Proto
 
 The shell also locks on `loginctl lock-session`, right before the laptop sleeps, and after five idle minutes; the screen goes off at ten, and 30 seconds after locking. Video players that keep the screen awake are respected, modes with *keep the screen awake* (Play has it, since a gamepad doesn't count as input) skip it, and *keep awake* in quick settings holds everything off. All of it lives in `[lock]` and `[idle]`. Passwords go through PAM: install [`assets/pam/apolline`](assets/pam/apolline) as `/etc/pam.d/apolline`, or the `login` service is used.
 
+## Admin passwords
+
+Apolline is a polkit agent: when an app needs an admin password (pkexec, GParted, package managers), the request shows up as an Apolline dialog with the users who may approve it. It talks to polkit's socket-activated helper and falls back to the setuid one. If another agent (polkit-gnome, hyprpolkitagent) is already running, Apolline steps aside.
+
 ## Notifications
 
 Apolline is a notification daemon too, unless another one (mako, dunst, …) already holds the name — then it stays out of the way. Without a mode everything shows; each mode can show all, hold the low-priority ones, or let only urgent ones (calls, alarms) through, and do not disturb holds everything but urgent anywhere. Held notifications wait behind a counter in the bar and come out when you switch to a mode that allows them. Everything that arrived is kept in quick settings, newest first, until you clear it.
 
 ## Settings
 
-`apolline settings` covers modes, themes, window look, the bar, the lock screen and idle, notifications, keyboard layouts and repeat, touchpad and mouse, shortcuts, and a health check of the config — with switches instead of syntax and a live preview where it helps. Every change is saved right away and the shell picks it up; the panel on the right shows exactly what was written. It edits the file in place, so your own comments and order stay, and it refuses to touch a file it can't parse.
+`apolline settings` covers modes, themes, window look and motion, the bar, the lock screen and idle, notifications, keyboard layouts and repeat, touchpad and mouse, shortcuts, and a health check of the config — with switches instead of syntax and a live preview where it helps. Every change is saved right away and the shell picks it up; the panel on the right shows exactly what was written. It edits the file in place, so your own comments and order stay, and it refuses to touch a file it can't parse. Ctrl+Z and Ctrl+Shift+Z step through every saved version, a theme switch included. On the very first start, with no config yet, it opens on a welcome page: connect to niri, pick a look, add modes if you like, and the keys worth knowing.
 
 ## Config
 
