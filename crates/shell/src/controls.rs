@@ -6,6 +6,15 @@ pub struct Controls {
     pub brightness: Option<u8>,
     pub wifi: Option<Radio>,
     pub bluetooth: Option<Radio>,
+    pub outputs: Vec<Device>,
+    pub inputs: Vec<Device>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Device {
+    pub id: u32,
+    pub name: String,
+    pub default: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,6 +36,8 @@ pub enum Change {
     Brightness(u8),
     Wifi(bool),
     Bluetooth(bool),
+    Output(u32),
+    Input(u32),
 }
 
 impl Controls {
@@ -45,6 +56,19 @@ impl Controls {
                 on: true,
                 connected: Some("WH-1000XM5".into()),
             }),
+            outputs: vec![
+                Device {
+                    id: 47,
+                    name: "Speakers".into(),
+                    default: false,
+                },
+                Device {
+                    id: 52,
+                    name: "WH-1000XM5".into(),
+                    default: true,
+                },
+            ],
+            inputs: Vec::new(),
         }
     }
 
@@ -74,12 +98,14 @@ impl Controls {
                     bluetooth.connected = bluetooth.connected.take().filter(|_| on);
                 }
             }
+            Change::Output(id) => self.outputs.iter_mut().for_each(|d| d.default = d.id == id),
+            Change::Input(id) => self.inputs.iter_mut().for_each(|d| d.default = d.id == id),
         }
     }
 }
 
 pub async fn read() -> Controls {
-    let (volume, brightness, wifi, wifi_network, bluetooth, bluetooth_device) = iced::futures::join!(
+    let (volume, brightness, wifi, wifi_network, bluetooth, bluetooth_device, status) = iced::futures::join!(
         run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]),
         run("brightnessctl", &["-m", "-c", "backlight"]),
         run("nmcli", &["-t", "-f", "WIFI", "radio"]),
@@ -98,8 +124,12 @@ pub async fn read() -> Controls {
         ),
         run("bluetoothctl", &["show"]),
         run("bluetoothctl", &["devices", "Connected"]),
+        run("wpctl", &["status"]),
     );
+    let (outputs, inputs) = status.as_deref().map(parse_devices).unwrap_or_default();
     Controls {
+        outputs,
+        inputs,
         volume: volume.as_deref().and_then(parse_volume),
         brightness: brightness.as_deref().and_then(parse_brightness),
         wifi: wifi.as_deref().map(|radio| Radio {
@@ -247,6 +277,9 @@ pub async fn change(change: Change) {
             vec!["radio".into(), "wifi".into(), on_off(on).into()],
         ),
         Change::Bluetooth(on) => ("bluetoothctl", vec!["power".into(), on_off(on).into()]),
+        Change::Output(id) | Change::Input(id) => {
+            ("wpctl", vec!["set-default".into(), id.to_string()])
+        }
     };
     if let Change::Volume(_) = change {
         let _ = run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).await;
@@ -272,6 +305,49 @@ async fn run(program: &str, args: &[&str]) -> Option<String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn parse_devices(text: &str) -> (Vec<Device>, Vec<Device>) {
+    let (mut outputs, mut inputs) = (Vec::new(), Vec::new());
+    let mut audio = false;
+    let mut list: Option<bool> = None;
+    for line in text.lines() {
+        if !line.starts_with([' ', '│', '├', '└']) {
+            audio = line.trim() == "Audio";
+            list = None;
+            continue;
+        }
+        let item = line.trim_start_matches(|c: char| c.is_whitespace() || "│├└─".contains(c));
+        if line.contains('─') {
+            list = match item.trim() {
+                "Sinks:" => Some(true),
+                "Sources:" => Some(false),
+                _ => None,
+            };
+            continue;
+        }
+        let (Some(sink), true) = (list, audio) else {
+            continue;
+        };
+        let (default, item) = match item.strip_prefix('*') {
+            Some(rest) => (true, rest.trim_start()),
+            None => (false, item),
+        };
+        let Some((id, rest)) = item.split_once(". ") else {
+            continue;
+        };
+        let Ok(id) = id.trim().parse() else {
+            continue;
+        };
+        let name = rest.split(" [").next().unwrap_or(rest).trim().to_owned();
+        let device = Device { id, name, default };
+        if sink {
+            outputs.push(device);
+        } else {
+            inputs.push(device);
+        }
+    }
+    (outputs, inputs)
 }
 
 fn parse_volume(text: &str) -> Option<Volume> {
@@ -311,6 +387,56 @@ fn parse_device(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wpctl_status_lists_outputs_and_inputs() {
+        let status = "PipeWire 'pipewire-0' [1.4.2, dzorin@laptop, cookie:1]
+ └─ Clients:
+        33. WirePlumber                         [1.4.2, dzorin@laptop, pid:1022]
+
+Audio
+ ├─ Devices:
+ │      42. Built-in Audio                      [alsa]
+ │
+ ├─ Sinks:
+ │      47. Built-in Audio Analog Stereo        [vol: 0.40]
+ │  *   52. WH-1000XM5                          [vol: 0.55]
+ │
+ ├─ Sources:
+ │  *   48. Built-in Audio Analog Stereo        [vol: 1.00]
+ │
+ ├─ Filters:
+ │
+ └─ Streams:
+        61. Firefox
+
+Video
+ ├─ Devices:
+ │      50. Integrated Camera                   [v4l2]
+ ├─ Sinks:
+ │
+ ├─ Sources:
+ │  *   53. Integrated Camera (V4L2)
+";
+        let (outputs, inputs) = parse_devices(status);
+        assert_eq!(
+            outputs,
+            [
+                Device {
+                    id: 47,
+                    name: "Built-in Audio Analog Stereo".into(),
+                    default: false
+                },
+                Device {
+                    id: 52,
+                    name: "WH-1000XM5".into(),
+                    default: true
+                },
+            ]
+        );
+        assert_eq!(inputs.len(), 1, "cameras are not microphones");
+        assert!(inputs[0].default);
+    }
 
     #[test]
     fn reads_what_the_tools_print() {

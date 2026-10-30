@@ -147,6 +147,22 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             |v| Message::Change(Change::Volume(v)),
         ));
     }
+    for (devices, glyph, pick) in [
+        (
+            &panel.controls.outputs,
+            Icon::Headphones,
+            Change::Output as fn(u32) -> Change,
+        ),
+        (
+            &panel.controls.inputs,
+            Icon::Mic,
+            Change::Input as fn(u32) -> Change,
+        ),
+    ] {
+        if devices.len() > 1 {
+            sliders = sliders.push(devices_row(devices, glyph, pick));
+        }
+    }
     if let Some(brightness) = panel.controls.brightness {
         sliders = sliders.push(slider_row(
             icon(Icon::Sun, 18.0, neutral::TEXT),
@@ -563,4 +579,28 @@ fn entry(notification: &Notification) -> Element<'_, Message> {
     .padding([10, 12])
     .style(style::card)
     .into()
+}
+
+fn devices_row<'a>(
+    devices: &'a [crate::controls::Device],
+    glyph: Icon,
+    pick: fn(u32) -> Change,
+) -> Element<'a, Message> {
+    let chips = Row::with_children(devices.iter().map(|device| {
+        let label = text(device.name.as_str())
+            .size(12)
+            .wrapping(text::Wrapping::None);
+        button(label)
+            .padding([5, 10])
+            .style(style::choice(device.default))
+            .on_press_maybe((!device.default).then(|| Message::Change(pick(device.id))))
+            .into()
+    }))
+    .spacing(4)
+    .wrap();
+    row![container(icon(glyph, 16.0, style::FAINT)).width(26), chips,]
+        .spacing(10)
+        .align_y(Alignment::Center)
+        .padding([2, 0])
+        .into()
 }

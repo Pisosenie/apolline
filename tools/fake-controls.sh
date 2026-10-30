@@ -30,6 +30,11 @@ case "\$1" in
             *%-) awk -v n="\$now" -v d="\${last%\%-}" 'BEGIN { v = n - d / 100; if (v < 0) v = 0; printf "%.2f\n", v }' > $state/volume ;;
             *) echo "\$last" > $state/volume ;;
         esac ;;
+    status)
+        sink=\$(cat $state/sink 2>/dev/null || echo 47)
+        mark() { [ "\$1" = "\$sink" ] && echo "*" || echo " "; }
+        printf 'Audio\n ├─ Sinks:\n │  %s   47. Speakers                [vol: 0.45]\n │  %s   52. WH-1000XM5              [vol: 0.55]\n │\n ├─ Sources:\n │  *   48. Built-in Microphone     [vol: 1.00]\n │\n └─ Streams:\n' "\$(mark 47)" "\$(mark 52)" ;;
+    set-default) echo "\$last" > $state/sink ;;
     set-mute)
         if [ "\$last" = toggle ]; then
             [ "\$(cat $state/\$mute 2>/dev/null || echo 0)" = 1 ] && echo 0 > $state/\$mute || echo 1 > $state/\$mute
