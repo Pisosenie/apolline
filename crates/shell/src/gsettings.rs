@@ -33,15 +33,27 @@ fn send(change: Change) {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             for change in rx {
-                let Some(path) = ledger() else { continue };
-                let mut kept = read(&std::fs::read_to_string(&path).unwrap_or_default());
+                let path = ledger();
+                let mut kept = path
+                    .as_ref()
+                    .and_then(|path| std::fs::read_to_string(path).ok())
+                    .map_or_else(Vec::new, |text| read(&text));
                 let before = kept.clone();
-                apply(change, &mut kept, get, put);
-                if kept != before {
-                    if let Some(dir) = path.parent() {
-                        let _ = std::fs::create_dir_all(dir);
+                let wanted = apply(change, &mut kept, get);
+                // The ledger first: a value set before it's written down would be lost to a crash.
+                if kept != before
+                    && let Some(path) = &path
+                {
+                    let saved = path
+                        .parent()
+                        .map_or(Ok(()), std::fs::create_dir_all)
+                        .and_then(|()| std::fs::write(path, write(&kept)));
+                    if let Err(err) = saved {
+                        eprintln!("apolline: {}: {err}", path.display());
                     }
-                    let _ = std::fs::write(&path, write(&kept));
+                }
+                if let Some((key, value)) = wanted {
+                    put(&key, &value);
                 }
             }
         });
@@ -50,36 +62,38 @@ fn send(change: Change) {
     let _ = worker.send(change);
 }
 
+// Updates the ledger and says what to set, if anything.
 fn apply(
     change: Change,
     kept: &mut Vec<Kept>,
     get: impl Fn(&str) -> Option<String>,
-    mut put: impl FnMut(&str, &str),
-) {
+) -> Option<(String, String)> {
     match change {
         Change::Set(key, value) => {
+            let now = get(&key);
             match kept.iter_mut().find(|k| k.key == key) {
-                Some(entry) => entry.ours = value.clone(),
-                None => {
-                    let Some(theirs) = get(&key) else { return };
-                    kept.push(Kept {
-                        key: key.clone(),
-                        theirs,
-                        ours: value.clone(),
-                    });
+                Some(entry) => {
+                    // Changed by hand since Apolline last set it: that's theirs now.
+                    if let Some(now) = now.filter(|now| bare(now) != bare(&entry.ours)) {
+                        entry.theirs = now;
+                    }
+                    entry.ours = value.clone();
                 }
+                None => kept.push(Kept {
+                    key: key.clone(),
+                    theirs: now?,
+                    ours: value.clone(),
+                }),
             }
-            put(&key, &value);
+            Some((key, value))
         }
         Change::Restore(key) => {
-            let Some(at) = kept.iter().position(|k| k.key == key) else {
-                return;
-            };
+            let at = kept.iter().position(|k| k.key == key)?;
             let entry = kept.remove(at);
             // Someone changed it since; theirs wins.
-            if get(&key).is_some_and(|now| bare(&now) == bare(&entry.ours)) {
-                put(&key, &entry.theirs);
-            }
+            get(&key)
+                .is_some_and(|now| bare(&now) == bare(&entry.ours))
+                .then_some((key, entry.theirs))
         }
     }
 }
@@ -147,56 +161,62 @@ mod tests {
             "color-scheme".to_owned(),
             "'prefer-dark'".to_owned(),
         )]));
-        let get = |key: &str| store.borrow().get(key).cloned();
-        let put = |key: &str, value: &str| {
-            store
-                .borrow_mut()
-                .insert(key.to_owned(), format!("'{}'", bare(value)));
-        };
         let mut kept = Vec::new();
+        let mut run = |change: Change| {
+            let get = |key: &str| store.borrow().get(key).cloned();
+            if let Some((key, value)) = apply(change, &mut kept, get) {
+                store
+                    .borrow_mut()
+                    .insert(key, format!("'{}'", bare(&value)));
+            }
+        };
+        let now = || store.borrow()["color-scheme"].clone();
+        let set = |value: &str| Change::Set("color-scheme".into(), value.into());
+        let restore = || Change::Restore("color-scheme".into());
 
-        apply(
-            Change::Set("color-scheme".into(), "default".into()),
-            &mut kept,
-            get,
-            put,
-        );
-        apply(
-            Change::Set("color-scheme".into(), "prefer-light".into()),
-            &mut kept,
-            get,
-            put,
-        );
-        assert_eq!(store.borrow()["color-scheme"], "'prefer-light'");
-        assert_eq!(read(&write(&kept)), kept, "the ledger survives a restart");
-        apply(Change::Restore("color-scheme".into()), &mut kept, get, put);
+        run(set("default"));
+        run(set("prefer-light"));
+        assert_eq!(now(), "'prefer-light'");
+        run(restore());
         assert_eq!(
-            store.borrow()["color-scheme"],
+            now(),
             "'prefer-dark'",
             "the first value, not the middle one"
         );
-        assert!(kept.is_empty());
 
-        apply(
-            Change::Set("color-scheme".into(), "default".into()),
-            &mut kept,
-            get,
-            put,
-        );
+        run(set("default"));
         store
             .borrow_mut()
             .insert("color-scheme".into(), "'prefer-light'".into());
-        apply(Change::Restore("color-scheme".into()), &mut kept, get, put);
+        run(restore());
+        assert_eq!(now(), "'prefer-light'", "a later change by hand stays");
+
+        run(set("default"));
+        store
+            .borrow_mut()
+            .insert("color-scheme".into(), "'prefer-dark'".into());
+        run(set("default"));
+        run(restore());
         assert_eq!(
-            store.borrow()["color-scheme"],
-            "'prefer-light'",
-            "a later change by hand stays"
+            now(),
+            "'prefer-dark'",
+            "a hand change between two sets becomes theirs"
         );
 
-        apply(Change::Restore("gtk-theme".into()), &mut kept, get, put);
+        run(Change::Restore("gtk-theme".into()));
         assert!(
             !store.borrow().contains_key("gtk-theme"),
             "a key never set is left alone"
         );
+    }
+
+    #[test]
+    fn the_ledger_survives_a_restart() {
+        let kept = vec![Kept {
+            key: "cursor-size".into(),
+            theirs: "24".into(),
+            ours: "32".into(),
+        }];
+        assert_eq!(read(&write(&kept)), kept);
     }
 }
