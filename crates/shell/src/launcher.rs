@@ -631,7 +631,12 @@ mod tests {
         });
         launcher.set_apps(apps);
         let _ = launcher.search("sett".into());
-        assert_eq!(launcher.entries().len(), 1);
+        let settings = launcher
+            .entries()
+            .iter()
+            .filter(|e| e.title.contains("Settings"))
+            .count();
+        assert_eq!(settings, 1, "the built-in action steps aside");
         assert_eq!(
             launcher.chosen(),
             Some(Target::App("apolline settings".into()))
