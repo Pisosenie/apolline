@@ -27,7 +27,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install the toolchain and the newest niri
-        run: pacman -Syu --noconfirm --needed rust gcc pkgconf pam libxkbcommon wayland git niri
+        run: pacman -Syu --noconfirm --needed rust gcc pkgconf pam libxkbcommon wayland git niri sway foot ttf-dejavu mesa
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: cargo build
@@ -40,3 +40,8 @@ jobs:
               niri validate -c fragment.kdl
             done
           done
+      - name: A session recorded from this niri still reads in full
+        run: |
+          useradd -m ci
+          su ci -c "tools/niri-session.sh /tmp/session.jsonl"
+          APOLLINE_NIRI_SESSION=/tmp/session.jsonl cargo test -p apolline-niri live_session

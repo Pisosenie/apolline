@@ -476,11 +476,10 @@ mod tests {
         assert!(!state.is_running("  "));
     }
 
-    // A session recorded on niri 26.04: every kind of event Apolline knows must still read,
-    // so a change in niri's JSON shows up here instead of as a quietly stale bar.
-    #[test]
-    fn a_niri_26_04_session_reads_in_full() {
-        const SESSION: &str = include_str!("../tests/sessions/niri-26.04.jsonl");
+    // Every kind of event Apolline knows must still read, so a change in niri's JSON
+    // shows up in the tests instead of as a quietly stale bar. Returns the state at the
+    // end, and whether the focused window read as floating when the screenshot was taken.
+    fn replay_session(session: &str) -> (State, bool) {
         const KNOWN: [&str; 10] = [
             "WorkspacesChanged",
             "WorkspaceActivated",
@@ -495,7 +494,7 @@ mod tests {
         ];
         let mut state = State::default();
         let mut floated = false;
-        for line in SESSION.lines() {
+        for line in session.lines() {
             let kind = line
                 .trim_start_matches("{\"")
                 .split('"')
@@ -513,11 +512,31 @@ mod tests {
                 state.apply(event);
             }
         }
+        (state, floated)
+    }
+
+    #[test]
+    fn a_niri_26_04_session_reads_in_full() {
+        let (state, floated) = replay_session(include_str!("../tests/sessions/niri-26.04.jsonl"));
         assert!(floated, "the window made floating reads as floating");
         assert_eq!(state.focused_window().map(|w| w.id), Some(6));
         assert_eq!(state.focused_output(), Some("winit"));
         assert!(!state.is_running("rec-one") && !state.is_running("rec-two"));
         assert_eq!(state.workspaces().len(), 2);
+    }
+
+    // CI records a fresh session from the newest niri with tools/niri-session.sh.
+    #[test]
+    fn a_live_session_reads_in_full() {
+        let Some(file) = std::env::var_os("APOLLINE_NIRI_SESSION") else {
+            return;
+        };
+        let session = std::fs::read_to_string(file).expect("the recorded session");
+        assert!(session.lines().count() > 10, "too little was recorded");
+        let (state, floated) = replay_session(&session);
+        assert!(floated, "the window made floating reads as floating");
+        assert!(!state.is_running("session-one") && !state.is_running("session-two"));
+        assert!(state.focused_output().is_some());
     }
 
     #[test]
