@@ -8,6 +8,7 @@ mod clipboard;
 mod clips;
 mod control;
 mod controls;
+mod events;
 mod files;
 mod fonts;
 mod fragment;

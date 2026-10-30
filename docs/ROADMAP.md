@@ -117,8 +117,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - Night light on a schedule — done, still to be seen on real hardware (nested niri has no gamma control).
 - Wi-Fi and Bluetooth beyond on and off, over D-Bus instead of command-line tools: nearby networks with
   a password field, pairing with a passkey, forgetting old ones.
-- A click on the clock: the month, today's weather from Open-Meteo, events from an ICS or CalDAV
-  calendar, no account sign-in.
+- A click on the clock: the month, today's weather from Open-Meteo, events from ICS files and
+  https/webcal links — done, no account sign-in. CalDAV is next.
 - Capture: screenshots, a color picker, screen recording and marks on a screenshot (arrows, boxes, pen,
   marker, hidden parts) are done; "save the last 30 seconds" is next.
 - A bar module of your own — done (`[[module]]`: command, every, click).

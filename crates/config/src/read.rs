@@ -384,6 +384,11 @@ impl Reader<'_> {
                         config.weather = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
+                "calendars" => {
+                    if let Some(v) = self.strings(key, value) {
+                        config.calendars = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
@@ -398,6 +403,7 @@ impl Reader<'_> {
                         "blur",
                         "pinned",
                         "weather",
+                        "calendars",
                     ],
                 ),
             }

@@ -87,6 +87,8 @@ pub enum Message {
     NightLight(bool),
     Frame,
     CalendarMonth(i32),
+    CalendarDay(chrono::NaiveDate),
+    Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
     Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
@@ -177,6 +179,8 @@ pub struct Shell {
     polkit: Option<polkit::Dialog>,
     painted: Option<Option<apolline_theme::Rgba>>,
     month: i32,
+    day: Option<chrono::NaiveDate>,
+    agenda: std::sync::Arc<crate::events::Agenda>,
     weather: Option<crate::weather::Weather>,
     detail: Option<panel::Detail>,
     networks: Vec<controls::Network>,
@@ -254,6 +258,8 @@ impl Shell {
             polkit: None,
             painted: None,
             month: 0,
+            day: None,
+            agenda: std::sync::Arc::default(),
             weather: None,
             detail: None,
             networks: Vec::new(),
@@ -510,7 +516,12 @@ impl Shell {
                 self.publish();
                 return Task::batch([self.expire(), controls, triggers, rotate]);
             }
-            Message::CalendarMonth(month) => self.month = month,
+            Message::CalendarMonth(month) => {
+                self.month = month;
+                self.day = None;
+            }
+            Message::CalendarDay(day) => self.day = Some(day),
+            Message::Agenda(agenda) => self.agenda = agenda,
             Message::Files(files) => self.launcher.set_files(files),
             Message::Detail(detail) => {
                 self.detail = detail;
@@ -1159,6 +1170,7 @@ impl Shell {
             Some(Overlay::Clipboard) => self.picker.open(),
             Some(Overlay::Calendar) => {
                 self.month = 0;
+                self.day = None;
                 self.now = Local::now();
                 Task::none()
             }
@@ -1801,6 +1813,8 @@ impl Shell {
             Some(Overlay::Calendar) => crate::calendar::view(
                 self.now,
                 self.month,
+                self.day,
+                &self.agenda,
                 self.weather.as_ref(),
                 palette,
                 self.config.bar.position == Edge::Bottom,
@@ -2059,6 +2073,7 @@ impl Shell {
             iced::Subscription::batch([
                 iced::Subscription::run(watch_config),
                 crate::weather::subscription(self.config.weather.clone()),
+                crate::events::subscription(&self.config.calendars),
                 controls::watch().map(Message::Controls),
             ])
         };

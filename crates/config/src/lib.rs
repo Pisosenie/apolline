@@ -35,6 +35,8 @@ pub struct Config {
     pub modules: Vec<Module>,
     pub pinned: Vec<String>,
     pub weather: Option<String>,
+    // Calendar files and https/webcal links whose events the clock's calendar shows.
+    pub calendars: Vec<String>,
     pub modes: Vec<ModeSettings>,
 }
 
@@ -670,6 +672,7 @@ impl Default for Config {
             modules: Vec::new(),
             pinned: Vec::new(),
             weather: None,
+            calendars: Vec::new(),
             modes: Vec::new(),
         }
     }

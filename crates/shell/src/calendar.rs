@@ -3,7 +3,9 @@ use chrono::{DateTime, Datelike, Local, Months, NaiveDate};
 use iced::widget::{Row, button, column, container, mouse_area, opaque, row, space, text};
 use iced::{Alignment, Element, Fill, Length, Padding};
 
+use crate::events::Agenda;
 use crate::icon::{Icon, icon};
+use crate::media::shorten;
 use crate::shell::Message;
 use crate::style;
 use crate::weather::{self, Weather};
@@ -26,9 +28,12 @@ pub fn days(first: NaiveDate) -> Vec<NaiveDate> {
     (0..42).map(|i| start + chrono::Duration::days(i)).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     now: DateTime<Local>,
     offset: i32,
+    picked: Option<NaiveDate>,
+    agenda: &'a Agenda,
     weather: Option<&'a Weather>,
     palette: Palette,
     at_bottom: bool,
@@ -81,13 +86,26 @@ pub fn view<'a>(
             } else {
                 label.color(style::color(neutral::TEXT.alpha(0.3)))
             };
-            let cell = container(label).center(CELL - 4.0);
+            let busy = agenda.busy(*day);
+            let dot = container(space().width(4).height(4)).style(style::pill(match busy {
+                true if is_today => palette.on_accent,
+                true => palette.accent,
+                false => neutral::TEXT.alpha(0.0),
+            }));
+            let cell = container(column![label, dot].spacing(1).align_x(Alignment::Center))
+                .center(CELL - 4.0);
             let cell = if is_today {
                 cell.style(style::pill(palette.accent))
+            } else if Some(*day) == picked {
+                cell.style(style::pill(palette.accent_soft))
             } else {
                 cell
             };
-            container(cell).center(CELL).into()
+            button(cell)
+                .padding(2)
+                .style(style::ghost((CELL - 4.0) / 2.0))
+                .on_press(Message::CalendarDay(*day))
+                .into()
         })));
     }
 
@@ -103,20 +121,21 @@ pub fn view<'a>(
     if let Some(weather) = weather {
         top = top.push(forecast(weather, palette)).spacing(12);
     }
-    let card = container(
-        column![
-            top,
-            container(space()).width(Fill).height(1).style(|_| {
-                iced::widget::container::background(style::color(neutral::HAIRLINE))
-            }),
-            title,
-            grid,
-        ]
-        .spacing(14)
-        .width(Length::Fixed(CELL * 7.0)),
-    )
-    .padding(18)
-    .style(style::surface);
+    let mut body = column![
+        top,
+        container(space())
+            .width(Fill)
+            .height(1)
+            .style(|_| { iced::widget::container::background(style::color(neutral::HAIRLINE)) }),
+        title,
+        grid,
+    ];
+    if picked.is_some() || agenda.busy(today) {
+        body = body.push(day_list(picked.unwrap_or(today), today, agenda, palette));
+    }
+    let card = container(body.spacing(14).width(Length::Fixed(CELL * 7.0)))
+        .padding(18)
+        .style(style::surface);
 
     let gap = metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0;
     mouse_area(
@@ -137,6 +156,76 @@ pub fn view<'a>(
     )
     .on_press(Message::Overlay(None))
     .into()
+}
+
+const LISTED: usize = 6;
+
+// What's on a day: whole-day things first, then by time.
+fn day_list<'a>(
+    day: NaiveDate,
+    today: NaiveDate,
+    agenda: &'a Agenda,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let heading = if day == today {
+        "Today".to_owned()
+    } else {
+        day.format("%A, %-d %B").to_string()
+    };
+    let mut list = column![
+        text(heading.to_uppercase())
+            .size(10)
+            .font(style::semibold())
+            .color(style::color(style::FAINT))
+    ]
+    .spacing(8);
+    let items = agenda.on(day);
+    if items.is_empty() {
+        return list
+            .push(
+                text("Nothing planned")
+                    .size(12)
+                    .color(style::color(style::FAINT)),
+            )
+            .into();
+    }
+    for item in items.iter().take(LISTED) {
+        let when = match (item.start, item.end) {
+            (Some(start), Some(end)) => {
+                format!("{} – {}", start.format("%H:%M"), end.format("%H:%M"))
+            }
+            (Some(start), None) => start.format("%H:%M").to_string(),
+            _ => "All day".to_owned(),
+        };
+        let mut what = column![
+            text(when).size(11).color(style::color(style::FAINT)),
+            text(shorten(&item.summary, 34)).size(13),
+        ]
+        .spacing(1);
+        if let Some(place) = &item.location {
+            what = what.push(
+                text(shorten(place, 36))
+                    .size(11)
+                    .color(style::color(style::FAINT)),
+            );
+        }
+        list = list.push(
+            row![
+                container(space().width(3).height(30)).style(style::pill(palette.accent)),
+                what,
+            ]
+            .spacing(10)
+            .align_y(Alignment::Center),
+        );
+    }
+    if items.len() > LISTED {
+        list = list.push(
+            text(format!("+{} more", items.len() - LISTED))
+                .size(11)
+                .color(style::color(style::FAINT)),
+        );
+    }
+    list.into()
 }
 
 fn forecast(weather: &Weather, palette: Palette) -> Element<'_, Message> {
