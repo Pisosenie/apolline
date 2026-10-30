@@ -11,7 +11,9 @@ path = "src/main.rs"
 [dependencies]
 apolline-theme.workspace = true
 apolline-config.workspace = true
+apolline-niri.workspace = true
 iced.workspace = true
+tokio.workspace = true
 chrono.workspace = true
 png.workspace = true
 

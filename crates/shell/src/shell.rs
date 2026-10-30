@@ -6,6 +6,7 @@ use iced::widget::{container, image};
 use iced::{ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::bar::{self, Bar};
+use crate::niri;
 use crate::status::Status;
 use crate::wallpaper;
 
@@ -17,12 +18,15 @@ pub enum Message {
     Mode(Mode),
     Workspace(usize),
     Captured(window::Screenshot),
+    Niri(apolline_niri::Event),
+    NiriReply(Result<(), String>),
 }
 
 pub struct Shell {
     config: Config,
     mode: Mode,
     status: Status,
+    niri: Option<apolline_niri::State>,
     workspace: usize,
     wallpapers: [image::Handle; 3],
     now: DateTime<Local>,
@@ -37,13 +41,19 @@ impl Shell {
         }
 
         let mode = mode.unwrap_or(config.mode);
-        let status = Status::sample(mode);
+        let niri = niri::connected().then(apolline_niri::State::default);
+        let status = if niri.is_some() {
+            Status::default()
+        } else {
+            Status::sample(mode)
+        };
         let wallpapers = Mode::ALL
             .map(|m| image::Handle::from_path(wallpaper::resolve(&config.mode(m).wallpaper)));
         Self {
             mode,
             workspace: status.active,
             status,
+            niri,
             config,
             wallpapers,
             now: Local::now(),
@@ -59,13 +69,24 @@ impl Shell {
                 Key::Character("3") => self.switch(Mode::Evening),
                 Key::Named(Named::ArrowLeft) => self.workspace = self.workspace.saturating_sub(1),
                 Key::Named(Named::ArrowRight) => {
-                    self.workspace = (self.workspace + 1).min(self.status.workspaces - 1);
+                    self.workspace =
+                        (self.workspace + 1).min(self.status.workspaces.saturating_sub(1));
                 }
                 Key::Named(Named::Escape) => return iced::exit(),
                 _ => {}
             },
             Message::Mode(mode) => self.switch(mode),
-            Message::Workspace(index) => self.workspace = index,
+            Message::Workspace(index) => match self.status.ids.get(index) {
+                Some(&id) => return niri::send(apolline_niri::Request::FocusWorkspace(id)),
+                None => self.workspace = index,
+            },
+            Message::Niri(event) => {
+                let state = self.niri.get_or_insert_default();
+                state.apply(event);
+                self.status = Status::from_niri(state);
+                self.workspace = self.status.active;
+            }
+            Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
             _ => {}
         }
         Task::none()
@@ -73,8 +94,10 @@ impl Shell {
 
     fn switch(&mut self, mode: Mode) {
         self.mode = mode;
-        self.status = Status::sample(mode);
-        self.workspace = self.status.active;
+        if self.niri.is_none() {
+            self.status = Status::sample(mode);
+            self.workspace = self.status.active;
+        }
     }
 
     pub fn wallpaper(&self) -> Element<'_, Message> {
@@ -103,5 +126,6 @@ pub fn ticks() -> iced::Subscription<Message> {
     iced::Subscription::batch([
         iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::Tick),
         keyboard::listen().map(Message::Key),
+        niri::events(),
     ])
 }

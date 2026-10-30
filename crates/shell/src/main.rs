@@ -1,4 +1,5 @@
 mod bar;
+mod niri;
 mod preview;
 mod shell;
 mod status;

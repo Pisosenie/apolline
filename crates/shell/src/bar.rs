@@ -60,10 +60,10 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     .spacing(10);
 
     let mut status = Row::new().spacing(14).align_y(Alignment::Center);
-    if let Some(media) = bar.status.media {
+    if let Some(media) = &bar.status.media {
         status = status.push(text(format!("♪ {media}")).color(muted).size(font::SMALL));
     }
-    status = status.push(text(bar.status.keyboard).font(mono).size(font::SMALL));
+    status = status.push(text(&bar.status.keyboard).font(mono).size(font::SMALL));
     if let Some(level) = bar.status.battery {
         status = status.push(text(format!("{level}%")).font(mono).size(font::SMALL));
     }

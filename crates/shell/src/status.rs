@@ -1,12 +1,14 @@
 use apolline_theme::Mode;
 
+#[derive(Default)]
 pub struct Status {
     pub workspaces: usize,
     pub active: usize,
     pub busy: Vec<usize>,
-    pub keyboard: &'static str,
+    pub ids: Vec<u64>,
+    pub keyboard: String,
     pub battery: Option<u8>,
-    pub media: Option<&'static str>,
+    pub media: Option<String>,
 }
 
 impl Status {
@@ -20,9 +22,45 @@ impl Status {
             workspaces: 5,
             active,
             busy,
-            keyboard: "EN",
+            ids: Vec::new(),
+            keyboard: "EN".into(),
             battery: Some(82),
-            media,
+            media: media.map(Into::into),
         }
+    }
+
+    pub fn from_niri(state: &apolline_niri::State) -> Self {
+        let workspaces = state.workspaces();
+        Self {
+            workspaces: workspaces.len(),
+            active: workspaces.iter().position(|w| w.is_active).unwrap_or(0),
+            busy: (0..workspaces.len())
+                .filter(|&i| state.is_busy(workspaces[i].id))
+                .collect(),
+            ids: workspaces.iter().map(|w| w.id).collect(),
+            keyboard: state.layout().map(short_layout).unwrap_or_default(),
+            battery: None,
+            media: None,
+        }
+    }
+}
+
+fn short_layout(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphabetic())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_names_shorten_to_two_letters() {
+        assert_eq!(short_layout("English (US)"), "EN");
+        assert_eq!(short_layout("Russian"), "RU");
+        assert_eq!(short_layout(""), "");
     }
 }
