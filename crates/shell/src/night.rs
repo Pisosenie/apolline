@@ -1,18 +1,25 @@
+use std::sync::Mutex;
+
 use iced::Subscription;
 use iced::futures::Stream;
 
-pub fn subscription(temperature: Option<u32>) -> Subscription<()> {
+// Only one client may hold a screen's gamma, so a new night light waits for the old one to let go.
+static SCREENS: Mutex<()> = Mutex::new(());
+
+// Keyed by the screens too, so a monitor plugged in later gets warmed as well.
+pub fn subscription(temperature: Option<u32>, outputs: &[String]) -> Subscription<()> {
     match temperature {
-        Some(kelvin) => Subscription::run_with(kelvin, hold),
+        Some(kelvin) => Subscription::run_with((kelvin, outputs.to_vec()), hold),
         None => Subscription::none(),
     }
 }
 
-fn hold(kelvin: &u32) -> impl Stream<Item = ()> + use<> {
+fn hold((kelvin, _): &(u32, Vec<String>)) -> impl Stream<Item = ()> + use<> {
     let kelvin = *kelvin;
     iced::stream::channel(1, async move |_output| {
         let (keep, stop) = std::sync::mpsc::channel::<()>();
         std::thread::spawn(move || {
+            let _screens = SCREENS.lock().unwrap_or_else(|held| held.into_inner());
             if let Err(err) = wayland::warm(kelvin, stop) {
                 eprintln!("apolline: night light: {err}");
             }

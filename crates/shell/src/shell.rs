@@ -1869,7 +1869,7 @@ impl Shell {
         iced::Subscription::batch([
             subscription(),
             fading,
-            crate::night::subscription(self.night_light()).map(|()| Message::Frame),
+            crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
             crate::modules::subscription(&self.config.modules),
             iced::Subscription::run_with(busy, ticks),
             watched,
