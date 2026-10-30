@@ -12,12 +12,21 @@ use crate::style;
 pub const WIDTH: u32 = 360;
 pub const MAX: usize = 3;
 const HEIGHT: u32 = 84;
+const BUTTONS: u32 = 38;
 const GAP: u32 = 8;
 
+fn card_height(notification: &Notification) -> u32 {
+    if notification.buttons().next().is_some() {
+        HEIGHT + BUTTONS
+    } else {
+        HEIGHT
+    }
+}
+
 #[cfg(any(target_os = "linux", test))]
-pub fn height(count: usize) -> u32 {
-    let count = count.min(MAX) as u32;
-    count * HEIGHT + count.saturating_sub(1) * GAP
+pub fn height<'a>(cards: impl Iterator<Item = &'a Notification>) -> u32 {
+    let heights: Vec<u32> = cards.take(MAX).map(card_height).collect();
+    heights.iter().sum::<u32>() + (heights.len() as u32).saturating_sub(1) * GAP
 }
 
 pub fn stack<'a>(
@@ -58,11 +67,29 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
     ]
     .spacing(3);
 
+    let buttons: Vec<Element<'_, Message>> = notification
+        .buttons()
+        .map(|(key, label)| {
+            button(text(shorten(label, 18)).size(12).font(style::medium()))
+                .padding([5, 12])
+                .style(style::secondary)
+                .on_press(Message::Invoke(notification.id, key.clone()))
+                .into()
+        })
+        .collect();
+    let content = if buttons.is_empty() {
+        content
+    } else {
+        content
+            .push(space().height(6))
+            .push(row(buttons).spacing(6))
+    };
+
     button(
         container(content)
             .padding([12, 14])
             .width(Fill)
-            .height(HEIGHT as f32),
+            .height(card_height(notification) as f32),
     )
     .padding(0)
     .width(Fill)
@@ -76,7 +103,7 @@ fn card(notification: &Notification, palette: Palette) -> Element<'_, Message> {
         },
         ..button::Style::default()
     })
-    .on_press(Message::Dismiss(notification.id))
+    .on_press(Message::Activate(notification.id))
     .into()
 }
 
@@ -101,9 +128,15 @@ mod tests {
 
     #[test]
     fn surface_fits_the_visible_cards_exactly() {
-        assert_eq!(height(0), 0);
-        assert_eq!(height(1), 84);
-        assert_eq!(height(2), 176);
-        assert_eq!(height(7), height(MAX));
+        let plain = crate::notify::shot_card("/tmp/a.png");
+        let mut asking = plain.clone();
+        asking.actions = vec![
+            ("default".into(), "Open".into()),
+            ("reply".into(), "Reply".into()),
+        ];
+        assert_eq!(height([].iter()), 0);
+        assert_eq!(height([&plain].into_iter()), 84);
+        assert_eq!(height([&plain, &asking].into_iter()), 84 + 8 + 122);
+        assert_eq!(height(std::iter::repeat_n(&plain, 7)), 3 * 84 + 2 * 8);
     }
 }

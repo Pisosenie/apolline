@@ -55,6 +55,8 @@ pub enum Message {
     Notify(Notification),
     Unnotify(u32),
     Dismiss(u32),
+    Activate(u32),
+    Invoke(u32, String),
     Mark(crate::marks::Event),
     MarksOpened(Result<std::sync::Arc<crate::marks::Marks>, String>),
     MarksDone(Result<String, String>),
@@ -843,9 +845,10 @@ impl Shell {
                     self.history.insert(0, notification.clone());
                     self.history.truncate(50);
                 }
+                // Into the history and nowhere else; the app isn't told it was closed,
+                // since some take that as read.
                 if self.config.alerts.muted(&notification.app) {
-                    // Expired, not dismissed: some apps take a dismissal as "read".
-                    return notify::closed(notification.id, Closed::Expired);
+                    return Task::none();
                 }
                 if self.config.alerts.always(&notification.app)
                     || notify::lets_through(self.rule(), notification.urgency)
@@ -882,6 +885,37 @@ impl Shell {
             Message::Dismiss(id) => {
                 self.forget(id);
                 return notify::closed(id, Closed::Dismissed);
+            }
+            Message::Activate(notify::SHOT_CARD) => {
+                return self.update(Message::Dismiss(notify::SHOT_CARD));
+            }
+            Message::Activate(id) => {
+                let Some(notification) = self
+                    .popups
+                    .iter()
+                    .map(|(n, _)| n)
+                    .chain(&self.history)
+                    .find(|n| n.id == id)
+                    .cloned()
+                else {
+                    return Task::none();
+                };
+                self.forget(id);
+                let focus = self
+                    .app_window(&notification)
+                    .map_or_else(Task::none, |window| {
+                        niri::send(apolline_niri::Request::FocusWindow(window))
+                    });
+                let told = if notification.default_action() {
+                    notify::invoke(id, "default".into())
+                } else {
+                    notify::closed(id, Closed::Dismissed)
+                };
+                return Task::batch([focus, told]);
+            }
+            Message::Invoke(id, key) => {
+                self.forget(id);
+                return notify::invoke(id, key);
             }
             Message::MarksOpened(Ok(marks)) => {
                 // Never over a password prompt, nor over marks not saved yet.
@@ -1679,6 +1713,32 @@ impl Shell {
             .extend(show.into_iter().map(|n: Notification| (n, now)));
     }
 
+    // The window of the app a notification came from, to bring forward on a click.
+    fn app_window(&self, notification: &notify::Notification) -> Option<u64> {
+        let state = self.niri.as_ref()?;
+        let names = [
+            notification.desktop.as_deref(),
+            Some(notification.app.as_str()),
+        ];
+        state
+            .recent()
+            .into_iter()
+            .find(|window| {
+                let Some(app) = window.app_id.as_deref() else {
+                    return false;
+                };
+                names.iter().flatten().any(|name| {
+                    !name.is_empty()
+                        && (app.eq_ignore_ascii_case(name)
+                            || app
+                                .rsplit('.')
+                                .next()
+                                .is_some_and(|last| last.eq_ignore_ascii_case(name)))
+                })
+            })
+            .map(|window| window.id)
+    }
+
     fn forget(&mut self, id: u32) {
         self.popups.retain(|(n, _)| n.id != id);
         self.held.retain(|n| n.id != id);
@@ -1697,8 +1757,9 @@ impl Shell {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn popup_count(&self) -> usize {
-        self.popups.len().min(popup::MAX)
+    #[cfg(target_os = "linux")]
+    pub fn popup_height(&self) -> u32 {
+        popup::height(self.popups.iter().rev().map(|(n, _)| n))
     }
 
     #[cfg(target_os = "linux")]

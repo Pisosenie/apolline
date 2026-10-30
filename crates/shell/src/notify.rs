@@ -41,6 +41,10 @@ pub enum Closed {
 pub struct Notification {
     pub id: u32,
     pub app: String,
+    // The app's desktop entry, which is usually its window's app id too.
+    pub desktop: Option<String>,
+    // (key, label) pairs; "default" is what a click on the card does.
+    pub actions: Vec<(String, String)>,
     pub summary: String,
     pub body: String,
     pub urgency: Urgency,
@@ -117,6 +121,8 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
     Some(Notification {
         id: CONFIG_CARD,
         app,
+        desktop: None,
+        actions: Vec::new(),
         summary: capitalize(&first.message),
         body,
         urgency: Urgency::Normal,
@@ -132,6 +138,8 @@ pub fn shot_card(path: &str) -> Notification {
     Notification {
         id: SHOT_CARD,
         app: name,
+        desktop: None,
+        actions: Vec::new(),
         summary: "Screenshot copied".into(),
         body: "Click to add arrows, boxes or hide a part".into(),
         urgency: Urgency::Normal,
@@ -168,6 +176,50 @@ pub fn closed(id: u32, reason: Closed) -> Task<Message> {
     .discard()
 }
 
+// Tells the app which of its buttons was pressed, then that the card is gone.
+pub fn invoke(id: u32, key: String) -> Task<Message> {
+    if id >= CONFIG_CARD {
+        return Task::none();
+    }
+    let Some(connection) = CONNECTION.get().cloned() else {
+        return Task::none();
+    };
+    Task::future(async move {
+        let _ = connection
+            .emit_signal(
+                None::<&str>,
+                PATH,
+                NAME,
+                "ActionInvoked",
+                &(id, key.as_str()),
+            )
+            .await;
+        let _ = connection
+            .emit_signal(
+                None::<&str>,
+                PATH,
+                NAME,
+                "NotificationClosed",
+                &(id, Closed::Dismissed as u32),
+            )
+            .await;
+    })
+    .discard()
+}
+
+impl Notification {
+    pub fn default_action(&self) -> bool {
+        self.actions.iter().any(|(key, _)| key == "default")
+    }
+
+    pub fn buttons(&self) -> impl Iterator<Item = &(String, String)> {
+        self.actions
+            .iter()
+            .filter(|(key, label)| key != "default" && !label.trim().is_empty())
+            .take(3)
+    }
+}
+
 struct Server {
     events: Sender<Message>,
     last: u32,
@@ -176,7 +228,7 @@ struct Server {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     fn get_capabilities(&self) -> Vec<&str> {
-        vec!["body"]
+        vec!["actions", "body"]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -187,7 +239,7 @@ impl Server {
         _app_icon: String,
         summary: String,
         body: String,
-        _actions: Vec<String>,
+        actions: Vec<String>,
         hints: HashMap<String, OwnedVariant>,
         expire_timeout: i32,
     ) -> u32 {
@@ -202,9 +254,21 @@ impl Server {
             .get("urgency")
             .and_then(|v| v.downcast_ref::<u8>().ok());
         let urgency = urgency(level);
+        let desktop = hints
+            .get("desktop-entry")
+            .and_then(|v| v.downcast_ref::<String>().ok())
+            .filter(|entry| !entry.is_empty());
+        let actions = actions
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[key, label]| (key.clone(), label.clone()))
+            .collect();
         let notification = Notification {
             id,
             app: app_name,
+            desktop,
+            actions,
             summary,
             body,
             urgency,

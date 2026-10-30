@@ -57,7 +57,7 @@ struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool),
-    popups: Option<(window::Id, usize)>,
+    popups: Option<(window::Id, u32)>,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
 }
@@ -178,30 +178,30 @@ impl Layers {
     }
 
     fn fit_popups(&mut self) -> Task<Message> {
-        let count = self.shell.popup_count();
+        let height = self.shell.popup_height();
         match self.popups {
-            None if count > 0 => {
+            None if height > 0 => {
                 let (id, open) = open(NewLayerShellSettings {
                     layer: Layer::Overlay,
                     anchor: Anchor::Top | Anchor::Right,
-                    size: Some((popup::WIDTH, popup::height(count))),
+                    size: Some((popup::WIDTH, height)),
                     margin: Some((POPUP_MARGIN, POPUP_MARGIN, 0, 0)),
                     keyboard_interactivity: KeyboardInteractivity::None,
                     namespace: Some("apolline-notifications".into()),
                     ..Default::default()
                 });
-                self.popups = Some((id, count));
+                self.popups = Some((id, height));
                 open
             }
-            Some((id, _)) if count == 0 => {
+            Some((id, _)) if height == 0 => {
                 self.popups = None;
                 window::close(id)
             }
-            Some((id, shown)) if shown != count => {
-                self.popups = Some((id, count));
+            Some((id, shown)) if shown != height => {
+                self.popups = Some((id, height));
                 Task::done(Message::SizeChange {
                     id,
-                    size: (popup::WIDTH, popup::height(count)),
+                    size: (popup::WIDTH, height),
                 })
             }
             _ => Task::none(),
