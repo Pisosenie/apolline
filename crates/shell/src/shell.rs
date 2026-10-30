@@ -75,6 +75,7 @@ pub enum Message {
     ConfigChanged,
     CalendarMonth(i32),
     Weather(Option<crate::weather::Weather>),
+    Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
     Networks(Vec<controls::Network>),
     PairedList(Vec<controls::Paired>),
@@ -423,6 +424,7 @@ impl Shell {
                 return Task::batch([self.expire(), controls, triggers, rotate]);
             }
             Message::CalendarMonth(month) => self.month = month,
+            Message::Files(files) => self.launcher.set_files(files),
             Message::Detail(detail) => {
                 self.detail = detail;
                 self.joining = None;
@@ -912,6 +914,7 @@ impl Shell {
                     self.launcher.open()
                 },
                 Task::perform(apps::scan(), Message::Apps),
+                Task::perform(crate::files::index(), Message::Files),
             ]),
             Some(Overlay::Panel) => {
                 self.detail = None;
@@ -940,6 +943,15 @@ impl Shell {
             Target::App(command) => self.spawn(&command),
             Target::Window(id) => {
                 return Task::batch([close, self.update(Message::FocusWindow(id))]);
+            }
+            Target::Open(path) => {
+                let opener = if cfg!(target_os = "macos") {
+                    "open"
+                } else {
+                    "xdg-open"
+                };
+                let quoted = format!("'{}'", path.display().to_string().replace('\'', r"'\''"));
+                self.spawn(&format!("{opener} {quoted}"))
             }
             Target::Copy(text) => {
                 let content = clipboard::Content::Text(text);

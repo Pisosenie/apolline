@@ -45,7 +45,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 
 | Key | Opens |
 |---|---|
-| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), open windows, sums like `15% of 340` (Enter copies the answer), modes, settings, lock |
+| `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included), open windows, sums like `15% of 340` (Enter copies the answer), `:emoji` by name, `/files` in your home, modes, settings, lock |
 | `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume, brightness, mode, the player, past notifications, screenshot, power |
 | `Mod+Shift+M` | the mode switcher |
 | `Mod+Alt+V` | clipboard history |

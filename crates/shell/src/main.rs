@@ -6,6 +6,7 @@ mod clipboard;
 mod clips;
 mod control;
 mod controls;
+mod files;
 mod fonts;
 mod fragment;
 mod icon;

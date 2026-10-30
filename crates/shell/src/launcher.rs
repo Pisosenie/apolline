@@ -23,6 +23,7 @@ const LIST: &str = "launcher-list";
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
     App(String),
+    Open(std::path::PathBuf),
     Window(u64),
     Copy(String),
     Mode(Option<usize>),
@@ -39,6 +40,7 @@ pub struct Launcher {
     apps: Vec<App>,
     modes: Vec<(String, String)>,
     windows: Vec<OpenWindow>,
+    files: Vec<std::path::PathBuf>,
 }
 
 pub struct OpenWindow {
@@ -129,6 +131,10 @@ impl Launcher {
         self.windows = windows;
     }
 
+    pub fn set_files(&mut self, files: Vec<std::path::PathBuf>) {
+        self.files = files;
+    }
+
     pub fn search(&mut self, query: String) -> Task<Message> {
         self.query = query;
         self.selected = 0;
@@ -156,6 +162,28 @@ impl Launcher {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
+        if let Some(wanted) = query.strip_prefix('/') {
+            return crate::files::find(&self.files, wanted)
+                .into_iter()
+                .map(|path| Entry {
+                    title: path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    about: path
+                        .parent()
+                        .map(crate::wallpaper::shorten)
+                        .unwrap_or_default(),
+                    picture: Pic::Icon(if path.is_dir() {
+                        Icon::Folder
+                    } else {
+                        Icon::File
+                    }),
+                    target: Target::Open(path.clone()),
+                    game: false,
+                })
+                .collect();
+        }
         if let Some(wanted) = query.strip_prefix(':') {
             let mut found: Vec<(u32, Entry)> = emoji()
                 .filter_map(|(glyph, name)| {
@@ -350,6 +378,7 @@ impl Launcher {
         let footer = row![
             text(caption).size(12).color(style::color(style::FAINT)),
             space::horizontal(),
+            hint("/", "files"),
             hint(":", "emoji"),
             hint("↑↓", "move"),
             hint("↵", "open"),

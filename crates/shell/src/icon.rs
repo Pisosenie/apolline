@@ -53,6 +53,7 @@ icons! {
     CloudSun = "cloud-sun",
     Coffee = "coffee",
     Download = "download",
+    File = "file",
     Folder = "folder-open",
     Code = "file-code",
     CodeXml = "code-xml",
