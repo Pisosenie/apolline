@@ -96,7 +96,10 @@ A theme is one small file: wallpaper, accent, gaps, corners, borders, shadows, w
 apolline theme            # list them, the applied one marked
 apolline theme Glass      # apply one
 apolline theme next       # the next one, handy on a key
+apolline theme install ~/Downloads/dune   # a theme.toml, or a folder with one and its pictures
 ```
+
+A theme can be a folder: `theme.toml` next to its wallpaper, named without a path (`wallpaper = "sand.jpg"`), so the picture travels with the look.
 
 ```toml
 [theme]

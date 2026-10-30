@@ -17,23 +17,34 @@ pub fn dir() -> PathBuf {
 }
 
 pub fn all() -> Vec<(Theme, Option<PathBuf>)> {
+    all_in(&dir())
+}
+
+fn all_in(dir: &Path) -> Vec<(Theme, Option<PathBuf>)> {
     let mut themes: Vec<(Theme, Option<PathBuf>)> = BUNDLED
         .iter()
         .filter_map(|text| Theme::parse(text).ok())
         .map(|theme| (theme, None))
         .collect();
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir())
-        .map(|entries| entries.flatten().map(|e| e.path()).collect())
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .map(|path| {
+                    if path.is_dir() {
+                        path.join("theme.toml")
+                    } else {
+                        path
+                    }
+                })
+                .filter(|path| path.is_file() && path.extension().is_some_and(|e| e == "toml"))
+                .collect()
+        })
         .unwrap_or_default();
     files.sort();
-    for file in files
-        .into_iter()
-        .filter(|f| f.extension().is_some_and(|e| e == "toml"))
-    {
-        let Ok(theme) = std::fs::read_to_string(&file)
-            .map_err(drop)
-            .and_then(|t| Theme::parse(&t).map_err(drop))
-        else {
+    for file in files {
+        let Some(theme) = read(&file) else {
             continue;
         };
         themes.retain(|(other, _)| slug(&other.name) != slug(&theme.name));
@@ -42,22 +53,60 @@ pub fn all() -> Vec<(Theme, Option<PathBuf>)> {
     themes
 }
 
+fn read(file: &Path) -> Option<Theme> {
+    let mut theme = Theme::parse(&std::fs::read_to_string(file).ok()?).ok()?;
+    let own = file.parent()?.join(&theme.wallpaper);
+    if !theme.wallpaper.contains('/') && own.is_file() {
+        theme.wallpaper = crate::wallpaper::shorten(&own);
+    }
+    Some(theme)
+}
+
+pub fn install(path: &Path) -> Result<Theme, String> {
+    install_into(&dir(), path)
+}
+
+fn install_into(dir: &Path, path: &Path) -> Result<Theme, String> {
+    if !path.is_dir() {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let theme = Theme::parse(&text)?;
+        save_into(dir, &theme)?;
+        return Ok(theme);
+    }
+    let text = std::fs::read_to_string(path.join("theme.toml"))
+        .map_err(|_| format!("{} has no theme.toml", path.display()))?;
+    let theme = Theme::parse(&text)?;
+    let name = slug(&theme.name);
+    if name.is_empty() {
+        return Err("the theme needs a name".into());
+    }
+    let target = dir.join(&name);
+    std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(path)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
+        if entry.path().is_file() {
+            std::fs::copy(entry.path(), target.join(entry.file_name()))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    read(&target.join("theme.toml")).ok_or_else(|| "the copied theme doesn't read".into())
+}
+
 pub fn save(theme: &Theme) -> Result<PathBuf, String> {
+    save_into(&dir(), theme)
+}
+
+fn save_into(dir: &Path, theme: &Theme) -> Result<PathBuf, String> {
     let name = slug(&theme.name);
     if name.is_empty() {
         return Err("give the theme a name".into());
     }
-    let path = dir().join(format!("{name}.toml"));
-    std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{name}.toml"));
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     std::fs::write(&path, theme.text()).map_err(|e| e.to_string())?;
     Ok(path)
-}
-
-pub fn import(path: &Path) -> Result<Theme, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let theme = Theme::parse(&text)?;
-    save(&theme)?;
-    Ok(theme)
 }
 
 #[cfg(test)]
@@ -71,5 +120,34 @@ mod tests {
             .map(|text| Theme::parse(text).unwrap().name)
             .collect();
         assert_eq!(names, ["Fog", "Ember", "Night", "Minimal", "Glass"]);
+    }
+
+    #[test]
+    fn a_theme_folder_brings_its_own_wallpaper() {
+        let root = std::env::temp_dir().join(format!("apolline-themes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let source = root.join("download/Dune");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(
+            source.join("theme.toml"),
+            "[theme]\nname = \"Dune\"\n\n[desktop]\nwallpaper = \"sand.jpg\"\naccent = \"#e0a060\"\n",
+        )
+        .unwrap();
+        std::fs::write(source.join("sand.jpg"), b"jpg").unwrap();
+        let themes = root.join("themes");
+
+        let installed = install_into(&themes, &source).unwrap();
+        assert!(
+            installed.wallpaper.ends_with("themes/dune/sand.jpg"),
+            "{}",
+            installed.wallpaper
+        );
+        let listed = all_in(&themes);
+        assert_eq!(listed.last().unwrap().0.name, "Dune");
+        assert!(
+            install_into(&themes, &root.join("download")).is_err(),
+            "no theme.toml"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

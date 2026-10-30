@@ -63,7 +63,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
-       apolline theme [list|next|NAME]
+       apolline theme [list|next|NAME] | theme install PATH
        apolline pick [--prompt TEXT] < lines
        apolline greet [--preview] [--screenshot FILE]
        apolline setup
@@ -87,6 +87,29 @@ fn main() -> ExitCode {
             return command(&args.join(" "));
         }
         Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
+        Some("theme") if args.get(1).is_some_and(|a| a == "install") => {
+            return match args
+                .get(2)
+                .map(|p| themes::install(std::path::Path::new(p)))
+            {
+                Some(Ok(theme)) => {
+                    println!(
+                        "{} is installed; apolline theme {} applies it",
+                        theme.name,
+                        apolline_config::slug(&theme.name)
+                    );
+                    ExitCode::SUCCESS
+                }
+                Some(Err(err)) => {
+                    eprintln!("apolline: {err}");
+                    ExitCode::FAILURE
+                }
+                None => {
+                    eprintln!("apolline: theme install needs a theme.toml or a folder");
+                    ExitCode::from(2)
+                }
+            };
+        }
         Some("theme") => return theme(args.get(1).map(String::as_str)),
         Some("pick") => return pick::main(&args[1..]),
         Some("greet") => return greet::main(&args[1..]),

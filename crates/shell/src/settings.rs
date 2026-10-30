@@ -1123,7 +1123,7 @@ impl Settings {
                         None => PathBuf::from(path),
                     };
                     self.theme_note = Some(
-                        themes::import(&path)
+                        themes::install(&path)
                             .map(|theme| format!("“{}” is in the gallery now", theme.name)),
                     );
                     self.theme_path.clear();
@@ -2432,7 +2432,7 @@ impl Settings {
                     ),
                     setting(
                         "Add someone's theme",
-                        "A .toml file like the ones in the themes folder",
+                        "A theme.toml, or a folder with one and its pictures",
                         row![
                             text_input("~/Downloads/look.toml", &self.theme_path)
                                 .on_input(Message::ThemePath)
