@@ -1574,6 +1574,17 @@ impl Shell {
         self.popups.len().min(popup::MAX)
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn size_of(&self, overlay: Overlay) -> f32 {
+        let style = &self.config.style;
+        match overlay {
+            Overlay::Launcher => style.launcher.size,
+            Overlay::Panel => style.panel.size,
+            _ => None,
+        }
+        .unwrap_or(1.0)
+    }
+
     pub fn overlay(&self) -> Option<Overlay> {
         self.overlay
     }

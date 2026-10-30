@@ -172,6 +172,7 @@ impl Center {
 pub struct Surface {
     pub radius: Option<u16>,
     pub opacity: Option<f32>,
+    pub size: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -815,6 +816,19 @@ mod tests {
         assert!(config.alerts.muted("Discord"));
         assert!(config.alerts.always("telegram"));
         assert!(!config.alerts.muted("slack"));
+    }
+
+    #[test]
+    fn surfaces_take_their_own_look() {
+        let (config, problems) = Config::parse(
+            "[style.launcher]\nradius = 8\nsize = 1.2\ngrid = true\n\n[style.panel]\nopacity = 0.9\nsize = 3\n",
+        );
+        assert_eq!(problems.len(), 1, "a panel three times the size is refused");
+        assert_eq!(config.style.launcher.size, Some(1.2));
+        assert_eq!(config.style.launcher.radius, Some(8));
+        assert!(config.style.grid);
+        assert_eq!(config.style.panel.size, None);
+        assert_eq!(config.style.panel.opacity, Some(0.9));
     }
 
     #[test]

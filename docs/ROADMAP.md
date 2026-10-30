@@ -94,8 +94,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   theme and takes you back to it in one click. Next: show which values a mode overrides.
 - **Themes as folders** — done: `theme.toml` with its wallpaper, `apolline theme install FILE|FOLDER`.
   Installs from a link too. Next: an optional niri snippet in the folder.
-- **Per-surface style** — done for the launcher (radius, opacity, list or grid) and quick settings
-  (radius, opacity); padding and text size are next.
+- **Per-surface style** — done for the launcher (radius, opacity, size, list or grid) and quick settings
+  (radius, opacity, size).
 - **Wallpapers**: done — a gallery from folders, one per monitor, rotation, a thumbnail cache and a cross-fade.
 - **Fonts, icons, cursor and GTK theme** pickers — done.
 - **More apps in the accent**: KDE apps through kdeglobals, live reload of running GTK apps, Flatpak.

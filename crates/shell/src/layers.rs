@@ -25,6 +25,7 @@ pub fn run(mode: Option<String>) -> Result<(), String> {
         Layers::view,
     )
     .subscription(Layers::subscription)
+    .scale_factor(Layers::scale)
     .theme(Theme::Dark)
     .style(|_, theme| iced::theme::Style {
         background_color: Color::TRANSPARENT,
@@ -225,6 +226,13 @@ impl Layers {
             }
         }
         space().into()
+    }
+
+    fn scale(&self, id: window::Id) -> f32 {
+        match self.overlay {
+            Some((overlay, kind)) if overlay == id => self.shell.size_of(kind),
+            _ => 1.0,
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {

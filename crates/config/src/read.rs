@@ -190,14 +190,15 @@ impl Reader<'_> {
                                     "opacity" => {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
+                                    "size" => surface.size = self.fraction(key, value, 0.8..=1.5),
                                     "grid" if launcher => grid = self.boolean(key, value),
                                     _ => self.unknown(
                                         key,
                                         "option",
                                         if launcher {
-                                            &["radius", "opacity", "grid"]
+                                            &["radius", "opacity", "size", "grid"]
                                         } else {
-                                            &["radius", "opacity"]
+                                            &["radius", "opacity", "size"]
                                         },
                                     ),
                                 }
