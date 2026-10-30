@@ -598,6 +598,10 @@ fn entry(notification: &Notification) -> Element<'_, Message> {
                 .color(style::color(style::FAINT)),
         );
     }
+    let words = button(words)
+        .padding(0)
+        .style(style::ghost(6.0))
+        .on_press(Message::Activate(notification.id));
     container(
         row![
             words,

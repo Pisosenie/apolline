@@ -901,6 +901,12 @@ impl Shell {
                     return Task::none();
                 };
                 self.forget(id);
+                self.history.retain(|n| n.id != id);
+                let close = if self.overlay == Some(Overlay::Panel) {
+                    self.set_overlay(None)
+                } else {
+                    Task::none()
+                };
                 let focus = self
                     .app_window(&notification)
                     .map_or_else(Task::none, |window| {
@@ -911,7 +917,7 @@ impl Shell {
                 } else {
                     notify::closed(id, Closed::Dismissed)
                 };
-                return Task::batch([focus, told]);
+                return Task::batch([close, focus, told]);
             }
             Message::Invoke(id, key) => {
                 self.forget(id);
