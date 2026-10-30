@@ -6,6 +6,14 @@ At rest the shell wakes once a minute, for the clock; everything else arrives as
 
 Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar as layer-shell surfaces; anywhere else it opens a preview window. Under [niri](https://github.com/YaLTeR/niri) the bar shows live workspaces and the keyboard layout, and a click on a workspace switches to it. Battery comes from UPower and the playing track from any MPRIS player. Arch first.
 
+![Quick settings over the Ember look](docs/screenshots/panel.jpg)
+
+| | |
+|---|---|
+| ![The launcher finds the running Firefox before offering a new one](docs/screenshots/launcher.jpg) | ![The lock screen](docs/screenshots/lock.jpg) |
+| ![Switching modes](docs/screenshots/switch.jpg) | ![Settings → Modes, with the lines it writes](docs/screenshots/modes.jpg) |
+| ![Settings → Themes](docs/screenshots/themes.jpg) | |
+
 ## Install on Arch
 
 ```sh
