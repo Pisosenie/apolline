@@ -135,8 +135,8 @@ pub struct Shell {
     status: Status,
     niri: Option<apolline_niri::State>,
     outputs: Vec<String>,
-    fired: Vec<bool>,
-    auto: Option<(usize, Option<usize>)>,
+    fired: Vec<String>,
+    auto: Option<(String, Option<String>)>,
     reason: Option<Trigger>,
     rotated: Option<(String, Instant)>,
     picked: String,
@@ -439,6 +439,12 @@ impl Shell {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.handle(message);
+        self.publish();
+        task
+    }
+
+    fn handle(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
                 self.now = Local::now();
@@ -510,7 +516,8 @@ impl Shell {
                 let now = stamp(&self.config_path);
                 if now != self.config_stamp {
                     self.config_stamp = now;
-                    return self.reload_config();
+                    let reload = self.reload_config();
+                    return Task::batch([reload, self.triggers()]);
                 }
             }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
@@ -697,11 +704,14 @@ impl Shell {
                 }
                 let state = self.niri.get_or_insert_default();
                 let outputs = state.outputs();
+                let mut tasks = vec![];
                 if outputs != self.outputs {
                     self.outputs = outputs;
                     self.sync();
-                    return self.load_wallpaper();
+                    tasks.push(self.load_wallpaper());
                 }
+                tasks.push(self.triggers());
+                return Task::batch(tasks);
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
             Message::Wallpaper(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
@@ -717,7 +727,10 @@ impl Shell {
                 self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
-            Message::Battery(battery) => self.system.get_or_insert_default().battery = battery,
+            Message::Battery(battery) => {
+                self.system.get_or_insert_default().battery = battery;
+                return self.triggers();
+            }
             Message::Media(media) => self.system.get_or_insert_default().media = media,
             Message::Boosted(previous) if self.current().is_some_and(|m| m.performance) => {
                 self.boosted = previous
@@ -1169,15 +1182,16 @@ impl Shell {
         if self.demo {
             return;
         }
-        let auto = self.auto.filter(|(on, _)| self.mode == Some(*on));
+        let current = self.current().map(ModeSettings::key);
+        let auto = self
+            .auto
+            .as_ref()
+            .filter(|(on, _)| current.as_ref() == Some(on));
         let shared = Shared {
-            mode: self.current().map(ModeSettings::key),
+            mode: current.clone(),
             waiting: self.held.len() + self.popups.len(),
             reason: auto.and(self.reason.as_ref()).map(Trigger::text),
-            back: auto
-                .and_then(|(_, back)| back)
-                .and_then(|i| self.config.modes.get(i))
-                .map(ModeSettings::key),
+            back: auto.and_then(|(_, back)| back.clone()),
             wallpaper: self.rotated.as_ref().map(|(name, _)| name.clone()),
         };
         if self.published.as_ref() != Some(&shared) {
@@ -1318,36 +1332,34 @@ impl Shell {
                     .cloned()
             })
             .collect();
-        let active: Vec<bool> = why.iter().map(Option::is_some).collect();
-        if self.fired.len() != active.len() {
-            self.fired = vec![false; active.len()];
-            self.auto = None;
-        }
+        let keys: Vec<String> = self.config.modes.iter().map(ModeSettings::key).collect();
+        let active: Vec<String> = keys
+            .iter()
+            .zip(&why)
+            .filter(|(_, why)| why.is_some())
+            .map(|(key, _)| key.clone())
+            .collect();
+        let current = self.current().map(ModeSettings::key);
+        let plan = plan(&active, &self.fired, current.as_deref(), self.auto.as_ref());
         let mut task = Task::none();
-        let ended = (0..active.len()).find(|&i| self.fired[i] && !active[i]);
-        if let (Some(i), Some((on, before))) = (ended, self.auto)
-            && on == i
-        {
-            self.auto = None;
-            if self.mode == Some(i) {
-                task = self.switch(before);
-            }
+        if let Some(back) = plan.back {
+            task = self.enter(back.and_then(|key| self.config.find(&key)));
         }
-        let started = (0..active.len()).find(|&i| active[i] && !self.fired[i]);
-        if let Some(i) = started
-            && self.mode != Some(i)
-        {
-            let before = self.auto.map_or(self.mode, |(_, before)| before);
-            task = Task::batch([task, self.switch(Some(i))]);
-            self.auto = Some((i, before));
-            self.reason = why[i].clone();
+        if let Some(index) = plan.start.as_deref().and_then(|key| self.config.find(key)) {
+            task = Task::batch([task, self.enter(Some(index))]);
+            self.reason = why[index].clone();
         }
+        self.auto = plan.auto;
         self.fired = active;
         task
     }
 
     fn switch(&mut self, mode: Option<usize>) -> Task<Message> {
         let close = self.set_overlay(None);
+        Task::batch([close, self.enter(mode)])
+    }
+
+    fn enter(&mut self, mode: Option<usize>) -> Task<Message> {
         let fast = |mode: Option<usize>| {
             mode.and_then(|i| self.config.modes.get(i))
                 .is_some_and(|m| m.performance)
@@ -1364,7 +1376,7 @@ impl Shell {
         self.dress();
         self.sync();
         self.release_held();
-        Task::batch([close, self.load_wallpaper(), self.open_apps(), profile])
+        Task::batch([self.load_wallpaper(), self.open_apps(), profile])
     }
 
     fn dress(&mut self) {
@@ -1635,6 +1647,44 @@ impl Shell {
     }
 }
 
+struct Plan {
+    back: Option<Option<String>>,
+    start: Option<String>,
+    auto: Option<(String, Option<String>)>,
+}
+
+fn plan(
+    active: &[String],
+    fired: &[String],
+    current: Option<&str>,
+    auto: Option<&(String, Option<String>)>,
+) -> Plan {
+    let mut current = current.map(str::to_owned);
+    let mut auto = auto.cloned();
+    let mut back = None;
+    if let Some((on, before)) = auto.clone()
+        && !active.contains(&on)
+    {
+        auto = None;
+        if current.as_ref() == Some(&on) {
+            back = Some(before.clone());
+            current = before;
+        }
+    }
+    let start = active
+        .iter()
+        .find(|key| !fired.contains(key) && current.as_ref() != Some(*key))
+        .cloned();
+    if let Some(key) = &start {
+        let before = match &auto {
+            Some((on, before)) if current.as_ref() == Some(on) => before.clone(),
+            _ => current,
+        };
+        auto = Some((key.clone(), before));
+    }
+    Plan { back, start, auto }
+}
+
 fn ticks(busy: &bool) -> impl iced::futures::Stream<Item = Message> + use<> {
     let busy = *busy;
     iced::stream::channel(1, async move |mut output| {
@@ -1691,4 +1741,52 @@ fn subscription() -> iced::Subscription<Message> {
         logind::subscription(),
         polkit::subscription(),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn keys(list: &[&str]) -> Vec<String> {
+        list.iter().map(|k| (*k).to_owned()).collect()
+    }
+
+    #[test]
+    fn triggers_hand_back_what_you_chose_and_never_fire_twice() {
+        let on_battery = plan(&keys(&["saver"]), &[], None, None);
+        assert_eq!(on_battery.start.as_deref(), Some("saver"));
+        let auto = on_battery.auto;
+        assert_eq!(auto, Some(("saver".into(), None)));
+
+        let picked_focus = plan(
+            &keys(&["saver"]),
+            &keys(&["saver"]),
+            Some("focus"),
+            auto.as_ref(),
+        );
+        assert!(picked_focus.start.is_none() && picked_focus.back.is_none());
+
+        let night = plan(
+            &keys(&["saver", "night"]),
+            &keys(&["saver"]),
+            Some("focus"),
+            picked_focus.auto.as_ref(),
+        );
+        assert_eq!(night.start.as_deref(), Some("night"));
+        assert_eq!(night.auto, Some(("night".into(), Some("focus".into()))));
+
+        let morning = plan(
+            &keys(&["saver"]),
+            &keys(&["saver", "night"]),
+            Some("night"),
+            night.auto.as_ref(),
+        );
+        assert_eq!(
+            morning.back,
+            Some(Some("focus".into())),
+            "back to the mode you picked"
+        );
+        assert!(morning.start.is_none(), "battery already had its turn");
+        assert!(morning.auto.is_none());
+    }
 }
