@@ -1342,7 +1342,7 @@ impl Shell {
             iced::Subscription::none()
         } else {
             iced::Subscription::batch([
-                iced::Subscription::run_with(self.config_path.clone(), watch_config),
+                iced::Subscription::run(watch_config),
                 controls::watch().map(Message::Controls),
             ])
         };
@@ -1377,8 +1377,8 @@ fn ticks(busy: &bool) -> impl iced::futures::Stream<Item = Message> + use<> {
     })
 }
 
-fn watch_config(path: &PathBuf) -> impl iced::futures::Stream<Item = Message> + use<> {
-    let path = path.clone();
+fn watch_config() -> impl iced::futures::Stream<Item = Message> {
+    let path = apolline_config::default_path();
     iced::stream::channel(1, async move |mut output| {
         use iced::futures::SinkExt;
         let mut seen = stamp(&path);
