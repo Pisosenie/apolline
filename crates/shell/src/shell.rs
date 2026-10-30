@@ -136,6 +136,7 @@ pub struct Shell {
     outputs: Vec<String>,
     fired: Vec<bool>,
     auto: Option<(usize, Option<usize>)>,
+    reason: Option<Trigger>,
     system: Option<System>,
     boosted: Option<String>,
     popups: Vec<(Notification, Instant)>,
@@ -199,6 +200,7 @@ impl Shell {
             outputs: Vec::new(),
             fired: Vec::new(),
             auto: None,
+            reason: None,
             system: None,
             boosted: None,
             popups: Vec::new(),
@@ -1080,9 +1082,15 @@ impl Shell {
         if self.demo {
             return;
         }
+        let auto = self.auto.filter(|(on, _)| self.mode == Some(*on));
         let shared = Shared {
             mode: self.current().map(ModeSettings::key),
             waiting: self.held.len() + self.popups.len(),
+            reason: auto.and(self.reason.as_ref()).map(Trigger::text),
+            back: auto
+                .and_then(|(_, back)| back)
+                .and_then(|i| self.config.modes.get(i))
+                .map(ModeSettings::key),
         };
         if self.published.as_ref() != Some(&shared) {
             control::publish(&shared);
@@ -1171,19 +1179,23 @@ impl Shell {
             use chrono::Timelike;
             (self.now.hour() * 60 + self.now.minute()) as u16
         };
-        let active: Vec<bool> = self
+        let why: Vec<Option<Trigger>> = self
             .config
             .modes
             .iter()
             .map(|mode| {
-                mode.when.iter().any(|trigger| match trigger {
-                    Trigger::Game => game,
-                    Trigger::Battery => battery,
-                    Trigger::Hours { from, until } => Trigger::covers(*from, *until, now),
-                    Trigger::Monitor(name) => self.outputs.contains(name),
-                })
+                mode.when
+                    .iter()
+                    .find(|trigger| match trigger {
+                        Trigger::Game => game,
+                        Trigger::Battery => battery,
+                        Trigger::Hours { from, until } => Trigger::covers(*from, *until, now),
+                        Trigger::Monitor(name) => self.outputs.contains(name),
+                    })
+                    .cloned()
             })
             .collect();
+        let active: Vec<bool> = why.iter().map(Option::is_some).collect();
         if self.fired.len() != active.len() {
             self.fired = vec![false; active.len()];
             self.auto = None;
@@ -1205,6 +1217,7 @@ impl Shell {
             let before = self.auto.map_or(self.mode, |(_, before)| before);
             task = Task::batch([task, self.switch(Some(i))]);
             self.auto = Some((i, before));
+            self.reason = why[i].clone();
         }
         self.fired = active;
         task

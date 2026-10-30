@@ -68,12 +68,19 @@ pub fn me() -> String {
 pub struct Shared {
     pub mode: Option<String>,
     pub waiting: usize,
+    pub reason: Option<String>,
+    pub back: Option<String>,
 }
 
 impl Shared {
     fn text(&self) -> String {
         let mode = self.mode.as_deref().unwrap_or_default();
-        format!("mode {mode}\nwaiting {}\n", self.waiting)
+        let mut text = format!("mode {mode}\nwaiting {}\n", self.waiting);
+        if let Some(reason) = &self.reason {
+            let back = self.back.as_deref().unwrap_or_default();
+            text.push_str(&format!("reason {reason}\nback {back}\n"));
+        }
+        text
     }
 
     fn parse(text: &str) -> Self {
@@ -82,6 +89,8 @@ impl Shared {
             match line.split_once(' ') {
                 Some(("mode", key)) if !key.is_empty() => shared.mode = Some(key.to_owned()),
                 Some(("waiting", count)) => shared.waiting = count.parse().unwrap_or(0),
+                Some(("reason", why)) => shared.reason = Some(why.to_owned()),
+                Some(("back", key)) if !key.is_empty() => shared.back = Some(key.to_owned()),
                 _ => {}
             }
         }
@@ -178,6 +187,8 @@ mod tests {
         let shared = Shared {
             mode: Some("night-owl".into()),
             waiting: 2,
+            reason: Some("20:00-07:00".into()),
+            back: Some("work".into()),
         };
         assert_eq!(Shared::parse(&shared.text()), shared);
         assert_eq!(Shared::parse("garbage"), Shared::default());

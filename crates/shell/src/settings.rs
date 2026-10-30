@@ -362,6 +362,7 @@ struct Settings {
     apps: Vec<App>,
     pin_query: String,
     weather_draft: Option<String>,
+    live: crate::control::Shared,
     hours_draft: String,
     monitor_draft: String,
     queue: Vec<String>,
@@ -430,6 +431,7 @@ impl Settings {
             apps: Vec::new(),
             pin_query: String::new(),
             weather_draft: None,
+            live: crate::control::shared(),
             hours_draft: String::new(),
             monitor_draft: String::new(),
             queue: Vec::new(),
@@ -1035,6 +1037,7 @@ impl Settings {
             }
             Message::Thumb(_, None) => return self.next_thumb(),
             Message::Tick => {
+                self.live = crate::control::shared();
                 if stamp(&self.path) != self.stamp {
                     self.reload();
                 }
@@ -1727,6 +1730,7 @@ impl Settings {
         column![
             tabs.wrap().vertical_spacing(6),
             preview,
+            self.why_on(mode, palette),
             group(
                 "Name and icon",
                 vec![
@@ -3398,6 +3402,46 @@ impl Settings {
             ));
         }
         form.into()
+    }
+
+    fn why_on(&self, mode: &ModeSettings, palette: Palette) -> Option<Element<'_, Message>> {
+        if self.live.mode.as_deref() != Some(mode.key().as_str()) {
+            return None;
+        }
+        let reason = self.live.reason.as_deref().and_then(Trigger::parse)?;
+        let because = match reason {
+            Trigger::Game => "a game is running".to_owned(),
+            Trigger::Battery => "the laptop runs on battery".to_owned(),
+            Trigger::Hours { from, until } => format!(
+                "it's between {} and {}",
+                apolline_config::clock(from),
+                apolline_config::clock(until)
+            ),
+            Trigger::Monitor(name) => format!("{name} is plugged in"),
+        };
+        let back = self
+            .live
+            .back
+            .as_deref()
+            .and_then(|key| self.config.find(key))
+            .map_or("the plain desktop".to_owned(), |i| self.config.modes[i].name.clone());
+        Some(
+            container(
+                row![
+                    icon(Icon::Zap, 15.0, palette.accent),
+                    text(format!(
+                        "On now because {because}. When that ends, {back} comes back."
+                    ))
+                    .size(13),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            )
+            .padding([10, 14])
+            .width(Fill)
+            .style(style::pill(palette.accent_soft))
+            .into(),
+        )
     }
 
     fn set_trigger(&mut self, index: usize, trigger: Trigger, on: bool) {
