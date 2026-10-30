@@ -17,8 +17,15 @@ pub fn apply(palette: Palette) -> Vec<String> {
 }
 
 pub fn remove() {
-    if let Some(config) = config_home() {
-        erase(&config);
+    if !config_home().is_some_and(|config| erase(&config)) {
+        return;
+    }
+    for key in ["color-scheme", "accent-color"] {
+        run_gsettings(
+            ["reset", "org.gnome.desktop.interface", key]
+                .map(str::to_owned)
+                .to_vec(),
+        );
     }
 }
 
@@ -26,6 +33,10 @@ fn write(config: &Path, palette: Palette) -> Vec<String> {
     let mut notes = Vec::new();
     for version in ["gtk-3.0", "gtk-4.0"] {
         let dir = config.join(version);
+        if dir.is_symlink() {
+            notes.push(format!("{} is a link, so it was left alone", dir.display()));
+            continue;
+        }
         if let Err(err) =
             fs::create_dir_all(&dir).and_then(|()| fs::write(dir.join(CSS), gtk_css(palette)))
         {
@@ -45,10 +56,14 @@ fn write(config: &Path, palette: Palette) -> Vec<String> {
     notes
 }
 
-fn erase(config: &Path) {
+fn erase(config: &Path) -> bool {
+    let mut ours = false;
     for version in ["gtk-3.0", "gtk-4.0"] {
         let dir = config.join(version);
-        let _ = fs::remove_file(dir.join(CSS));
+        if dir.is_symlink() {
+            continue;
+        }
+        ours |= fs::remove_file(dir.join(CSS)).is_ok();
         let gtk = dir.join("gtk.css");
         if gtk.is_symlink() {
             continue;
@@ -68,7 +83,8 @@ fn erase(config: &Path) {
             };
         }
     }
-    let _ = fs::remove_file(config.join("qt6ct/colors/apolline.conf"));
+    ours |= fs::remove_file(config.join("qt6ct/colors/apolline.conf")).is_ok();
+    ours
 }
 
 pub fn files() -> Vec<String> {
@@ -113,7 +129,16 @@ fn import(gtk: &Path) -> Option<String> {
             gtk.display()
         ));
     }
-    let text = fs::read_to_string(gtk).unwrap_or_default();
+    let text = match fs::read_to_string(gtk) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            return Some(format!(
+                "{} was left alone ({err}); add {IMPORT} to it yourself",
+                gtk.display()
+            ));
+        }
+    };
     if text.lines().any(|line| line.trim() == IMPORT) {
         return None;
     }
@@ -217,11 +242,21 @@ fn gnome_accent(accent: Rgba) -> &'static str {
 }
 
 pub fn gsettings(key: &str, value: &str) {
-    let _ = std::process::Command::new("gsettings")
-        .args(["set", "org.gnome.desktop.interface", key, value])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+    run_gsettings(
+        ["set", "org.gnome.desktop.interface", key, value]
+            .map(str::to_owned)
+            .to_vec(),
+    );
+}
+
+fn run_gsettings(args: Vec<String>) {
+    std::thread::spawn(move || {
+        let _ = std::process::Command::new("gsettings")
+            .args(args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    });
 }
 
 #[cfg(test)]
@@ -255,6 +290,23 @@ mod tests {
             !dir.join("gtk-3.0/gtk.css").exists(),
             "a gtk.css we made is gone too"
         );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_gtk_css_that_isnt_text_or_lives_in_a_linked_folder_is_left_alone() {
+        let dir = std::env::temp_dir().join(format!("apolline-paint-odd-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("gtk-3.0")).unwrap();
+        let latin = b"/* caf\xe9 */\nwindow { }\n".to_vec();
+        fs::write(dir.join("gtk-3.0/gtk.css"), &latin).unwrap();
+        fs::create_dir_all(dir.join("dotfiles/gtk-4.0")).unwrap();
+        std::os::unix::fs::symlink(dir.join("dotfiles/gtk-4.0"), dir.join("gtk-4.0")).unwrap();
+
+        let notes = write(&dir, Palette::new(ACCENTS[0]));
+        assert_eq!(fs::read(dir.join("gtk-3.0/gtk.css")).unwrap(), latin);
+        assert!(!dir.join("dotfiles/gtk-4.0/apolline.css").exists());
+        assert_eq!(notes.len(), 2, "{notes:?}");
         fs::remove_dir_all(dir).unwrap();
     }
 
