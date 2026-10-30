@@ -70,6 +70,7 @@ pub struct Panel<'a> {
     pub power_menu: bool,
     pub armed: Option<Power>,
     pub awake: bool,
+    pub night: bool,
     pub history: &'a [Notification],
     pub detail: Option<Detail>,
     pub networks: &'a [Network],
@@ -148,10 +149,19 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         palette,
         Some(Message::KeepAwake(!panel.awake)),
     );
+    let night = tile(
+        Icon::Moon,
+        "Night light",
+        if panel.night { "Warm" } else { "Off" }.to_owned(),
+        panel.night,
+        palette,
+        Some(Message::NightLight(!panel.night)),
+    );
     body = body.push(
         column![
             row![wifi, bluetooth].spacing(10),
             row![quiet, awake].spacing(10),
+            row![night, space::horizontal()].spacing(10),
         ]
         .spacing(10),
     );

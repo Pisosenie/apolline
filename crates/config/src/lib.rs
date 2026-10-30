@@ -23,6 +23,7 @@ pub struct Config {
     pub touchpad: Option<Touchpad>,
     pub mouse: Option<Mouse>,
     pub alerts: Alerts,
+    pub night: Night,
     pub shortcuts: Shortcuts,
     pub lock: Lock,
     pub idle: Idle,
@@ -163,6 +164,12 @@ impl Center {
             Center::Always => "always",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Night {
+    pub hours: Option<(u16, u16)>,
+    pub temperature: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -595,6 +602,10 @@ impl Default for Config {
                 suspend_after: 0,
             },
             apps: Apps { colors: false },
+            night: Night {
+                hours: None,
+                temperature: 4000,
+            },
             windows: Windows {
                 width: None,
                 presets: None,

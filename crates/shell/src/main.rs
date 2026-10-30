@@ -19,6 +19,7 @@ mod launcher;
 mod lock;
 mod logind;
 mod media;
+mod night;
 mod niri;
 mod notify;
 mod osd;

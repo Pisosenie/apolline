@@ -16,7 +16,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 17] = [
+const SECTIONS: [&str; 18] = [
     "general",
     "theme",
     "desktop",
@@ -30,6 +30,7 @@ const SECTIONS: [&str; 17] = [
     "lock",
     "idle",
     "apps",
+    "night",
     "windows",
     "rule",
     "display",
@@ -163,6 +164,28 @@ impl Reader<'_> {
                 "idle" => {
                     if let Some(t) = self.section(key, value) {
                         self.idle(t, &mut config.idle)
+                    }
+                }
+                "night" => {
+                    if let Some(t) = self.section(key, value) {
+                        for (key, value) in t.iter() {
+                            match key.get_ref().as_ref() {
+                                "hours" => match self.string(key, value).and_then(Trigger::parse) {
+                                    Some(Trigger::Hours { from, until }) => {
+                                        config.night.hours = Some((from, until))
+                                    }
+                                    _ => {
+                                        self.wrong::<()>(key, value, r#"hours like "21:00-07:00""#);
+                                    }
+                                },
+                                "temperature" => {
+                                    if let Some(v) = self.number(key, value, 1000..=6500) {
+                                        config.night.temperature = u32::from(v)
+                                    }
+                                }
+                                _ => self.unknown(key, "option", &["hours", "temperature"]),
+                            }
+                        }
                     }
                 }
                 "apps" => {

@@ -74,6 +74,7 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     ConfigChanged,
+    NightLight(bool),
     Frame,
     CalendarMonth(i32),
     Weather(Option<crate::weather::Weather>),
@@ -178,6 +179,7 @@ pub struct Shell {
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
     fade: Option<(image::Handle, Instant)>,
+    night: (bool, Option<bool>),
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -257,6 +259,7 @@ impl Shell {
             config,
             wallpapers: Vec::new(),
             fade: None,
+            night: (false, None),
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -264,6 +267,7 @@ impl Shell {
         shell.report(&diagnostics);
         shell.picked = shell.config.desktop.wallpaper.clone();
         shell.dress();
+        shell.night = (shell.night_scheduled(), None);
         shell.sync();
         shell.launcher.set_modes(shell.mode_names());
         let welcome = if !demo && !shell.config_path.exists() {
@@ -357,6 +361,10 @@ impl Shell {
         self.mode = key.and_then(|key| config.find(&key));
         self.plain = config;
         self.dress();
+        let scheduled = self.night_scheduled();
+        if scheduled != self.night.0 {
+            self.night = (scheduled, None);
+        }
         self.launcher.set_modes(self.mode_names());
         self.report(&diagnostics);
         self.sync();
@@ -458,6 +466,10 @@ impl Shell {
                 } else {
                     Task::none()
                 };
+                let scheduled = self.night_scheduled();
+                if scheduled != self.night.0 {
+                    self.night = (scheduled, None);
+                }
                 let triggers = self.triggers();
                 let rotate = self.rotate();
                 self.publish();
@@ -516,6 +528,7 @@ impl Shell {
                     self.weather = weather;
                 }
             }
+            Message::NightLight(on) => self.night.1 = Some(on),
             Message::Frame => {
                 if self
                     .fade
@@ -1325,6 +1338,20 @@ impl Shell {
         self.load_wallpaper()
     }
 
+    fn night_scheduled(&self) -> bool {
+        use chrono::Timelike;
+        let now = (self.now.hour() * 60 + self.now.minute()) as u16;
+        self.config
+            .night
+            .hours
+            .is_some_and(|(from, until)| Trigger::covers(from, until, now))
+    }
+
+    fn night_light(&self) -> Option<u32> {
+        let on = self.night.1.unwrap_or(self.night.0);
+        (on && !self.demo).then_some(self.config.night.temperature)
+    }
+
     fn triggers(&mut self) -> Task<Message> {
         if self.demo {
             return Task::none();
@@ -1496,6 +1523,7 @@ impl Shell {
                 power_menu: self.power_menu,
                 armed: self.armed,
                 awake: self.awake,
+                night: self.night.1.unwrap_or(self.night.0),
                 history: &self.history,
                 detail: self.detail,
                 networks: &self.networks,
@@ -1684,6 +1712,7 @@ impl Shell {
         iced::Subscription::batch([
             subscription(),
             fading,
+            crate::night::subscription(self.night_light()).map(|()| Message::Frame),
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,

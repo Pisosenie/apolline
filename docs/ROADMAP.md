@@ -111,7 +111,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 ### 5. Displays and comfort
 - Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,
   validated with `niri validate` before it applies.
-- Night light on a schedule.
+- Night light on a schedule — done, still to be seen on real hardware (nested niri has no gamma control).
 - Wi-Fi and Bluetooth beyond on and off, over D-Bus instead of command-line tools: nearby networks with
   a password field, pairing with a passkey, forgetting old ones.
 - A click on the clock: the month, today's weather from Open-Meteo, events from an ICS or CalDAV
