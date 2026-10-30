@@ -97,6 +97,10 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .size(13)
             .font(style::semibold()),
     );
+    let clock = button(clock)
+        .padding([4, 10])
+        .style(style::ghost(8.0))
+        .on_press(Message::Overlay(Some(Overlay::Calendar)));
 
     let mut right = Row::new().spacing(6).align_y(Alignment::Center);
     if let Some(track) = bar.track.filter(|t| t.playing) {

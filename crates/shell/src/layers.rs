@@ -129,6 +129,7 @@ impl Layers {
             Overlay::Clipboard => "apolline-clipboard",
             Overlay::Keys => "apolline-keys",
             Overlay::Polkit => "apolline-polkit",
+            Overlay::Calendar => "apolline-calendar",
         };
         let (id, open) = open(NewLayerShellSettings {
             layer: Layer::Overlay,

@@ -1,6 +1,7 @@
 mod apps;
 mod bar;
 mod calc;
+mod calendar;
 mod clipboard;
 mod clips;
 mod control;
@@ -51,7 +52,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|polkit|osd] [--query TEXT] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
@@ -137,6 +138,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     Some("clipboard") => overlay(shell::Overlay::Clipboard),
                     Some("keys") => overlay(shell::Overlay::Keys),
                     Some("polkit") => shell::Message::Polkit(polkit::sample()),
+                    Some("calendar") => overlay(shell::Overlay::Calendar),
                     Some("osd") => {
                         shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
                     }

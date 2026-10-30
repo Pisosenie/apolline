@@ -73,6 +73,7 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     ConfigChanged,
+    CalendarMonth(i32),
     Thumb(String, Option<image::Handle>),
     Polkit(polkit::Request),
     PolkitGone(String),
@@ -106,6 +107,7 @@ pub enum Overlay {
     Clipboard,
     Keys,
     Polkit,
+    Calendar,
 }
 
 #[derive(Default)]
@@ -138,6 +140,7 @@ pub struct Shell {
     keys_query: String,
     polkit: Option<polkit::Dialog>,
     painted: Option<Option<apolline_theme::Rgba>>,
+    month: i32,
     apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
@@ -197,6 +200,7 @@ impl Shell {
             keys_query: String::new(),
             polkit: None,
             painted: None,
+            month: 0,
             apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
@@ -357,6 +361,7 @@ impl Shell {
                 let triggers = self.triggers();
                 return Task::batch([self.expire(), controls, triggers]);
             }
+            Message::CalendarMonth(month) => self.month = month,
             Message::ConfigChanged => {
                 let now = stamp(&self.config_path);
                 if now != self.config_stamp {
@@ -799,6 +804,11 @@ impl Shell {
                 self.read_controls()
             }
             Some(Overlay::Clipboard) => self.picker.open(),
+            Some(Overlay::Calendar) => {
+                self.month = 0;
+                self.now = Local::now();
+                Task::none()
+            }
             Some(Overlay::Keys) => {
                 let niri = std::fs::read_to_string(fragment::niri_config()).unwrap_or_default();
                 self.keymap = keymap::entries(&self.config, self.mode, &niri);
@@ -1179,6 +1189,12 @@ impl Shell {
             ),
             Some(Overlay::Clipboard) => self.picker.view(&self.clips, palette),
             Some(Overlay::Keys) => keymap::view(&self.keymap, &self.keys_query, palette),
+            Some(Overlay::Calendar) => crate::calendar::view(
+                self.now,
+                self.month,
+                palette,
+                self.config.bar.position == Edge::Bottom,
+            ),
             Some(Overlay::Polkit) => match &self.polkit {
                 Some(dialog) => polkit::view(dialog, palette),
                 None => space().into(),

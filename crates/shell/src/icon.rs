@@ -40,6 +40,7 @@ icons! {
     Calculator = "calculator",
     Camera = "camera",
     Check = "check",
+    ChevronLeft = "chevron-left",
     ChevronRight = "chevron-right",
     Circle = "circle-dashed",
     Clipboard = "clipboard",
