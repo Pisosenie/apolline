@@ -207,6 +207,17 @@ impl Editor {
         doc.to_string()
     }
 
+    pub fn take_list(&mut self, name: &str, from: &Editor) {
+        match from.doc.get(name).filter(|item| item.is_array_of_tables()) {
+            Some(list) => {
+                self.doc.insert(name, list.clone());
+            }
+            None => {
+                self.doc.remove(name);
+            }
+        }
+    }
+
     pub fn set_accent(&mut self, accent: Accent) {
         self.set("desktop", "accent", accent_text(accent));
     }

@@ -249,10 +249,11 @@ enum Message {
     DisplayScale(String, u16),
     DisplayTurn(String, &'static str),
     DisplayVrr(String, bool),
-    DisplayX(String),
-    DisplayY(String),
+    DisplayX(String, String),
+    DisplayY(String, String),
     DisplayMove(String),
     KeepDisplays,
+    RevertDisplays,
     ForMonitor(Option<String>),
     Rotate(u32),
     Shuffle(bool),
@@ -391,8 +392,8 @@ struct Settings {
     outputs: Vec<apolline_niri::Output>,
     cursors: Vec<String>,
     icon_themes: Vec<String>,
-    place: (String, String),
-    revert: Option<std::time::Instant>,
+    place: (String, String, String),
+    revert: Option<(std::time::Instant, String)>,
     hours_draft: String,
     monitor_draft: String,
     queue: Vec<String>,
@@ -467,7 +468,7 @@ impl Settings {
             outputs: crate::niri::outputs(),
             cursors: crate::paint::cursors(),
             icon_themes: apps::icon_themes(),
-            place: (String::new(), String::new()),
+            place: (String::new(), String::new(), String::new()),
             revert: None,
             hours_draft: String::new(),
             monitor_draft: String::new(),
@@ -616,19 +617,37 @@ impl Settings {
                     e.set_display(&name, "transform", turn);
                 }
             }),
-            Message::DisplayVrr(name, on) => self.edit(|e| e.set_display(&name, "vrr", on)),
-            Message::DisplayX(x) => self.place.0 = x,
-            Message::DisplayY(y) => self.place.1 = y,
-            Message::DisplayMove(name) => {
+            Message::DisplayVrr(name, on) => self.edit(|e| {
+                if on {
+                    e.set_display(&name, "vrr", true);
+                } else {
+                    e.unset_display(&name, "vrr");
+                }
+            }),
+            Message::DisplayX(name, x) => {
+                if self.place.0 != name {
+                    self.place = (name, String::new(), String::new());
+                }
+                self.place.1 = x;
+            }
+            Message::DisplayY(name, y) => {
+                if self.place.0 != name {
+                    self.place = (name, String::new(), String::new());
+                }
+                self.place.2 = y;
+            }
+            Message::DisplayMove(name) if self.place.0 == name => {
                 if let (Ok(x), Ok(y)) = (
-                    self.place.0.trim().parse::<i64>(),
                     self.place.1.trim().parse::<i64>(),
+                    self.place.2.trim().parse::<i64>(),
                 ) {
                     self.change_display(|e| e.set_display_position(&name, x, y));
-                    self.place = (String::new(), String::new());
+                    self.place = (String::new(), String::new(), String::new());
                 }
             }
+            Message::DisplayMove(_) => {}
             Message::KeepDisplays => self.revert = None,
+            Message::RevertDisplays => self.put_displays_back(),
             Message::DesktopWallpaper(name) if self.monitor.is_some() => {
                 let monitor = self.monitor.clone().unwrap_or_default();
                 let mut outputs = self.config.desktop.outputs.clone();
@@ -1156,10 +1175,10 @@ impl Settings {
                 self.live = crate::control::shared();
                 if self
                     .revert
-                    .is_some_and(|at| std::time::Instant::now() >= at)
+                    .as_ref()
+                    .is_some_and(|(at, _)| std::time::Instant::now() >= *at)
                 {
-                    self.revert = None;
-                    self.step(true);
+                    self.put_displays_back();
                 }
                 if self.page == Page::Displays && self.outputs_may_change() {
                     self.outputs = crate::niri::outputs();
@@ -1308,6 +1327,7 @@ impl Settings {
         let Some(text) = from.pop() else {
             return;
         };
+        self.revert = None;
         to.push(std::mem::replace(&mut self.saved, text.clone()));
         self.editor = Editor::parse(&text);
         let (config, diagnostics) = Config::parse(&text);
@@ -3698,8 +3718,27 @@ impl Settings {
     }
 
     fn change_display(&mut self, change: impl FnOnce(&mut Editor)) {
+        let before = self.saved.clone();
+        let kept = self.revert.take();
         self.edit(change);
-        self.revert = Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
+        self.revert = if self.saved == before {
+            kept
+        } else {
+            let first = kept.map_or(before, |(_, text)| text);
+            Some((
+                std::time::Instant::now() + std::time::Duration::from_secs(15),
+                first,
+            ))
+        };
+    }
+
+    fn put_displays_back(&mut self) {
+        let Some((_, before)) = self.revert.take() else {
+            return;
+        };
+        if let Ok(before) = Editor::parse(&before) {
+            self.edit(|e| e.take_list("display", &before));
+        }
     }
 
     fn outputs_may_change(&self) -> bool {
@@ -3709,7 +3748,7 @@ impl Settings {
     fn displays(&self) -> Element<'_, Message> {
         let palette = self.palette();
         let mut page = Column::new().spacing(22);
-        if let Some(at) = self.revert {
+        if let Some((at, _)) = &self.revert {
             let left = at
                 .saturating_duration_since(std::time::Instant::now())
                 .as_secs();
@@ -3725,7 +3764,7 @@ impl Settings {
                         button(text("Go back").size(13))
                             .padding([7, 14])
                             .style(style::secondary)
-                            .on_press(Message::Undo),
+                            .on_press(Message::RevertDisplays),
                         button(text("Keep").size(13))
                             .padding([7, 16])
                             .style(style::primary(palette))
@@ -3749,11 +3788,12 @@ impl Settings {
             let mine = self.config.displays.iter().find(|d| d.name == output.name);
             let logical = output.logical.as_ref();
             let mode_label = |m: &apolline_niri::OutputMode| {
+                let hz = format!("{:.3}", f64::from(m.refresh_rate) / 1000.0);
                 format!(
-                    "{} × {} · {:.0} Hz",
+                    "{} × {} · {} Hz",
                     m.width,
                     m.height,
-                    f64::from(m.refresh_rate) / 1000.0
+                    hz.trim_end_matches('0').trim_end_matches('.')
                 )
             };
             let modes: Vec<String> = output.modes.iter().map(mode_label).collect();
@@ -3845,19 +3885,39 @@ impl Settings {
                         logical.map_or(0, |l| l.y)
                     )),
                     row![
-                        text_input("x", &self.place.0)
-                            .on_input(Message::DisplayX)
-                            .padding([7, 10])
-                            .size(13)
-                            .width(70)
-                            .style(style::field(palette)),
-                        text_input("y", &self.place.1)
-                            .on_input(Message::DisplayY)
-                            .on_submit(Message::DisplayMove(name.clone()))
-                            .padding([7, 10])
-                            .size(13)
-                            .width(70)
-                            .style(style::field(palette)),
+                        text_input(
+                            "x",
+                            if self.place.0 == name {
+                                &self.place.1
+                            } else {
+                                ""
+                            }
+                        )
+                        .on_input({
+                            let name = name.clone();
+                            move |x| Message::DisplayX(name.clone(), x)
+                        })
+                        .padding([7, 10])
+                        .size(13)
+                        .width(70)
+                        .style(style::field(palette)),
+                        text_input(
+                            "y",
+                            if self.place.0 == name {
+                                &self.place.2
+                            } else {
+                                ""
+                            }
+                        )
+                        .on_input({
+                            let name = name.clone();
+                            move |y| Message::DisplayY(name.clone(), y)
+                        })
+                        .on_submit(Message::DisplayMove(name.clone()))
+                        .padding([7, 10])
+                        .size(13)
+                        .width(70)
+                        .style(style::field(palette)),
                         button(text("Move").size(13))
                             .padding([7, 14])
                             .style(style::secondary)
@@ -4928,6 +4988,36 @@ mod tests {
         assert!(
             settings.config.desktop.outputs.is_empty(),
             "same as everywhere drops the line"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn going_back_on_a_display_change_leaves_other_changes_alone() {
+        let dir = std::env::temp_dir().join(format!("apolline-revert-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[layout]\nshadows = true\n").unwrap();
+        let (mut settings, _) = Settings::open(path.clone(), None);
+
+        let _ = settings.update(Message::DisplayTurn("eDP-1".into(), "normal"));
+        assert!(
+            settings.revert.is_none(),
+            "nothing changed, nothing to take back"
+        );
+
+        let _ = settings.update(Message::DisplayScale("eDP-1".into(), 125));
+        let _ = settings.update(Message::Shadows(false));
+        let _ = settings.update(Message::RevertDisplays);
+        assert!(settings.config.displays.is_empty());
+        assert!(!settings.config.layout.shadows, "the other change stays");
+        assert!(settings.revert.is_none());
+
+        let _ = settings.update(Message::DisplayVrr("eDP-1".into(), true));
+        let _ = settings.update(Message::DisplayVrr("eDP-1".into(), false));
+        assert!(
+            settings.config.displays.is_empty(),
+            "off goes back to games-only"
         );
         std::fs::remove_dir_all(dir).unwrap();
     }
