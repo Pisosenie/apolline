@@ -10,10 +10,13 @@ accent = "auto"
 gaps = 14
 radius = 16
 borders = true
+gradient = true
 shadows = true
 
 [windows]
 inactive_opacity = 0.88
+motion = "bouncy"
+appear = "pop"
 
 [bar]
 position = "top"

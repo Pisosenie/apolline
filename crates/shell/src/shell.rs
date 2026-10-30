@@ -962,7 +962,7 @@ impl Shell {
             }
             None => (self.status.clone(), self.workspace),
         };
-        let bar = bar::view(Bar {
+        bar::view(Bar {
             mode: self.current(),
             has_modes: !self.config.modes.is_empty(),
             palette: self.config.palette(self.mode),
@@ -978,18 +978,20 @@ impl Shell {
             look: self.config.bar,
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
-        });
+        })
+    }
+
+    pub fn bar_margin(&self) -> Padding {
         let look = self.config.bar;
         let inset = if look.floating {
             metrics::BAR_INSET
         } else {
             0.0
         };
-        let padding = match look.position {
+        match look.position {
             Edge::Top => Padding::new(inset).bottom(0),
             Edge::Bottom => Padding::new(inset).top(0),
-        };
-        container(bar).padding(padding).into()
+        }
     }
 }
 

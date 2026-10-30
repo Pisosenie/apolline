@@ -15,7 +15,6 @@ use apolline_config::Edge;
 
 use crate::{osd, popup};
 
-const BAR_SURFACE: u32 = (metrics::BAR_INSET + metrics::BAR_HEIGHT) as u32;
 const POPUP_MARGIN: i32 = 8;
 
 pub fn run(mode: Option<String>) -> Result<(), String> {
@@ -232,10 +231,15 @@ impl Layers {
 }
 
 fn open_screen(output: &Output, (edge, floating): (Edge, bool)) -> (Screen, Task<Message>) {
-    let height = if floating {
-        BAR_SURFACE
+    let height = metrics::BAR_HEIGHT as u32;
+    let inset = if floating {
+        metrics::BAR_INSET as i32
     } else {
-        metrics::BAR_HEIGHT as u32
+        0
+    };
+    let margin = match edge {
+        Edge::Top => (inset, inset, 0, inset),
+        Edge::Bottom => (0, inset, inset, inset),
     };
     let output_option = match output {
         Some(name) => OutputOption::OutputName(name.clone()),
@@ -259,6 +263,7 @@ fn open_screen(output: &Output, (edge, floating): (Edge, bool)) -> (Screen, Task
             | Anchor::Right,
         size: Some((0, height)),
         exclusive_zone: Some(height as i32),
+        margin: Some(margin),
         keyboard_interactivity: KeyboardInteractivity::None,
         output_option,
         namespace: Some("apolline-bar".into()),

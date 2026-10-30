@@ -44,6 +44,39 @@ impl Rgba {
         }
     }
 
+    pub fn shift_hue(self, degrees: f32) -> Rgba {
+        let [r, g, b] = [self.r, self.g, self.b].map(|c| f32::from(c) / 255.0);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
+        let light = (max + min) / 2.0;
+        if delta == 0.0 {
+            return self;
+        }
+        let saturation = delta / (1.0 - (2.0 * light - 1.0).abs());
+        let hue = if max == r {
+            60.0 * ((g - b) / delta).rem_euclid(6.0)
+        } else if max == g {
+            60.0 * ((b - r) / delta + 2.0)
+        } else {
+            60.0 * ((r - g) / delta + 4.0)
+        };
+        let hue = (hue + degrees).rem_euclid(360.0);
+        let chroma = (1.0 - (2.0 * light - 1.0).abs()) * saturation;
+        let x = chroma * (1.0 - ((hue / 60.0).rem_euclid(2.0) - 1.0).abs());
+        let [r, g, b] = match (hue / 60.0) as u8 {
+            0 => [chroma, x, 0.0],
+            1 => [x, chroma, 0.0],
+            2 => [0.0, chroma, x],
+            3 => [0.0, x, chroma],
+            4 => [x, 0.0, chroma],
+            _ => [chroma, 0.0, x],
+        };
+        let m = light - chroma / 2.0;
+        let [r, g, b] = [r, g, b].map(|c| ((c + m) * 255.0).round().clamp(0.0, 255.0) as u8);
+        Rgba { r, g, b, a: self.a }
+    }
+
     pub fn luminance(self) -> f32 {
         let linear = |c: u8| {
             let c = c as f32 / 255.0;

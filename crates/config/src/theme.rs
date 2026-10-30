@@ -1,5 +1,5 @@
 use crate::edit::accent_text;
-use crate::{Accent, Bar, Config, Edge, Editor, Layout};
+use crate::{Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Motion};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
@@ -12,6 +12,9 @@ pub struct Theme {
     pub opacity: Option<f32>,
     pub inactive_opacity: Option<f32>,
     pub animations: Option<f32>,
+    pub motion: Option<Motion>,
+    pub appear: Option<Appear>,
+    pub blur: Option<Blur>,
 }
 
 impl Theme {
@@ -38,6 +41,9 @@ impl Theme {
             opacity: config.windows.opacity,
             inactive_opacity: config.windows.inactive_opacity,
             animations: config.windows.animations,
+            motion: config.windows.motion,
+            appear: config.windows.appear,
+            blur: config.windows.blur,
         }
     }
 
@@ -62,6 +68,11 @@ impl Theme {
         editor.set("layout", "gaps", i64::from(self.layout.gaps));
         editor.set("layout", "radius", i64::from(self.layout.radius));
         editor.set("layout", "borders", self.layout.borders);
+        if self.layout.gradient {
+            editor.set("layout", "gradient", true);
+        } else {
+            editor.unset("layout", "gradient");
+        }
         editor.set("layout", "shadows", self.layout.shadows);
         let edge = match self.bar.position {
             Edge::Top => "top",
@@ -70,6 +81,11 @@ impl Theme {
         editor.set("bar", "position", edge);
         editor.set("bar", "floating", self.bar.floating);
         editor.set("bar", "opacity", round(self.bar.opacity));
+        if self.bar.blur {
+            editor.set("bar", "blur", true);
+        } else {
+            editor.unset("bar", "blur");
+        }
         for (key, value) in [
             ("opacity", self.opacity),
             ("inactive_opacity", self.inactive_opacity),
@@ -77,6 +93,16 @@ impl Theme {
         ] {
             match value {
                 Some(value) => editor.set("windows", key, round(value)),
+                None => editor.unset("windows", key),
+            }
+        }
+        for (key, value) in [
+            ("motion", self.motion.map(Motion::key)),
+            ("appear", self.appear.map(Appear::key)),
+            ("blur", self.blur.map(Blur::key)),
+        ] {
+            match value {
+                Some(value) => editor.set("windows", key, value),
                 None => editor.unset("windows", key),
             }
         }

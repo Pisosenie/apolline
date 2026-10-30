@@ -2,8 +2,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use apolline_config::{
-    Accent, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Notifications, Rule, Shortcut,
-    Switch, TEMPLATES, Theme as Look, Width, Workspaces, auto_accent,
+    Accent, Appear, Blur, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
+    Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Width, Workspaces,
+    auto_accent,
 };
 use apolline_theme::{ACCENTS, Palette, Rgba, font, neutral};
 use iced::keyboard;
@@ -25,6 +26,7 @@ use crate::{bar, fonts, keys, notify, shot, style, themes, wallpaper};
 
 const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
+const HISTORY: usize = 100;
 const WIDE: f32 = 1120.0;
 const NARROW: f32 = 860.0;
 const STRING: Rgba = Rgba::hex(0xa8d8a0);
@@ -233,13 +235,14 @@ enum Message {
     Remove(usize),
     Gaps(u16),
     Radius(u16),
-    Borders(bool),
+    BorderStyle(u8),
     Shadows(bool),
     Workspaces(Workspaces),
     Seconds(bool),
     BarEdge(Edge),
     BarFloating(bool),
     BarOpacity(u16),
+    BarBlur(bool),
     Date(bool),
     BatteryPercent(bool),
     DoNotDisturb(bool),
@@ -278,6 +281,9 @@ enum Message {
     Opacity(u16),
     InactiveOpacity(u16),
     Animations(u8),
+    WinMotion(Option<Motion>),
+    WinAppear(Option<Appear>),
+    WinBlur(Option<Blur>),
     RuleApp(String),
     RuleFloating(bool),
     RuleWidth(Width),
@@ -294,6 +300,8 @@ enum Message {
     Commit,
     Thumbs(Vec<(String, image::Handle)>),
     Thumb(String, Option<image::Handle>),
+    Undo,
+    Redo,
     Tick,
     Shot(window::Screenshot),
     Noop,
@@ -303,6 +311,9 @@ struct Settings {
     path: PathBuf,
     stamp: Option<SystemTime>,
     editor: Result<Editor, String>,
+    saved: String,
+    undo: Vec<String>,
+    redo: Vec<String>,
     config: Config,
     diagnostics: Vec<Diagnostic>,
     page: Page,
@@ -349,6 +360,9 @@ impl Settings {
         let settings = Self {
             stamp: stamp(&path),
             path,
+            saved: editor.as_ref().map(Editor::text).unwrap_or_default(),
+            undo: Vec::new(),
+            redo: Vec::new(),
             editor,
             selected: config.start().unwrap_or(0),
             adding: false,
@@ -583,7 +597,14 @@ impl Settings {
             }
             Message::Gaps(v) => self.stage(|e| e.set("layout", "gaps", i64::from(v))),
             Message::Radius(v) => self.stage(|e| e.set("layout", "radius", i64::from(v))),
-            Message::Borders(on) => self.edit(|e| e.set("layout", "borders", on)),
+            Message::BorderStyle(style) => self.edit(|e| {
+                e.set("layout", "borders", style > 0);
+                if style == 2 {
+                    e.set("layout", "gradient", true);
+                } else {
+                    e.unset("layout", "gradient");
+                }
+            }),
             Message::Shadows(on) => self.edit(|e| e.set("layout", "shadows", on)),
             Message::Workspaces(style) => {
                 let value = match style {
@@ -602,6 +623,13 @@ impl Settings {
             }),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
             Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
+            Message::BarBlur(on) => self.edit(|e| {
+                if on {
+                    e.set("bar", "blur", true);
+                } else {
+                    e.unset("bar", "blur");
+                }
+            }),
             Message::Date(on) => self.edit(|e| e.set("bar", "date", on)),
             Message::BatteryPercent(on) => self.edit(|e| e.set("bar", "battery_percent", on)),
             Message::DoNotDisturb(on) => {
@@ -673,8 +701,12 @@ impl Settings {
                     } else if let Some(combo) = keys::combo(&key, modifiers) {
                         self.record(shortcut, combo);
                     }
+                } else if modifiers.command() && key.as_ref() == keyboard::Key::Character("z") {
+                    self.step(!modifiers.shift());
                 }
             }
+            Message::Undo => self.step(true),
+            Message::Redo => self.step(false),
             Message::ResetShortcut(shortcut) => {
                 let combo = apolline_config::Shortcuts::default()
                     .get(shortcut)
@@ -728,6 +760,18 @@ impl Settings {
             Message::InactiveOpacity(v) => {
                 self.stage(|e| e.set("windows", "inactive_opacity", f64::from(v) / 100.0))
             }
+            Message::WinMotion(motion) => self.edit(|e| match motion {
+                Some(motion) => e.set("windows", "motion", motion.key()),
+                None => e.unset("windows", "motion"),
+            }),
+            Message::WinAppear(appear) => self.edit(|e| match appear {
+                Some(appear) => e.set("windows", "appear", appear.key()),
+                None => e.unset("windows", "appear"),
+            }),
+            Message::WinBlur(blur) => self.edit(|e| match blur {
+                Some(blur) => e.set("windows", "blur", blur.key()),
+                None => e.unset("windows", "blur"),
+            }),
             Message::Animations(choice) => match choice {
                 2 => self.edit(|e| e.unset("windows", "animations")),
                 _ => {
@@ -936,7 +980,39 @@ impl Settings {
             Ok(()) => {
                 self.stamp = stamp(&self.path);
                 self.error = None;
+                self.remember(editor.text());
             }
+            Err(err) => self.error = Some(format!("could not save: {err}")),
+        }
+    }
+
+    fn remember(&mut self, text: String) {
+        if text != self.saved {
+            self.undo.push(std::mem::replace(&mut self.saved, text));
+            if self.undo.len() > HISTORY {
+                self.undo.remove(0);
+            }
+            self.redo.clear();
+        }
+    }
+
+    fn step(&mut self, back: bool) {
+        let (from, to) = if back {
+            (&mut self.undo, &mut self.redo)
+        } else {
+            (&mut self.redo, &mut self.undo)
+        };
+        let Some(text) = from.pop() else {
+            return;
+        };
+        to.push(std::mem::replace(&mut self.saved, text.clone()));
+        self.editor = Editor::parse(&text);
+        let (config, diagnostics) = Config::parse(&text);
+        self.config = config;
+        self.diagnostics = diagnostics;
+        self.theme_note = None;
+        match std::fs::write(&self.path, &text) {
+            Ok(()) => self.stamp = stamp(&self.path),
             Err(err) => self.error = Some(format!("could not save: {err}")),
         }
     }
@@ -944,6 +1020,9 @@ impl Settings {
     fn reload(&mut self) {
         self.stamp = stamp(&self.path);
         self.editor = Editor::load(&self.path);
+        if let Ok(editor) = &self.editor {
+            self.remember(editor.text());
+        }
         let (config, diagnostics) = Config::load(&self.path);
         if self.editor.is_ok() {
             self.config = config;
@@ -1016,13 +1095,40 @@ impl Settings {
             (Ok(editor), page) => Some(editor.sections(page.sections())),
             (Err(_), _) => None,
         };
-        let header = column![
-            text(page.title()).size(26).font(style::semibold()),
-            text(page.subtitle())
-                .size(14)
-                .color(style::color(style::FAINT)),
+        let mut header = row![
+            column![
+                text(page.title()).size(26).font(style::semibold()),
+                text(page.subtitle())
+                    .size(14)
+                    .color(style::color(style::FAINT)),
+            ]
+            .spacing(4)
+            .width(Fill)
         ]
-        .spacing(4);
+        .align_y(Alignment::Start);
+        if self.editor.is_ok() && page != Page::About {
+            let history = |glyph, label, enabled: bool, message| {
+                let tint = if enabled { neutral::TEXT } else { style::FAINT };
+                button(
+                    row![
+                        icon(glyph, 14.0, tint),
+                        text(label).size(13).color(style::color(tint))
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding([7, 12])
+                .style(style::ghost(8.0))
+                .on_press_maybe(enabled.then_some(message))
+            };
+            header = header.push(
+                row![
+                    history(Icon::Undo, "Undo", !self.undo.is_empty(), Message::Undo),
+                    history(Icon::Redo, "Redo", !self.redo.is_empty(), Message::Redo),
+                ]
+                .spacing(4),
+            );
+        }
         let body: Element<'_, Message> = match writes {
             Some(code) if wide => row![
                 scrollable(form)
@@ -2019,8 +2125,16 @@ impl Settings {
                     ),
                     setting(
                         "Borders",
-                        "A thin line in the accent color around the focused window",
-                        switch(layout.borders, Message::Borders, palette),
+                        "A thin line around the focused window; a gradient flows across the workspace",
+                        segmented(
+                            [(0u8, "Off", None), (1, "Accent", None), (2, "Gradient", None)],
+                            match (layout.borders, layout.gradient) {
+                                (false, _) => 0,
+                                (true, false) => 1,
+                                (true, true) => 2,
+                            },
+                            Message::BorderStyle,
+                        ),
                     ),
                     setting(
                         "Shadows",
@@ -2286,17 +2400,63 @@ impl Settings {
                         ),
                     ),
                     setting(
-                        "Animations",
-                        "Performance modes always turn them off",
+                        "Blur behind",
+                        "Shows through see-through windows: just the wallpaper, or everything under them",
+                        segmented(
+                            [
+                                (None, "Off", None),
+                                (Some(Blur::Wallpaper), "Wallpaper", None),
+                                (Some(Blur::All), "Everything", None),
+                            ],
+                            Some(windows.blur),
+                            Message::WinBlur,
+                        ),
+                    ),
+                ]
+            ),
+            group(
+                "Motion",
+                vec![
+                    setting(
+                        "Speed",
+                        "Performance modes always turn animations off",
                         segmented(
                             [
                                 (0u8, "Off", None),
-                                (1, "Snappy", None),
+                                (1, "Fast", None),
                                 (2, "Normal", None),
-                                (3, "Relaxed", None),
+                                (3, "Slow", None),
                             ],
                             speed,
                             Message::Animations,
+                        ),
+                    ),
+                    setting(
+                        "Feel",
+                        "How windows and workspaces move; bouncy overshoots a little",
+                        segmented(
+                            [
+                                (None, "niri's", None),
+                                (Some(Motion::Snappy), "Snappy", None),
+                                (Some(Motion::Smooth), "Smooth", None),
+                                (Some(Motion::Bouncy), "Bouncy", None),
+                            ],
+                            Some(windows.motion),
+                            Message::WinMotion,
+                        ),
+                    ),
+                    setting(
+                        "New windows",
+                        "How a window shows up when it opens",
+                        segmented(
+                            [
+                                (None, "niri's", None),
+                                (Some(Appear::Pop), "Pop", None),
+                                (Some(Appear::Slide), "Slide", None),
+                                (Some(Appear::Fade), "Fade", None),
+                            ],
+                            Some(windows.appear),
+                            Message::WinAppear,
                         ),
                     ),
                 ]
@@ -2363,6 +2523,11 @@ impl Settings {
                             look.floating,
                             Message::BarFloating,
                         ),
+                    ),
+                    setting(
+                        "Frosted",
+                        "Blur what's behind the bar, like frosted glass",
+                        switch(look.blur, Message::BarBlur, palette),
                     ),
                     setting(
                         "Glass",
@@ -3535,6 +3700,41 @@ fn stamp(path: &std::path::Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use apolline_config::{Mouse, Touchpad};
+
+    #[test]
+    fn undo_walks_the_file_back_and_redo_forward() {
+        let dir = std::env::temp_dir().join(format!("apolline-undo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# mine\n[layout]\ngaps = 10\n").unwrap();
+        let (mut settings, _) = Settings::open(path.clone(), None);
+
+        let _ = settings.update(Message::Gaps(20));
+        let _ = settings.update(Message::Commit);
+        let _ = settings.update(Message::ApplyTheme(1));
+        assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+
+        let _ = settings.update(Message::Undo);
+        assert_eq!(settings.config.desktop.theme, None);
+        assert_eq!(settings.config.layout.gaps, 20);
+        let _ = settings.update(Message::Undo);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# mine\n[layout]\ngaps = 10\n"
+        );
+        let _ = settings.update(Message::Undo);
+        assert_eq!(settings.config.layout.gaps, 10, "nothing left to undo");
+
+        let _ = settings.update(Message::Redo);
+        assert_eq!(settings.config.layout.gaps, 20);
+        let _ = settings.update(Message::Gaps(4));
+        let _ = settings.update(Message::Commit);
+        assert!(
+            settings.redo.is_empty(),
+            "a new change drops what was undone"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn clicks_end_up_in_the_file_and_comments_survive() {

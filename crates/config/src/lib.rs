@@ -42,7 +42,65 @@ pub struct Windows {
     pub opacity: Option<f32>,
     pub inactive_opacity: Option<f32>,
     pub animations: Option<f32>,
+    pub motion: Option<Motion>,
+    pub appear: Option<Appear>,
+    pub blur: Option<Blur>,
     pub switcher: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Blur {
+    Wallpaper,
+    All,
+}
+
+impl Blur {
+    pub const ALL: [Blur; 2] = [Blur::Wallpaper, Blur::All];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Blur::Wallpaper => "wallpaper",
+            Blur::All => "all",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Motion {
+    Snappy,
+    Smooth,
+    Bouncy,
+}
+
+impl Motion {
+    pub const ALL: [Motion; 3] = [Motion::Snappy, Motion::Smooth, Motion::Bouncy];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Motion::Snappy => "snappy",
+            Motion::Smooth => "smooth",
+            Motion::Bouncy => "bouncy",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Appear {
+    Pop,
+    Slide,
+    Fade,
+}
+
+impl Appear {
+    pub const ALL: [Appear; 3] = [Appear::Pop, Appear::Slide, Appear::Fade];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Appear::Pop => "pop",
+            Appear::Slide => "slide",
+            Appear::Fade => "fade",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,6 +181,7 @@ pub struct Layout {
     pub gaps: u16,
     pub radius: u16,
     pub borders: bool,
+    pub gradient: bool,
     pub shadows: bool,
 }
 
@@ -135,6 +194,7 @@ pub struct Bar {
     pub position: Edge,
     pub floating: bool,
     pub opacity: f32,
+    pub blur: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -403,6 +463,7 @@ impl Default for Config {
                 gaps: 10,
                 radius: 12,
                 borders: true,
+                gradient: false,
                 shadows: true,
             },
             bar: Bar {
@@ -413,6 +474,7 @@ impl Default for Config {
                 position: Edge::Top,
                 floating: true,
                 opacity: 0.55,
+                blur: false,
             },
             keyboard: Keyboard::default(),
             touchpad: None,
@@ -441,6 +503,9 @@ impl Default for Config {
                 opacity: None,
                 inactive_opacity: None,
                 animations: None,
+                motion: None,
+                appear: None,
+                blur: None,
                 switcher: true,
             },
             rules: Vec::new(),

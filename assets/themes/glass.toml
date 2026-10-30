@@ -10,13 +10,18 @@ accent = "#c084fc"
 gaps = 16
 radius = 18
 borders = true
+gradient = true
 shadows = true
 
 [windows]
-opacity = 0.96
-inactive_opacity = 0.8
+opacity = 0.9
+inactive_opacity = 0.78
+motion = "smooth"
+appear = "pop"
+blur = "all"
 
 [bar]
 position = "top"
 floating = true
 opacity = 0.3
+blur = true

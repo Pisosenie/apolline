@@ -12,6 +12,10 @@ radius = 12
 borders = true
 shadows = true
 
+[windows]
+motion = "smooth"
+appear = "fade"
+
 [bar]
 position = "top"
 floating = true

@@ -113,6 +113,16 @@ mod tests {
     }
 
     #[test]
+    fn hue_turns_and_lightness_stays() {
+        assert_eq!(Rgba::hex(0xff0000).shift_hue(120.0), Rgba::hex(0x00ff00));
+        assert_eq!(Rgba::hex(0x808080).shift_hue(90.0), Rgba::hex(0x808080));
+        let accent = ACCENTS[0];
+        assert_eq!(accent.shift_hue(360.0), accent);
+        let turned = accent.shift_hue(60.0);
+        assert!((turned.luminance() - accent.luminance()).abs() < 0.25);
+    }
+
+    #[test]
     fn muted_text_reads_on_glass_over_bright_wallpaper() {
         let glass = neutral::GLASS.over(BRIGHT_WALLPAPER);
         assert!(neutral::MUTED.over(glass).contrast(glass) >= 4.5);

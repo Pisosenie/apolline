@@ -14,8 +14,13 @@ shadows = true
 
 [windows]
 animations = 0.75
+inactive_opacity = 0.9
+motion = "smooth"
+appear = "slide"
+blur = "wallpaper"
 
 [bar]
 position = "bottom"
 floating = true
-opacity = 0.6
+opacity = 0.45
+blur = true

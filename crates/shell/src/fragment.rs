@@ -2,7 +2,10 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use apolline_config::{Center, Config, Keyboard, Mouse, Rule, Shortcut, Touchpad, Width, Windows};
+use apolline_config::{
+    Appear, Blur, Center, Config, Keyboard, Motion, Mouse, Rule, Shortcut, Touchpad, Width, Windows,
+};
+use apolline_theme::metrics;
 
 const TEMPLATE: &str = include_str!("../../../assets/niri.kdl");
 const PLAY: &str = r##"
@@ -64,7 +67,7 @@ layout {{
     border {{
         {border}
         width 1
-        active-color "{accent}"
+        active-color "{accent}"{gradient}
         inactive-color "#ffffff14"
         urgent-color "#ff6a3d"
     }}
@@ -94,6 +97,16 @@ window-rule {{
         columns = columns(&fragment.config.windows),
         border = on(layout.borders),
         accent = fragment.config.palette(fragment.mode).accent.to_hex(),
+        gradient = if layout.gradient {
+            let accent = fragment.config.palette(fragment.mode).accent;
+            format!(
+                "\n        active-gradient from=\"{}\" to=\"{}\" angle=45 relative-to=\"workspace-view\" in=\"oklch shorter hue\"",
+                accent.to_hex(),
+                accent.shift_hue(70.0).to_hex()
+            )
+        } else {
+            String::new()
+        },
         shadow = on(layout.shadows && !play),
         radius = layout.radius,
     ));
@@ -158,14 +171,26 @@ window-rule {{
             "\noutput \"{name}\" {{\n    variable-refresh-rate on-demand=true\n}}\n"
         ));
     }
-    let speed = if play { Some(0.0) } else { windows.animations };
-    if let Some(speed) = speed {
-        let body = if speed <= 0.0 {
-            "off".to_owned()
-        } else {
-            format!("slowdown {:.2}", 1.0 / speed)
-        };
-        text.push_str(&format!("\n{}", block("animations", &[body])));
+    if let Some(animations) = animations(windows, play) {
+        text.push_str(&format!("\n{animations}"));
+    }
+    if !play {
+        if let Some(blur) = windows.blur {
+            let effect = [
+                "blur true".to_owned(),
+                format!("xray {}", blur == Blur::Wallpaper),
+            ];
+            let effect = block("background-effect", &effect);
+            text.push_str(&format!("\n{}", block("window-rule", &[effect])));
+        }
+        if config.bar.blur {
+            let mut lines = vec!["match namespace=\"^apolline-bar$\"".to_owned()];
+            if config.bar.floating {
+                lines.push(format!("geometry-corner-radius {}", metrics::RADIUS_BAR));
+            }
+            lines.push(block("background-effect", &["blur true".to_owned()]));
+            text.push_str(&format!("\n{}", block("layer-rule", &lines)));
+        }
     }
     if let Some(opacity) = windows.opacity {
         text.push_str(&format!(
@@ -321,6 +346,102 @@ fn mouse(mouse: Mouse) -> String {
     block("mouse", &lines)
 }
 
+const MOVES: [&str; 5] = [
+    "workspace-switch",
+    "horizontal-view-movement",
+    "window-movement",
+    "window-resize",
+    "overview-open-close",
+];
+
+const POP: &str = "vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+    float scale = 0.86 + 0.14 * niri_progress;
+    vec3 coords = vec3((coords_geo.xy - vec2(0.5)) / scale + vec2(0.5), 1.0);
+    if (coords.x < 0.0 || coords.x > 1.0 || coords.y < 0.0 || coords.y > 1.0)
+        return vec4(0.0);
+    return texture2D(niri_tex, (niri_geo_to_tex * coords).st) * niri_clamped_progress;
+}";
+
+const SLIDE: &str = "vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+    float lift = (1.0 - niri_progress) * 48.0 / size_geo.y;
+    vec3 coords = vec3(coords_geo.x, coords_geo.y - lift, 1.0);
+    if (coords.x < 0.0 || coords.x > 1.0 || coords.y < 0.0 || coords.y > 1.0)
+        return vec4(0.0);
+    return texture2D(niri_tex, (niri_geo_to_tex * coords).st) * niri_clamped_progress;
+}";
+
+const FADE: &str = "vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+    return texture2D(niri_tex, (niri_geo_to_tex * coords_geo).st) * niri_clamped_progress;
+}";
+
+fn animations(windows: &Windows, play: bool) -> Option<String> {
+    if play || windows.animations.is_some_and(|speed| speed <= 0.0) {
+        return Some(block("animations", &["off".to_owned()]));
+    }
+    let mut lines = Vec::new();
+    if let Some(speed) = windows.animations {
+        lines.push(format!("slowdown {:.2}", 1.0 / speed));
+    }
+    let spring = |damping: f32, stiffness: u32| {
+        format!("spring damping-ratio={damping:.2} stiffness={stiffness} epsilon=0.0001")
+    };
+    let (moving, open, close) = match windows.motion {
+        Some(Motion::Snappy) => (
+            Some(spring(1.0, 1600)),
+            vec![
+                "duration-ms 120".to_owned(),
+                "curve \"ease-out-expo\"".to_owned(),
+            ],
+            Some(vec![
+                "duration-ms 100".to_owned(),
+                "curve \"ease-out-quad\"".to_owned(),
+            ]),
+        ),
+        Some(Motion::Smooth) => (
+            Some(spring(1.0, 450)),
+            vec![
+                "duration-ms 260".to_owned(),
+                "curve \"cubic-bezier\" 0.2 0.8 0.2 1.0".to_owned(),
+            ],
+            Some(vec![
+                "duration-ms 200".to_owned(),
+                "curve \"ease-out-cubic\"".to_owned(),
+            ]),
+        ),
+        Some(Motion::Bouncy) => (
+            Some(spring(0.65, 650)),
+            vec![spring(0.55, 500)],
+            Some(vec![
+                "duration-ms 150".to_owned(),
+                "curve \"ease-out-quad\"".to_owned(),
+            ]),
+        ),
+        None if windows.appear == Some(Appear::Pop) => (None, vec![spring(0.6, 550)], None),
+        None => (None, Vec::new(), None),
+    };
+    if let Some(moving) = moving {
+        for name in MOVES {
+            lines.push(block(name, std::slice::from_ref(&moving)));
+        }
+    }
+    let mut open = open;
+    if let Some(appear) = windows.appear {
+        let shader = match appear {
+            Appear::Pop => POP,
+            Appear::Slide => SLIDE,
+            Appear::Fade => FADE,
+        };
+        open.push(format!("custom-shader r\"\n{shader}\n\""));
+    }
+    if !open.is_empty() {
+        lines.push(block("window-open", &open));
+    }
+    if let Some(close) = close {
+        lines.push(block("window-close", &close));
+    }
+    (!lines.is_empty()).then(|| block("animations", &lines))
+}
+
 fn block(name: &str, lines: &[String]) -> String {
     let body: String = lines
         .iter()
@@ -406,6 +527,31 @@ mod tests {
             mode,
             outputs: &[],
         }
+    }
+
+    #[test]
+    fn eye_candy_lands_in_one_animations_block_and_play_drops_it() {
+        let (config, problems) = Config::parse(
+            "[layout]\ngradient = true\n[bar]\nblur = true\n[windows]\nanimations = 2\nmotion = \"bouncy\"\nappear = \"pop\"\nblur = \"wallpaper\"\n[[mode]]\nname = \"Play\"\nperformance = true\n",
+        );
+        assert_eq!(problems, vec![]);
+        let calm = render(&look(&config, None));
+        if let Some(dir) = std::env::var_os("APOLLINE_FRAGMENT_OUT") {
+            std::fs::write(std::path::Path::new(&dir).join("candy.kdl"), &calm).unwrap();
+        }
+        assert_eq!(calm.matches("\nanimations {").count(), 1, "{calm}");
+        assert!(calm.contains("    slowdown 0.50\n"));
+        assert!(calm.contains("    workspace-switch {\n        spring damping-ratio=0.65"));
+        assert!(calm.contains("custom-shader r\"\n"));
+        assert!(calm.contains("active-gradient from=\"#86bdf0\""));
+        assert!(calm.contains("background-effect {\n        blur true\n        xray true\n"));
+        assert!(
+            calm.contains("match namespace=\"^apolline-bar$\"\n    geometry-corner-radius 12\n")
+        );
+
+        let play = render(&look(&config, Some(0)));
+        assert!(play.contains("animations {\n    off\n}"));
+        assert!(!play.contains("background-effect"), "games get no blur");
     }
 
     #[test]

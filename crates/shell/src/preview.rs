@@ -85,14 +85,13 @@ impl Preview {
             .width(Fill)
             .align_x(Alignment::End)
             .padding(Padding::new(12.0).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0));
-        let bar =
-            container(self.shell.bar(None))
-                .height(Fill)
-                .align_y(if self.shell.bar_at_bottom() {
-                    Alignment::End
-                } else {
-                    Alignment::Start
-                });
+        let bar = container(container(self.shell.bar(None)).padding(self.shell.bar_margin()))
+            .height(Fill)
+            .align_y(if self.shell.bar_at_bottom() {
+                Alignment::End
+            } else {
+                Alignment::Start
+            });
         let mut layers = stack![self.shell.wallpaper(), bar, popups];
         if let Some(osd) = self.shell.osd_view() {
             layers = layers.push(

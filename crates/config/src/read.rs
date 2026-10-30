@@ -5,9 +5,9 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Bar, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard, Layout, Lock,
-    ModeSettings, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch, Touchpad, Width,
-    Windows, Workspaces, slug,
+    Accent, Alerts, Appear, Bar, Blur, Center, Config, Desktop, Diagnostic, Edge, Idle, Keyboard,
+    Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts, Switch,
+    Touchpad, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -46,7 +46,7 @@ const MODE_OPTIONS: [&str; 9] = [
     "keys",
 ];
 
-const WINDOW_OPTIONS: [&str; 10] = [
+const WINDOW_OPTIONS: [&str; 13] = [
     "width",
     "presets",
     "center",
@@ -56,6 +56,9 @@ const WINDOW_OPTIONS: [&str; 10] = [
     "opacity",
     "inactive_opacity",
     "animations",
+    "motion",
+    "appear",
+    "blur",
     "switcher",
 ];
 
@@ -221,12 +224,21 @@ impl Reader<'_> {
                         layout.borders = v
                     }
                 }
+                "gradient" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        layout.gradient = v
+                    }
+                }
                 "shadows" => {
                     if let Some(v) = self.boolean(key, value) {
                         layout.shadows = v
                     }
                 }
-                _ => self.unknown(key, "option", &["gaps", "radius", "borders", "shadows"]),
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["gaps", "radius", "borders", "gradient", "shadows"],
+                ),
             }
         }
     }
@@ -270,6 +282,11 @@ impl Reader<'_> {
                         bar.opacity = v
                     }
                 }
+                "blur" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.blur = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
@@ -281,6 +298,7 @@ impl Reader<'_> {
                         "position",
                         "floating",
                         "opacity",
+                        "blur",
                     ],
                 ),
             }
@@ -462,6 +480,9 @@ impl Reader<'_> {
     fn windows(&mut self, table: &DeTable, windows: &mut Windows) {
         let widths = Width::ALL.map(|w| (w.key(), w));
         let centers = Center::ALL.map(|c| (c.key(), c));
+        let motions = Motion::ALL.map(|m| (m.key(), m));
+        let appears = Appear::ALL.map(|a| (a.key(), a));
+        let blurs = Blur::ALL.map(|b| (b.key(), b));
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
                 "width" => windows.width = self.choice(key, value, &widths).or(windows.width),
@@ -510,6 +531,9 @@ impl Reader<'_> {
                 "animations" => {
                     windows.animations = self.fraction(key, value, 0.0..=4.0).or(windows.animations)
                 }
+                "motion" => windows.motion = self.choice(key, value, &motions).or(windows.motion),
+                "appear" => windows.appear = self.choice(key, value, &appears).or(windows.appear),
+                "blur" => windows.blur = self.choice(key, value, &blurs).or(windows.blur),
                 _ => self.unknown(key, "option", &WINDOW_OPTIONS),
             }
         }
