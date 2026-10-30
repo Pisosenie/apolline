@@ -97,6 +97,27 @@ pub fn files() -> Vec<String> {
     ]
 }
 
+pub fn gtk_themes() -> Vec<String> {
+    let mut dirs = vec![PathBuf::from("/usr/share/themes")];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join(".themes"));
+        dirs.push(home.join(".local/share/themes"));
+    }
+    let mut found: Vec<String> = dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter(|entry| {
+            let path = entry.path();
+            path.join("gtk-3.0").is_dir() || path.join("gtk-4.0").is_dir()
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    found.sort();
+    found.dedup();
+    found
+}
+
 pub fn font_families() -> Vec<String> {
     let Ok(out) = std::process::Command::new("fc-list")
         .args([":", "family"])

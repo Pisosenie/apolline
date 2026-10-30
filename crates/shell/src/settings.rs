@@ -246,6 +246,7 @@ enum Message {
     Cursor(String),
     Icons(String),
     FontFamily(String),
+    GtkTheme(String),
     CursorSize(u16),
     DisplayMode(String, String),
     DisplayScale(String, u16),
@@ -399,6 +400,7 @@ struct Settings {
     cursors: Vec<String>,
     icon_themes: Vec<String>,
     families: Vec<String>,
+    gtk_themes: Vec<String>,
     place: (String, String, String),
     revert: Option<(std::time::Instant, String)>,
     hours_draft: String,
@@ -477,6 +479,7 @@ impl Settings {
             cursors: crate::paint::cursors(),
             icon_themes: apps::icon_themes(),
             families: crate::paint::font_families(),
+            gtk_themes: crate::paint::gtk_themes(),
             place: (String::new(), String::new(), String::new()),
             revert: None,
             hours_draft: String::new(),
@@ -704,6 +707,13 @@ impl Settings {
                 });
                 return Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps);
             }
+            Message::GtkTheme(theme) => self.edit(|e| {
+                if theme == SYSTEM_CURSOR {
+                    e.unset("desktop", "gtk");
+                } else {
+                    e.set("desktop", "gtk", theme.as_str());
+                }
+            }),
             Message::FontFamily(family) => self.edit(|e| {
                 if family == BUILT_IN_FONT {
                     e.unset("desktop", "font");
@@ -2601,6 +2611,25 @@ impl Settings {
                                 .unwrap_or_else(|| BUILT_IN_FONT.to_owned()),
                         ),
                         Message::FontFamily,
+                    )
+                    .text_size(13)
+                    .padding([7, 12]),
+                ),
+                setting(
+                    "GTK theme",
+                    "How GTK 3 apps draw their controls; GTK 4 apps follow Color apps",
+                    iced::widget::pick_list(
+                        std::iter::once(SYSTEM_CURSOR.to_owned())
+                            .chain(self.gtk_themes.iter().cloned())
+                            .collect::<Vec<_>>(),
+                        Some(
+                            self.config
+                                .desktop
+                                .gtk
+                                .clone()
+                                .unwrap_or_else(|| SYSTEM_CURSOR.to_owned()),
+                        ),
+                        Message::GtkTheme,
                     )
                     .text_size(13)
                     .padding([7, 12]),

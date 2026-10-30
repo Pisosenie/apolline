@@ -227,6 +227,7 @@ pub struct Desktop {
     pub cursor_size: Option<u16>,
     pub icons: Option<String>,
     pub font: Option<String>,
+    pub gtk: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -576,6 +577,7 @@ impl Default for Config {
                 cursor_size: None,
                 icons: None,
                 font: None,
+                gtk: None,
             },
             layout: Layout {
                 gaps: 10,

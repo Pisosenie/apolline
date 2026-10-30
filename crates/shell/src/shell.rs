@@ -151,6 +151,7 @@ pub struct Shell {
     cursor: Option<(Option<String>, Option<u16>)>,
     icons: Option<Option<String>>,
     font: Option<Option<String>>,
+    gtk: Option<Option<String>>,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -264,6 +265,7 @@ impl Shell {
             cursor: None,
             icons: None,
             font: None,
+            gtk: None,
             config,
             wallpapers: Vec::new(),
             fade: None,
@@ -302,6 +304,12 @@ impl Shell {
         fragment::sync(&self.look());
         if self.demo {
             return;
+        }
+        if self.gtk.as_ref() != Some(&self.config.desktop.gtk) {
+            if let Some(theme) = &self.config.desktop.gtk {
+                paint::gsettings("gtk-theme", theme);
+            }
+            self.gtk = Some(self.config.desktop.gtk.clone());
         }
         if self.font.as_ref() != Some(&self.config.desktop.font) {
             if let Some(family) = &self.config.desktop.font {
