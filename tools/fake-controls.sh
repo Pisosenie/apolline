@@ -67,7 +67,15 @@ case "\$*" in
     "-t -f WIFI radio") cat "$state/wifi" ;;
     "radio wifi on") echo enabled > "$state/wifi" ;;
     "radio wifi off") echo disabled > "$state/wifi" ;;
-    *"device wifi list"*) [ "\$(cat $state/wifi)" = enabled ] && printf 'no:Neighbours\nyes:Polina\n' ;;
+    *"IN-USE,SSID,SIGNAL,SECURITY device wifi list"*)
+        [ "\$(cat $state/wifi)" = enabled ] && printf '*:%s:82:WPA2\n :Neighbours:64:WPA2\n :Cafe\\: Free:41:\n' "\$(cat $state/ssid 2>/dev/null || echo Polina)" ;;
+    *"device wifi list"*) [ "\$(cat $state/wifi)" = enabled ] && printf 'no:Neighbours\nyes:%s\n' "\$(cat $state/ssid 2>/dev/null || echo Polina)" ;;
+    "-t -f NAME,TYPE connection show") printf 'Polina:802-11-wireless\nWired:802-3-ethernet\n' ;;
+    "connection up id "*) shift 3; echo "\$*" > $state/ssid ;;
+    "--ask device wifi connect "*)
+        read -r password
+        if [ "\$password" = polina ]; then shift 4; echo "\$*" > $state/ssid; echo "Device 'wlan0' successfully activated"
+        else echo "Error: Connection activation failed: Secrets were required, but not provided." >&2; exit 4; fi ;;
 esac
 exit 0
 EOF
@@ -79,7 +87,11 @@ case "\$*" in
     show) printf 'Controller 00:00:00:00:00:01 (public)\n\tPowered: %s\n' "\$(cat $state/bluetooth)" ;;
     "power on") echo yes > "$state/bluetooth" ;;
     "power off") echo no > "$state/bluetooth" ;;
-    "devices Connected") [ "\$(cat $state/bluetooth)" = yes ] && echo "Device 88:C9:E8:00:00:01 WH-1000XM5" ;;
+    "devices Connected") [ "\$(cat $state/bluetooth)" = yes ] && [ "\$(cat $state/bt_connected 2>/dev/null || echo yes)" = yes ] && echo "Device 88:C9:E8:00:00:01 WH-1000XM5" ;;
+    "devices Paired") printf 'Device 88:C9:E8:00:00:01 WH-1000XM5\nDevice 00:1B:66:00:00:02 Keychron K2\n' ;;
+    "connect 88:C9:E8:00:00:01") echo yes > $state/bt_connected ;;
+    "disconnect 88:C9:E8:00:00:01") echo no > $state/bt_connected ;;
+    "connect "*) echo "Failed to connect: org.bluez.Error.Failed br-connection-page-timeout"; exit 1 ;;
 esac
 exit 0
 EOF

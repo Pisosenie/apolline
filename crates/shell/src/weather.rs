@@ -33,7 +33,10 @@ pub fn subscription(place: Option<String>) -> Subscription<Message> {
     }
 }
 
-#[expect(clippy::ptr_arg, reason = "Subscription::run_with hands the data over as &D")]
+#[expect(
+    clippy::ptr_arg,
+    reason = "Subscription::run_with hands the data over as &D"
+)]
 fn watch(place: &String) -> impl Stream<Item = Message> + use<> {
     let place = place.clone();
     iced::stream::channel(1, async move |mut output| {

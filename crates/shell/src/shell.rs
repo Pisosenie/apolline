@@ -75,6 +75,14 @@ pub enum Message {
     ConfigChanged,
     CalendarMonth(i32),
     Weather(Option<crate::weather::Weather>),
+    Detail(Option<panel::Detail>),
+    Networks(Vec<controls::Network>),
+    PairedList(Vec<controls::Paired>),
+    PickNetwork(controls::Network),
+    NetPassword(String),
+    JoinNetwork,
+    Joined(Result<(), String>),
+    PairDevice(controls::Paired),
     Thumb(String, Option<image::Handle>),
     Polkit(polkit::Request),
     PolkitGone(String),
@@ -143,6 +151,12 @@ pub struct Shell {
     painted: Option<Option<apolline_theme::Rgba>>,
     month: i32,
     weather: Option<crate::weather::Weather>,
+    detail: Option<panel::Detail>,
+    networks: Vec<controls::Network>,
+    paired: Vec<controls::Paired>,
+    joining: Option<(controls::Network, String)>,
+    net_note: Option<String>,
+    net_busy: bool,
     apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
@@ -204,6 +218,12 @@ impl Shell {
             painted: None,
             month: 0,
             weather: None,
+            detail: None,
+            networks: Vec::new(),
+            paired: Vec::new(),
+            joining: None,
+            net_note: None,
+            net_busy: false,
             apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
@@ -365,6 +385,52 @@ impl Shell {
                 return Task::batch([self.expire(), controls, triggers]);
             }
             Message::CalendarMonth(month) => self.month = month,
+            Message::Detail(detail) => {
+                self.detail = detail;
+                self.joining = None;
+                self.net_note = None;
+                return self.load_detail();
+            }
+            Message::Networks(networks) => self.networks = networks,
+            Message::PairedList(paired) => self.paired = paired,
+            Message::PickNetwork(network) => {
+                self.net_note = None;
+                if network.secure && !network.known {
+                    self.joining = Some((network, String::new()));
+                    return iced::widget::operation::focus(panel::PASSWORD);
+                }
+                self.net_busy = true;
+                return Task::perform(controls::join(network, None), Message::Joined);
+            }
+            Message::NetPassword(password) => {
+                if let Some((_, typed)) = &mut self.joining {
+                    *typed = password;
+                }
+            }
+            Message::JoinNetwork => {
+                if let Some((network, password)) = self.joining.clone()
+                    && !password.is_empty()
+                {
+                    self.net_busy = true;
+                    return Task::perform(controls::join(network, Some(password)), Message::Joined);
+                }
+            }
+            Message::Joined(result) => {
+                self.net_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.joining = None;
+                        self.net_note = None;
+                    }
+                    Err(err) => self.net_note = Some(err),
+                }
+                return Task::batch([self.load_detail(), self.read_controls()]);
+            }
+            Message::PairDevice(device) => {
+                self.net_busy = true;
+                self.net_note = None;
+                return Task::perform(controls::pair(device), Message::Joined);
+            }
             Message::Weather(weather) => {
                 if weather.is_some() || self.config.weather.is_none() {
                     self.weather = weather;
@@ -808,6 +874,7 @@ impl Shell {
                 Task::perform(apps::scan(), Message::Apps),
             ]),
             Some(Overlay::Panel) => {
+                self.detail = None;
                 self.held.clear();
                 self.read_controls()
             }
@@ -1038,6 +1105,20 @@ impl Shell {
         }
     }
 
+    fn load_detail(&mut self) -> Task<Message> {
+        if self.sample() {
+            self.networks = controls::sample_networks();
+            return Task::none();
+        }
+        match self.detail {
+            Some(panel::Detail::Wifi) => Task::perform(controls::networks(), Message::Networks),
+            Some(panel::Detail::Bluetooth) => {
+                Task::perform(controls::paired(), Message::PairedList)
+            }
+            None => Task::none(),
+        }
+    }
+
     fn read_controls(&self) -> Task<Message> {
         if self.sample() {
             return Task::none();
@@ -1221,6 +1302,12 @@ impl Shell {
                 armed: self.armed,
                 awake: self.awake,
                 history: &self.history,
+                detail: self.detail,
+                networks: &self.networks,
+                paired: &self.paired,
+                joining: self.joining.as_ref(),
+                note: self.net_note.as_deref(),
+                busy: self.net_busy,
             }),
             None => space().into(),
         }

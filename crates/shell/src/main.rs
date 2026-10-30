@@ -53,7 +53,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
@@ -132,7 +132,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--preview" => options.preview = true,
             "--open" => {
                 let overlay = |overlay| shell::Message::Overlay(Some(overlay));
-                options.open.push(match args.next().map(String::as_str) {
+                let opened = match args.next().map(String::as_str) {
                     Some("launcher") => overlay(shell::Overlay::Launcher),
                     Some("panel") => overlay(shell::Overlay::Panel),
                     Some("switch") => overlay(shell::Overlay::Switcher),
@@ -140,15 +140,20 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     Some("keys") => overlay(shell::Overlay::Keys),
                     Some("polkit") => shell::Message::Polkit(polkit::sample()),
                     Some("calendar") => overlay(shell::Overlay::Calendar),
+                    Some("wifi") => {
+                        options.open.push(overlay(shell::Overlay::Panel));
+                        shell::Message::Detail(Some(panel::Detail::Wifi))
+                    }
                     Some("osd") => {
                         shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
                     }
                     _ => {
                         return Err(
-                            "--open needs launcher, panel, switch, clipboard, keys or osd".into(),
+                            "--open needs launcher, panel, wifi, switch, clipboard, keys, calendar, polkit or osd".into(),
                         );
                     }
-                })
+                };
+                options.open.push(opened);
             }
             "--query" => {
                 let query = args.next().ok_or("--query needs some text")?.clone();

@@ -315,6 +315,184 @@ fn on_off(on: bool) -> &'static str {
     if on { "on" } else { "off" }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Network {
+    pub ssid: String,
+    pub signal: u8,
+    pub secure: bool,
+    pub active: bool,
+    pub known: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Paired {
+    pub mac: String,
+    pub name: String,
+    pub connected: bool,
+}
+
+pub fn sample_networks() -> Vec<Network> {
+    [
+        ("Polina", 82, true, true, true),
+        ("Neighbours", 64, true, false, false),
+        ("Cafe: Free", 41, false, false, false),
+    ]
+    .into_iter()
+    .map(|(ssid, signal, secure, active, known)| Network {
+        ssid: ssid.into(),
+        signal,
+        secure,
+        active,
+        known,
+    })
+    .collect()
+}
+
+pub async fn networks() -> Vec<Network> {
+    let (list, known) = iced::futures::join!(
+        run(
+            "nmcli",
+            &[
+                "-t",
+                "-f",
+                "IN-USE,SSID,SIGNAL,SECURITY",
+                "device",
+                "wifi",
+                "list",
+                "--rescan",
+                "auto"
+            ]
+        ),
+        run("nmcli", &["-t", "-f", "NAME,TYPE", "connection", "show"]),
+    );
+    let known: Vec<String> = known
+        .as_deref()
+        .unwrap_or_default()
+        .lines()
+        .map(fields)
+        .filter(|f| f.get(1).is_some_and(|kind| kind.contains("wireless")))
+        .filter_map(|f| f.into_iter().next())
+        .collect();
+    let mut networks: Vec<Network> = Vec::new();
+    for line in list.as_deref().unwrap_or_default().lines() {
+        let f = fields(line);
+        let [used, ssid, signal, security] = f.as_slice() else {
+            continue;
+        };
+        if ssid.is_empty() {
+            continue;
+        }
+        let network = Network {
+            ssid: ssid.clone(),
+            signal: signal.parse().unwrap_or(0),
+            secure: !security.trim().is_empty() && security.trim() != "--",
+            active: used.trim() == "*",
+            known: known.contains(ssid),
+        };
+        match networks.iter_mut().find(|n| n.ssid == network.ssid) {
+            Some(seen) if seen.signal >= network.signal && !network.active => {}
+            Some(seen) => *seen = network,
+            None => networks.push(network),
+        }
+    }
+    networks.sort_by_key(|n| (!n.active, std::cmp::Reverse(n.signal)));
+    networks
+}
+
+pub async fn join(network: Network, password: Option<String>) -> Result<(), String> {
+    if network.known && password.is_none() {
+        return answer("nmcli", &["connection", "up", "id", &network.ssid], None).await;
+    }
+    answer(
+        "nmcli",
+        &["--ask", "device", "wifi", "connect", &network.ssid],
+        password.map(|p| format!("{p}\n")),
+    )
+    .await
+}
+
+pub async fn paired() -> Vec<Paired> {
+    let (paired, connected) = iced::futures::join!(
+        run("bluetoothctl", &["devices", "Paired"]),
+        run("bluetoothctl", &["devices", "Connected"]),
+    );
+    let connected = connected.unwrap_or_default();
+    paired
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("Device ")?;
+            let (mac, name) = rest.split_once(' ')?;
+            Some(Paired {
+                mac: mac.to_owned(),
+                name: name.trim().to_owned(),
+                connected: connected.contains(mac),
+            })
+        })
+        .collect()
+}
+
+pub async fn pair(device: Paired) -> Result<(), String> {
+    let verb = if device.connected {
+        "disconnect"
+    } else {
+        "connect"
+    };
+    answer("bluetoothctl", &[verb, &device.mac], None).await
+}
+
+fn fields(line: &str) -> Vec<String> {
+    let mut out = vec![String::new()];
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let (Some(next), Some(f)) = (chars.next(), out.last_mut()) {
+                    f.push(next);
+                }
+            }
+            ':' => out.push(String::new()),
+            _ => {
+                if let Some(f) = out.last_mut() {
+                    f.push(c);
+                }
+            }
+        }
+    }
+    out
+}
+
+async fn answer(program: &str, args: &[&str], input: Option<String>) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| format!("{program}: {err}"))?;
+    if let (Some(mut stdin), Some(input)) = (child.stdin.take(), input) {
+        let _ = stdin.write_all(input.as_bytes()).await;
+    }
+    let output = tokio::time::timeout(std::time::Duration::from_secs(45), child.wait_with_output())
+        .await
+        .map_err(|_| "it took too long".to_owned())?
+        .map_err(|err| err.to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let said = String::from_utf8_lossy(&output.stderr).into_owned()
+        + &String::from_utf8_lossy(&output.stdout);
+    Err(said
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("it didn't work")
+        .trim_start_matches("Error: ")
+        .to_owned())
+}
+
 async fn run(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program)
         .args(args)
@@ -408,6 +586,12 @@ fn parse_device(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nmcli_fields_keep_escaped_colons() {
+        assert_eq!(fields("*:Cafe\\: Free:41:"), ["*", "Cafe: Free", "41", ""]);
+        assert_eq!(fields(" :Polina:82:WPA2"), [" ", "Polina", "82", "WPA2"]);
+    }
 
     #[test]
     fn wpctl_status_lists_outputs_and_inputs() {
