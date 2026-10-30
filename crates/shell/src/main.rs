@@ -70,6 +70,12 @@ struct Options {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if std::env::var_os("ICED_BACKEND").is_none() && args.first().is_none_or(|a| a != "settings") {
+        // The shell and the lock screen stay on the CPU renderer: they are mostly still,
+        // so it costs less memory and never depends on a GPU driver.
+        // SAFETY: nothing else runs yet, so no other thread reads the environment.
+        unsafe { std::env::set_var("ICED_BACKEND", "tiny-skia") };
+    }
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {

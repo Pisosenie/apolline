@@ -32,6 +32,21 @@ impl Request {
     }
 }
 
+pub fn largest_mode(outputs: &str) -> Option<(u32, u32)> {
+    let outputs: BTreeMap<String, serde_json::Value> = serde_json::from_str(outputs).ok()?;
+    outputs
+        .values()
+        .filter_map(|output| {
+            let current = output.get("current_mode")?.as_u64()?;
+            let mode = output.get("modes")?.get(current as usize)?;
+            Some((
+                u32::try_from(mode.get("width")?.as_u64()?).ok()?,
+                u32::try_from(mode.get("height")?.as_u64()?).ok()?,
+            ))
+        })
+        .max_by_key(|(w, h)| u64::from(*w) * u64::from(*h))
+}
+
 pub fn is_ok(reply: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(reply).is_ok_and(|v| v.get("Ok").is_some())
 }
@@ -285,6 +300,13 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_largest_screen_wins() {
+        let reply = r#"{"eDP-1":{"modes":[{"width":2880,"height":1800,"refresh_rate":120000,"is_preferred":true}],"current_mode":0},"HDMI-A-1":{"modes":[{"width":1920,"height":1080,"refresh_rate":60000},{"width":3840,"height":2160,"refresh_rate":60000}],"current_mode":1},"DP-2":{"modes":[],"current_mode":null}}"#;
+        assert_eq!(largest_mode(reply), Some((3840, 2160)));
+        assert_eq!(largest_mode("{}"), None);
+    }
 
     #[test]
     fn recent_windows_follow_focus_and_bar_order_follows_columns() {

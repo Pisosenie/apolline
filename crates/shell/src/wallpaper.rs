@@ -126,6 +126,12 @@ pub async fn load(name: String) -> Result<Handle, String> {
         if matches!(source, Source::File(_)) {
             learn(&name, &image.thumbnail(THUMB.0, THUMB.1).to_rgba8());
         }
+        let image = match screen() {
+            Some((width, height)) if image.width() > width && image.height() > height => {
+                image.resize_to_fill(width, height, ::image::imageops::FilterType::Triangle)
+            }
+            _ => image,
+        };
         let rgba = image.to_rgba8();
         let (width, height) = rgba.dimensions();
         Ok(Handle::from_rgba(width, height, rgba.into_raw()))
@@ -153,6 +159,15 @@ pub async fn thumbnail(name: String) -> Option<Handle> {
 }
 
 const THUMB: (u32, u32) = (760, 475);
+
+fn screen() -> Option<(u32, u32)> {
+    std::env::var_os("NIRI_SOCKET")?;
+    let output = std::process::Command::new("niri")
+        .args(["msg", "-j", "outputs"])
+        .output()
+        .ok()?;
+    apolline_niri::largest_mode(&String::from_utf8_lossy(&output.stdout))
+}
 
 fn learn(name: &str, thumb: &::image::RgbaImage) {
     if let Some(accent) = apolline_theme::accent_of(thumb.as_raw()) {

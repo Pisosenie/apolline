@@ -175,12 +175,15 @@ fn card<'a>(
     let on = mode == current;
     let height = (width * 0.62).round();
     let picture: Element<'a, Message> = match thumbs.get(config.wallpaper(mode)) {
-        Some(handle) => image(handle.clone())
-            .width(Fill)
-            .height(Fill)
-            .content_fit(iced::ContentFit::Cover)
-            .border_radius(16.0)
-            .into(),
+        Some(handle) => container(
+            image(handle.clone())
+                .width(Fill)
+                .height(Fill)
+                .content_fit(iced::ContentFit::Fill)
+                .border_radius(16.0),
+        )
+        .clip(true)
+        .into(),
         None => container(space())
             .width(Fill)
             .height(Fill)

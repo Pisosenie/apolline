@@ -1909,12 +1909,15 @@ impl Settings {
         let limit = if self.all_walls { names.len() } else { WALLS };
         for name in names.iter().take(limit) {
             let picture: Element<'a, Message> = match self.thumb(name) {
-                Some(handle) => image(handle.clone())
-                    .width(Fill)
-                    .height(88)
-                    .content_fit(ContentFit::Cover)
-                    .border_radius(9.0)
-                    .into(),
+                Some(handle) => container(
+                    image(handle.clone())
+                        .width(Fill)
+                        .height(88)
+                        .content_fit(ContentFit::Cover)
+                        .border_radius(9.0),
+                )
+                .clip(true)
+                .into(),
                 None => container(space())
                     .width(Fill)
                     .height(88)
@@ -2022,12 +2025,15 @@ impl Settings {
         };
         let look = Palette::new(accent);
         let picture: Element<'a, Message> = match self.thumb(&theme.wallpaper) {
-            Some(handle) => image(handle.clone())
-                .width(Fill)
-                .height(132)
-                .content_fit(ContentFit::Cover)
-                .border_radius(10.0)
-                .into(),
+            Some(handle) => container(
+                image(handle.clone())
+                    .width(Fill)
+                    .height(132)
+                    .content_fit(ContentFit::Cover)
+                    .border_radius(10.0),
+            )
+            .clip(true)
+            .into(),
             None => container(space())
                 .width(Fill)
                 .height(132)
@@ -3778,12 +3784,15 @@ impl Settings {
         overlay: Element<'a, Message>,
     ) -> Element<'a, Message> {
         let picture: Element<'a, Message> = match self.thumb(name) {
-            Some(handle) => image(handle.clone())
-                .width(Fill)
-                .height(height)
-                .content_fit(ContentFit::Cover)
-                .border_radius(14.0)
-                .into(),
+            Some(handle) => container(
+                image(handle.clone())
+                    .width(Fill)
+                    .height(height)
+                    .content_fit(ContentFit::Cover)
+                    .border_radius(14.0),
+            )
+            .clip(true)
+            .into(),
             None => container(space())
                 .width(Fill)
                 .height(height)
