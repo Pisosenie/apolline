@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Local};
 use iced::keyboard::{self, Key, key::Named};
-use iced::widget::{container, image, space};
+use iced::widget::{container, image, space, stack};
 use iced::{ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::apps::{self, App};
@@ -34,6 +34,7 @@ use crate::status::Status;
 use crate::switcher;
 use crate::{style, wallpaper};
 
+const FADE: Duration = Duration::from_millis(450);
 const QUIET_AFTER_TOUCH: Duration = Duration::from_millis(1500);
 
 #[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
@@ -73,6 +74,7 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     ConfigChanged,
+    Frame,
     CalendarMonth(i32),
     Weather(Option<crate::weather::Weather>),
     Files(Vec<std::path::PathBuf>),
@@ -175,6 +177,7 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
+    fade: Option<(image::Handle, Instant)>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -253,6 +256,7 @@ impl Shell {
             icons: None,
             config,
             wallpapers: Vec::new(),
+            fade: None,
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -512,6 +516,15 @@ impl Shell {
                     self.weather = weather;
                 }
             }
+            Message::Frame => {
+                if self
+                    .fade
+                    .as_ref()
+                    .is_some_and(|(_, at)| at.elapsed() >= FADE)
+                {
+                    self.fade = None;
+                }
+            }
             Message::ConfigChanged => {
                 let now = stamp(&self.config_path);
                 if now != self.config_stamp {
@@ -724,6 +737,13 @@ impl Shell {
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
             Message::Wallpaper(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
+                let primary = self.wallpaper_name(None).to_owned();
+                if name == primary
+                    && !self.demo
+                    && let Some((_, old)) = self.wallpapers.iter().find(|(n, _)| *n != name)
+                {
+                    self.fade = Some((old.clone(), Instant::now()));
+                }
                 self.wallpapers.retain(|(n, _)| *n != name);
                 self.wallpapers.push((name, handle));
                 let wanted = self.wanted_wallpapers();
@@ -1535,12 +1555,22 @@ impl Shell {
             .iter()
             .find(|(name, _)| name == wanted)
             .or(self.wallpapers.first());
-        match shown {
-            Some((_, handle)) => image(handle.clone())
+        let picture = |handle: &image::Handle, opacity: f32| {
+            image(handle.clone())
                 .width(Fill)
                 .height(Fill)
                 .content_fit(ContentFit::Cover)
-                .into(),
+                .opacity(opacity)
+        };
+        match shown {
+            Some((name, handle)) => match &self.fade {
+                Some((old, at)) if name == self.wallpaper_name(None) => {
+                    let t = (at.elapsed().as_secs_f32() / FADE.as_secs_f32()).min(1.0);
+                    let eased = 1.0 - (1.0 - t).powi(3);
+                    stack![picture(old, 1.0), picture(handle, eased)].into()
+                }
+                _ => picture(handle, 1.0).into(),
+            },
             None => container(space())
                 .width(Fill)
                 .height(Fill)
@@ -1637,6 +1667,11 @@ impl Shell {
         } else {
             clipboard::subscription().map(Message::Clip)
         };
+        let fading = if self.fade.is_some() {
+            iced::window::frames().map(|_| Message::Frame)
+        } else {
+            iced::Subscription::none()
+        };
         let watched = if self.demo {
             iced::Subscription::none()
         } else {
@@ -1648,6 +1683,7 @@ impl Shell {
         };
         iced::Subscription::batch([
             subscription(),
+            fading,
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,
