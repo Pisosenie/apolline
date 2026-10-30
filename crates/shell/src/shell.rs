@@ -25,6 +25,7 @@ use crate::niri;
 use crate::notify::{self, Closed, Notification};
 use crate::osd;
 use crate::panel::{self, Panel, Power};
+use crate::polkit;
 use crate::popup;
 use crate::power::{self, Battery};
 use crate::profile;
@@ -69,6 +70,13 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     Thumb(String, Option<image::Handle>),
+    Polkit(polkit::Request),
+    PolkitGone(String),
+    PolkitUser(usize),
+    PolkitPassword(String),
+    PolkitSubmit,
+    PolkitDone(Result<(), String>),
+    PolkitCancel,
     SettingsPage(&'static str),
     Apps(Vec<App>),
     Query(String),
@@ -93,6 +101,7 @@ pub enum Overlay {
     Panel,
     Clipboard,
     Keys,
+    Polkit,
 }
 
 #[derive(Default)]
@@ -121,6 +130,7 @@ pub struct Shell {
     picker: Picker,
     keymap: Vec<Entry>,
     keys_query: String,
+    polkit: Option<polkit::Dialog>,
     apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
@@ -176,6 +186,7 @@ impl Shell {
             picker: Picker::default(),
             keymap: Vec::new(),
             keys_query: String::new(),
+            polkit: None,
             apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
@@ -364,6 +375,75 @@ impl Shell {
             Message::Opened if self.overlay == Some(Overlay::Keys) => {
                 return iced::widget::operation::focus(keymap::SEARCH);
             }
+            Message::Opened if self.overlay == Some(Overlay::Polkit) => {
+                return iced::widget::operation::focus(polkit::FIELD);
+            }
+            Message::Polkit(request) => {
+                if let Some(old) = self.polkit.replace(polkit::Dialog::new(request)) {
+                    polkit::finish(&old.request.cookie, false);
+                }
+                self.overlay = None;
+                return Task::batch([
+                    self.set_overlay(Some(Overlay::Polkit)),
+                    iced::widget::operation::focus(polkit::FIELD),
+                ]);
+            }
+            Message::PolkitGone(cookie) => {
+                if self
+                    .polkit
+                    .as_ref()
+                    .is_some_and(|d| d.request.cookie == cookie)
+                {
+                    self.polkit = None;
+                    return self.set_overlay(None);
+                }
+            }
+            Message::PolkitUser(index) => {
+                if let Some(dialog) = &mut self.polkit {
+                    dialog.user = index;
+                    dialog.error = None;
+                }
+            }
+            Message::PolkitPassword(password) => {
+                if let Some(dialog) = &mut self.polkit {
+                    dialog.password = password;
+                }
+            }
+            Message::PolkitSubmit => {
+                if let Some(dialog) = &mut self.polkit
+                    && !dialog.busy
+                    && !dialog.password.is_empty()
+                {
+                    dialog.busy = true;
+                    dialog.error = None;
+                    let user = dialog
+                        .request
+                        .users
+                        .get(dialog.user)
+                        .cloned()
+                        .unwrap_or_default();
+                    let cookie = dialog.request.cookie.clone();
+                    let password = std::mem::take(&mut dialog.password);
+                    return Task::perform(
+                        polkit::authenticate(user, cookie, password),
+                        Message::PolkitDone,
+                    );
+                }
+            }
+            Message::PolkitDone(Ok(())) => {
+                if let Some(dialog) = self.polkit.take() {
+                    polkit::finish(&dialog.request.cookie, true);
+                }
+                return self.set_overlay(None);
+            }
+            Message::PolkitDone(Err(error)) => {
+                if let Some(dialog) = &mut self.polkit {
+                    dialog.busy = false;
+                    dialog.error = Some(error);
+                    return iced::widget::operation::focus(polkit::FIELD);
+                }
+            }
+            Message::PolkitCancel => return self.set_overlay(None),
             Message::Thumb(name, Some(thumb)) => {
                 self.thumbs.insert(name, thumb);
             }
@@ -534,6 +614,12 @@ impl Shell {
         if self.overlay == Some(Overlay::Clipboard) {
             return self.clipboard_key(key, text, captured);
         }
+        if self.overlay == Some(Overlay::Polkit) {
+            if key == Key::Named(Named::Escape) {
+                return self.set_overlay(None);
+            }
+            return Task::none();
+        }
         if self.overlay == Some(Overlay::Keys) {
             match key.as_ref() {
                 Key::Named(Named::Escape) => return self.set_overlay(None),
@@ -626,6 +712,11 @@ impl Shell {
     fn set_overlay(&mut self, overlay: Option<Overlay>) -> Task<Message> {
         if self.overlay == overlay {
             return Task::none();
+        }
+        if self.overlay == Some(Overlay::Polkit)
+            && let Some(dialog) = self.polkit.take()
+        {
+            polkit::finish(&dialog.request.cookie, false);
         }
         self.overlay = overlay;
         self.power_menu = false;
@@ -900,6 +991,10 @@ impl Shell {
             ),
             Some(Overlay::Clipboard) => self.picker.view(&self.clips, palette),
             Some(Overlay::Keys) => keymap::view(&self.keymap, &self.keys_query, palette),
+            Some(Overlay::Polkit) => match &self.polkit {
+                Some(dialog) => polkit::view(dialog, palette),
+                None => space().into(),
+            },
             Some(Overlay::Panel) => panel::view(Panel {
                 at_bottom: self.config.bar.position == Edge::Bottom,
                 modes: &self.config.modes,
@@ -1074,5 +1169,6 @@ fn subscription() -> iced::Subscription<Message> {
         media::subscription(),
         notify::subscription(),
         logind::subscription(),
+        polkit::subscription(),
     ])
 }

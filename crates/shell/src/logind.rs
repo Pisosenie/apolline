@@ -26,6 +26,13 @@ trait Manager {
 trait Session {
     #[zbus(signal)]
     fn lock(&self) -> zbus::Result<()>;
+    #[zbus(property)]
+    fn id(&self) -> zbus::Result<String>;
+}
+
+pub async fn session_id(connection: &Connection) -> Option<String> {
+    let manager = ManagerProxy::new(connection).await.ok()?;
+    session(connection, &manager).await?.id().await.ok()
 }
 
 enum Event {

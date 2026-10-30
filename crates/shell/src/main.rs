@@ -19,6 +19,7 @@ mod niri;
 mod notify;
 mod osd;
 mod panel;
+mod polkit;
 mod popup;
 mod power;
 mod preview;
@@ -48,7 +49,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|osd] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|switch|clipboard|keys|polkit|osd] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
@@ -125,6 +126,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     Some("switch") => overlay(shell::Overlay::Switcher),
                     Some("clipboard") => overlay(shell::Overlay::Clipboard),
                     Some("keys") => overlay(shell::Overlay::Keys),
+                    Some("polkit") => shell::Message::Polkit(polkit::sample()),
                     Some("osd") => {
                         shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
                     }
