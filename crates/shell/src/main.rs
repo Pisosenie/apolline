@@ -13,6 +13,7 @@ mod fonts;
 mod fragment;
 mod greet;
 mod greetd;
+mod gsettings;
 mod icon;
 mod idle;
 mod keymap;

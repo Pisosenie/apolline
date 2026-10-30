@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use apolline_theme::{Palette, Rgba};
 
+use crate::gsettings;
+
 const CSS: &str = "apolline.css";
 const IMPORT: &str = "@import url(\"apolline.css\");";
 
@@ -11,22 +13,17 @@ pub fn apply(palette: Palette) -> Vec<String> {
         return Vec::new();
     };
     let notes = write(&config, palette);
-    gsettings("color-scheme", "prefer-dark");
-    gsettings("accent-color", gnome_accent(palette.accent));
+    gsettings::set("color-scheme", "prefer-dark");
+    gsettings::set("accent-color", gnome_accent(palette.accent));
     notes
 }
 
 pub fn remove() {
-    if !config_home().is_some_and(|config| erase(&config)) {
-        return;
+    if let Some(config) = config_home() {
+        erase(&config);
     }
-    for key in ["color-scheme", "accent-color"] {
-        run_gsettings(
-            ["reset", "org.gnome.desktop.interface", key]
-                .map(str::to_owned)
-                .to_vec(),
-        );
-    }
+    gsettings::restore("color-scheme");
+    gsettings::restore("accent-color");
 }
 
 fn write(config: &Path, palette: Palette) -> Vec<String> {
@@ -278,24 +275,6 @@ fn gnome_accent(accent: Rgba) -> &'static str {
         .into_iter()
         .min_by(|a, b| distance(a.1).total_cmp(&distance(b.1)))
         .map_or("blue", |(name, _)| name)
-}
-
-pub fn gsettings(key: &str, value: &str) {
-    run_gsettings(
-        ["set", "org.gnome.desktop.interface", key, value]
-            .map(str::to_owned)
-            .to_vec(),
-    );
-}
-
-fn run_gsettings(args: Vec<String>) {
-    std::thread::spawn(move || {
-        let _ = std::process::Command::new("gsettings")
-            .args(args)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    });
 }
 
 #[cfg(test)]

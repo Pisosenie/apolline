@@ -24,7 +24,6 @@ use crate::media::{self, Action, Track};
 use crate::niri;
 use crate::notify::{self, Closed, Notification};
 use crate::osd;
-use crate::paint;
 use crate::panel::{self, Panel, Power};
 use crate::polkit;
 use crate::popup;
@@ -32,6 +31,7 @@ use crate::power::{self, Battery};
 use crate::profile;
 use crate::status::Status;
 use crate::switcher;
+use crate::{gsettings, paint};
 use crate::{style, wallpaper};
 
 const FADE: Duration = Duration::from_millis(450);
@@ -154,10 +154,7 @@ pub struct Shell {
     rotated: Option<(String, Instant)>,
     picked: String,
     plain: Config,
-    cursor: Option<(Option<String>, Option<u16>)>,
-    icons: Option<Option<String>>,
-    font: Option<Option<String>>,
-    gtk: Option<Option<String>>,
+    handed: Vec<(&'static str, Option<String>)>,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -268,10 +265,7 @@ impl Shell {
             armed: None,
             thumbs: HashMap::new(),
             plain: config.clone(),
-            cursor: None,
-            icons: None,
-            font: None,
-            gtk: None,
+            handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
             shown: Vec::new(),
@@ -311,36 +305,27 @@ impl Shell {
         if self.demo {
             return;
         }
-        if self.gtk.as_ref() != Some(&self.config.desktop.gtk) {
-            if let Some(theme) = &self.config.desktop.gtk {
-                paint::gsettings("gtk-theme", theme);
+        let desktop = &self.config.desktop;
+        let font = desktop.font.as_ref().map(|family| format!("{family} 11"));
+        let size = desktop.cursor_size.map(|size| size.to_string());
+        let wanted = [
+            ("gtk-theme", desktop.gtk.as_ref()),
+            ("font-name", font.as_ref()),
+            ("icon-theme", desktop.icons.as_ref()),
+            ("cursor-theme", desktop.cursor.as_ref()),
+            ("cursor-size", size.as_ref()),
+        ];
+        for (key, value) in wanted {
+            let had = self.handed.iter().find(|(k, _)| *k == key).map(|(_, v)| v);
+            if had == Some(&value.cloned()) {
+                continue;
             }
-            self.gtk = Some(self.config.desktop.gtk.clone());
-        }
-        if self.font.as_ref() != Some(&self.config.desktop.font) {
-            if let Some(family) = &self.config.desktop.font {
-                paint::gsettings("font-name", &format!("{family} 11"));
+            match value {
+                Some(value) => gsettings::set(key, value),
+                None => gsettings::restore(key),
             }
-            self.font = Some(self.config.desktop.font.clone());
-        }
-        if self.icons.as_ref() != Some(&self.config.desktop.icons) {
-            if let Some(theme) = &self.config.desktop.icons {
-                paint::gsettings("icon-theme", theme);
-            }
-            self.icons = Some(self.config.desktop.icons.clone());
-        }
-        let cursor = (
-            self.config.desktop.cursor.clone(),
-            self.config.desktop.cursor_size,
-        );
-        if Some(&cursor) != self.cursor.as_ref() {
-            if let Some(theme) = &cursor.0 {
-                paint::gsettings("cursor-theme", theme);
-            }
-            if let Some(size) = cursor.1 {
-                paint::gsettings("cursor-size", &size.to_string());
-            }
-            self.cursor = Some(cursor);
+            self.handed.retain(|(k, _)| *k != key);
+            self.handed.push((key, value.cloned()));
         }
         let palette = self.config.palette(self.mode);
         if !self.config.apps.colors {
