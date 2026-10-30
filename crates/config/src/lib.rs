@@ -210,6 +210,7 @@ pub struct Desktop {
     pub outputs: Vec<(String, String)>,
     pub cursor: Option<String>,
     pub cursor_size: Option<u16>,
+    pub icons: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -557,6 +558,7 @@ impl Default for Config {
                 outputs: Vec::new(),
                 cursor: None,
                 cursor_size: None,
+                icons: None,
             },
             layout: Layout {
                 gaps: 10,

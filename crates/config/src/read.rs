@@ -730,6 +730,11 @@ impl Reader<'_> {
                     }
                 }
                 "cursor_size" => desktop.cursor_size = self.number(key, value, 12..=96),
+                "icons" => {
+                    if let Some(v) = self.string(key, value) {
+                        desktop.icons = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
+                    }
+                }
                 "outputs" => {
                     let DeValue::Table(table) = value.get_ref() else {
                         self.wrong::<()>(
@@ -760,6 +765,7 @@ impl Reader<'_> {
                         "outputs",
                         "cursor",
                         "cursor_size",
+                        "icons",
                     ],
                 ),
             }

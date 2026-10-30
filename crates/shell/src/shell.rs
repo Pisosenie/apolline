@@ -142,6 +142,7 @@ pub struct Shell {
     picked: String,
     plain: Config,
     cursor: Option<(Option<String>, Option<u16>)>,
+    icons: Option<Option<String>>,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -249,6 +250,7 @@ impl Shell {
             thumbs: HashMap::new(),
             plain: config.clone(),
             cursor: None,
+            icons: None,
             config,
             wallpapers: Vec::new(),
             ticks: 0,
@@ -269,7 +271,10 @@ impl Shell {
             shell.load_wallpaper(),
             shell.load_thumbs(),
             shell.read_controls(),
-            Task::perform(apps::scan(), Message::Apps),
+            Task::perform(
+                apps::scan(shell.config.desktop.icons.clone()),
+                Message::Apps,
+            ),
             welcome,
         ]);
         (shell, load)
@@ -279,6 +284,12 @@ impl Shell {
         fragment::sync(&self.look());
         if self.demo {
             return;
+        }
+        if self.icons.as_ref() != Some(&self.config.desktop.icons) {
+            if let Some(theme) = &self.config.desktop.icons {
+                paint::gsettings("icon-theme", theme);
+            }
+            self.icons = Some(self.config.desktop.icons.clone());
         }
         let cursor = (
             self.config.desktop.cursor.clone(),
@@ -932,7 +943,7 @@ impl Shell {
                     self.launcher.set_windows(self.open_windows());
                     self.launcher.open()
                 },
-                Task::perform(apps::scan(), Message::Apps),
+                Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps),
                 Task::perform(crate::files::index(), Message::Files),
             ]),
             Some(Overlay::Panel) => {

@@ -19,10 +19,10 @@ pub enum Picture {
     Vector(PathBuf),
 }
 
-pub async fn scan() -> Vec<App> {
-    tokio::task::spawn_blocking(|| {
+pub async fn scan(theme: Option<String>) -> Vec<App> {
+    tokio::task::spawn_blocking(move || {
         let dirs = data_dirs();
-        let themes = icon_roots(&dirs);
+        let themes = icon_roots(&dirs, theme.as_deref());
         let mut seen = HashSet::new();
         let mut apps = Vec::new();
         for dir in &dirs {
@@ -171,18 +171,39 @@ fn data_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn icon_roots(dirs: &[PathBuf]) -> Vec<PathBuf> {
+fn icon_roots(dirs: &[PathBuf], chosen: Option<&str>) -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = dirs
         .iter()
         .flat_map(|dir| {
-            ["hicolor", "Papirus", "Adwaita"]
+            chosen
                 .into_iter()
+                .chain(["hicolor", "Papirus", "Adwaita"])
                 .map(move |theme| dir.join("icons").join(theme))
         })
         .filter(|root| root.is_dir())
         .collect();
     roots.push(PathBuf::from("/usr/share/pixmaps"));
     roots
+}
+
+pub fn icon_themes() -> Vec<String> {
+    let mut found: Vec<String> = data_dirs()
+        .iter()
+        .filter_map(|dir| std::fs::read_dir(dir.join("icons")).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter(|entry| {
+            let path = entry.path();
+            path.join("index.theme").is_file()
+                && ["scalable", "48x48", "64x64", "128x128"]
+                    .iter()
+                    .any(|size| path.join(size).join("apps").is_dir())
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != "hicolor")
+        .collect();
+    found.sort();
+    found.dedup();
+    found
 }
 
 fn find_icon(name: &Path, roots: &[PathBuf]) -> Option<Picture> {

@@ -243,6 +243,7 @@ enum Message {
     AllWallpapers,
     ColorApps(bool),
     Cursor(String),
+    Icons(String),
     CursorSize(u16),
     DisplayMode(String, String),
     DisplayScale(String, u16),
@@ -389,6 +390,7 @@ struct Settings {
     monitor: Option<String>,
     outputs: Vec<apolline_niri::Output>,
     cursors: Vec<String>,
+    icon_themes: Vec<String>,
     place: (String, String),
     revert: Option<std::time::Instant>,
     hours_draft: String,
@@ -464,6 +466,7 @@ impl Settings {
             monitor: None,
             outputs: crate::niri::outputs(),
             cursors: crate::paint::cursors(),
+            icon_themes: apps::icon_themes(),
             place: (String::new(), String::new()),
             revert: None,
             hours_draft: String::new(),
@@ -486,13 +489,17 @@ impl Settings {
         let mut settings = settings;
         let custom = settings.custom_thumb();
         let library = settings.scan_library();
+        let apps = Task::perform(
+            apps::scan(settings.config.desktop.icons.clone()),
+            Message::Apps,
+        );
         (
             settings,
             Task::batch([
                 Task::perform(thumbnails(), Message::Thumbs),
                 custom,
                 library,
-                Task::perform(apps::scan(), Message::Apps),
+                apps,
             ]),
         )
     }
@@ -659,6 +666,16 @@ impl Settings {
                     e.set("desktop", "cursor", theme.as_str());
                 }
             }),
+            Message::Icons(theme) => {
+                self.edit(|e| {
+                    if theme == SYSTEM_CURSOR {
+                        e.unset("desktop", "icons");
+                    } else {
+                        e.set("desktop", "icons", theme.as_str());
+                    }
+                });
+                return Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps);
+            }
             Message::CursorSize(size) => {
                 self.edit(|e| e.set("desktop", "cursor_size", i64::from(size)))
             }
@@ -2518,6 +2535,25 @@ impl Settings {
                     ]
                     .spacing(8)
                     .align_y(Alignment::Center),
+                ),
+                setting(
+                    "Icons",
+                    "The icon theme for app icons here and in GTK apps",
+                    iced::widget::pick_list(
+                        std::iter::once(SYSTEM_CURSOR.to_owned())
+                            .chain(self.icon_themes.iter().cloned())
+                            .collect::<Vec<_>>(),
+                        Some(
+                            self.config
+                                .desktop
+                                .icons
+                                .clone()
+                                .unwrap_or_else(|| SYSTEM_CURSOR.to_owned()),
+                        ),
+                        Message::Icons,
+                    )
+                    .text_size(13)
+                    .padding([7, 12]),
                 ),
                 self.color_apps(palette),
             ],
