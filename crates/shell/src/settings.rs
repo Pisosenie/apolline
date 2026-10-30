@@ -262,6 +262,9 @@ enum Message {
     Shuffle(bool),
     Apps(Vec<App>),
     PinQuery(String),
+    AppDraft(&'static str, String),
+    AppListAdd(&'static str),
+    AppListRemove(&'static str, usize),
     ModuleDraft(String),
     AddModule,
     RemoveModule(usize),
@@ -391,6 +394,7 @@ struct Settings {
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
+    app_draft: (&'static str, String),
     module_draft: String,
     weather_draft: Option<String>,
     live: crate::control::Shared,
@@ -470,6 +474,7 @@ impl Settings {
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
+            app_draft: ("", String::new()),
             module_draft: String::new(),
             weather_draft: None,
             live: crate::control::shared(),
@@ -733,6 +738,30 @@ impl Settings {
             }),
             Message::Apps(apps) => self.apps = apps,
             Message::PinQuery(query) => self.pin_query = query,
+            Message::AppDraft(key, name) => self.app_draft = (key, name),
+            Message::AppListAdd(key) if self.app_draft.0 == key => {
+                let name = self.app_draft.1.trim().to_owned();
+                let mut list = self.app_list_of(key).to_vec();
+                if !name.is_empty() && !list.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
+                    list.push(name);
+                    self.edit(|e| e.set_list("notifications", key, &list));
+                }
+                self.app_draft = ("", String::new());
+            }
+            Message::AppListAdd(_) => {}
+            Message::AppListRemove(key, index) => {
+                let mut list = self.app_list_of(key).to_vec();
+                if index < list.len() {
+                    list.remove(index);
+                    self.edit(|e| {
+                        if list.is_empty() {
+                            e.unset("notifications", key);
+                        } else {
+                            e.set_list("notifications", key, &list);
+                        }
+                    });
+                }
+            }
             Message::ModuleDraft(draft) => self.module_draft = draft,
             Message::AddModule => {
                 let command = self.module_draft.trim().to_owned();
@@ -3115,6 +3144,13 @@ impl Settings {
         .into()
     }
 
+    fn app_list_of(&self, key: &str) -> &[String] {
+        match key {
+            "mute" => &self.config.alerts.mute,
+            _ => &self.config.alerts.always,
+        }
+    }
+
     fn module_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
         let mut rows: Vec<Element<'_, Message>> = self
             .config
@@ -3534,7 +3570,7 @@ impl Settings {
     }
 
     fn notifications(&self) -> Element<'_, Message> {
-        let alerts = self.config.alerts;
+        let alerts = &self.config.alerts;
         let palette = self.palette();
         let test_state: Element<'_, Message> = match &self.tested {
             Some(Ok(())) => text("Sent — look at the top right")
@@ -3603,9 +3639,60 @@ impl Settings {
                 ]
             ),
             group("In each mode", per_mode),
+            group(
+                "Apps",
+                vec![
+                    self.app_list("Never pop up", "Kept in the history only", "mute", &alerts.mute, palette),
+                    self.app_list("Always show", "Even with do not disturb or a mode that holds them", "always", &alerts.always, palette),
+                    note("Use the name an app signs its notifications with, as the history in quick settings shows it."),
+                ]
+            ),
         ]
         .spacing(22)
         .into()
+    }
+
+    fn app_list<'a>(
+        &'a self,
+        title: &'a str,
+        about: &'a str,
+        key: &'static str,
+        apps: &'a [String],
+        palette: Palette,
+    ) -> Element<'a, Message> {
+        let mut chips = Row::new().spacing(6).align_y(Alignment::Center);
+        for (index, app) in apps.iter().enumerate() {
+            chips = chips.push(
+                container(
+                    row![
+                        text(app.as_str()).size(12),
+                        button(icon(Icon::X, 12.0, style::FAINT))
+                            .padding(2)
+                            .style(style::ghost(6.0))
+                            .on_press(Message::AppListRemove(key, index)),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding([4, 10])
+                .style(style::pill(Rgba::hex(0xffffff).alpha(0.06))),
+            );
+        }
+        let draft = if self.app_draft.0 == key {
+            self.app_draft.1.as_str()
+        } else {
+            ""
+        };
+        chips = chips.push(
+            text_input("App name", draft)
+                .on_input(move |name| Message::AppDraft(key, name))
+                .on_submit(Message::AppListAdd(key))
+                .padding([6, 10])
+                .size(12)
+                .width(150)
+                .style(style::field(palette)),
+        );
+        setting(title, about, chips.wrap())
     }
 
     fn keyboard(&self) -> Element<'_, Message> {

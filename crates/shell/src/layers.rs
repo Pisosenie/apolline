@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use apolline_theme::{font, metrics};
+use apolline_theme::metrics;
 use iced::widget::space;
 use iced::{Color, Element, Font, Subscription, Task, Theme, window};
 use iced_layershell::build_pattern::daemon;

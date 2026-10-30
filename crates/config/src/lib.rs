@@ -400,10 +400,24 @@ impl Default for Shortcuts {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alerts {
     pub do_not_disturb: bool,
     pub seconds: u16,
+    pub mute: Vec<String>,
+    pub always: Vec<String>,
+}
+
+impl Alerts {
+    pub fn muted(&self, app: &str) -> bool {
+        self.mute.iter().any(|name| name.eq_ignore_ascii_case(app))
+    }
+
+    pub fn always(&self, app: &str) -> bool {
+        self.always
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(app))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -616,6 +630,8 @@ impl Default for Config {
             alerts: Alerts {
                 do_not_disturb: false,
                 seconds: 5,
+                mute: Vec::new(),
+                always: Vec::new(),
             },
             shortcuts: Shortcuts::default(),
             lock: Lock {
@@ -789,6 +805,16 @@ mod tests {
 
     fn parse(src: &str) -> (Config, Vec<Diagnostic>) {
         Config::parse(src)
+    }
+
+    #[test]
+    fn apps_can_be_muted_or_always_shown() {
+        let (config, problems) =
+            Config::parse("[notifications]\nmute = [\"discord\"]\nalways = [\"Telegram\"]\n");
+        assert_eq!(problems, vec![]);
+        assert!(config.alerts.muted("Discord"));
+        assert!(config.alerts.always("telegram"));
+        assert!(!config.alerts.muted("slack"));
     }
 
     #[test]

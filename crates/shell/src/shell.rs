@@ -839,7 +839,12 @@ impl Shell {
                     self.history.insert(0, notification.clone());
                     self.history.truncate(50);
                 }
-                if notify::lets_through(self.rule(), notification.urgency) {
+                if self.config.alerts.muted(&notification.app) {
+                    return notify::closed(notification.id, Closed::Dismissed);
+                }
+                if self.config.alerts.always(&notification.app)
+                    || notify::lets_through(self.rule(), notification.urgency)
+                {
                     self.popups.push((notification, Instant::now()));
                 } else {
                     self.held.push(notification);

@@ -570,7 +570,21 @@ impl Reader<'_> {
                         alerts.seconds = v
                     }
                 }
-                _ => self.unknown(key, "option", &["do_not_disturb", "seconds"]),
+                "mute" => {
+                    if let Some(v) = self.strings(key, value) {
+                        alerts.mute = v
+                    }
+                }
+                "always" => {
+                    if let Some(v) = self.strings(key, value) {
+                        alerts.always = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["do_not_disturb", "seconds", "mute", "always"],
+                ),
             }
         }
     }
