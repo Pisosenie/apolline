@@ -16,7 +16,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 19] = [
+const SECTIONS: [&str; 20] = [
     "general",
     "theme",
     "desktop",
@@ -31,6 +31,7 @@ const SECTIONS: [&str; 19] = [
     "idle",
     "apps",
     "night",
+    "style",
     "windows",
     "rule",
     "display",
@@ -165,6 +166,46 @@ impl Reader<'_> {
                 "idle" => {
                     if let Some(t) = self.section(key, value) {
                         self.idle(t, &mut config.idle)
+                    }
+                }
+                "style" => {
+                    if let Some(t) = self.section(key, value) {
+                        for (key, value) in t.iter() {
+                            let surface = match key.get_ref().as_ref() {
+                                "launcher" => &mut config.style.launcher,
+                                "panel" => &mut config.style.panel,
+                                _ => {
+                                    self.unknown(key, "surface", &["launcher", "panel"]);
+                                    continue;
+                                }
+                            };
+                            let launcher = key.get_ref().as_ref() == "launcher";
+                            let Some(table) = self.section(key, value) else {
+                                continue;
+                            };
+                            let mut grid = None;
+                            for (key, value) in table.iter() {
+                                match key.get_ref().as_ref() {
+                                    "radius" => surface.radius = self.number(key, value, 0..=40),
+                                    "opacity" => {
+                                        surface.opacity = self.fraction(key, value, 0.3..=1.0)
+                                    }
+                                    "grid" if launcher => grid = self.boolean(key, value),
+                                    _ => self.unknown(
+                                        key,
+                                        "option",
+                                        if launcher {
+                                            &["radius", "opacity", "grid"]
+                                        } else {
+                                            &["radius", "opacity"]
+                                        },
+                                    ),
+                                }
+                            }
+                            if let Some(grid) = grid {
+                                config.style.grid = grid;
+                            }
+                        }
                     }
                 }
                 "night" => {

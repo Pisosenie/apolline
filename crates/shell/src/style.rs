@@ -105,6 +105,19 @@ pub fn glass(opacity: f32, floating: bool) -> impl Fn(&Theme) -> container::Styl
     }
 }
 
+pub fn surface_as(look: apolline_config::Surface) -> impl Fn(&Theme) -> container::Style {
+    move |theme| {
+        let mut style = surface(theme);
+        if let Some(opacity) = look.opacity {
+            style.background = fill(SURFACE.alpha(opacity));
+        }
+        if let Some(radius) = look.radius {
+            style.border.radius = f32::from(radius).into();
+        }
+        style
+    }
+}
+
 pub fn surface(_: &Theme) -> container::Style {
     container::Style {
         text_color: Some(color(neutral::TEXT)),

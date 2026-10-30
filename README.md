@@ -74,6 +74,10 @@ opacity = 0.95
 
 Nothing in `[windows]` is written to niri until you set it, so your niri config keeps deciding the rest.
 
+## Surfaces your way
+
+`[style.launcher]` and `[style.panel]` set `radius` and `opacity` for the launcher and quick settings; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
+
 ## Your own bar modules
 
 Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.

@@ -24,6 +24,7 @@ pub struct Config {
     pub mouse: Option<Mouse>,
     pub alerts: Alerts,
     pub night: Night,
+    pub style: Styles,
     pub shortcuts: Shortcuts,
     pub lock: Lock,
     pub idle: Idle,
@@ -165,6 +166,19 @@ impl Center {
             Center::Always => "always",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Surface {
+    pub radius: Option<u16>,
+    pub opacity: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Styles {
+    pub launcher: Surface,
+    pub panel: Surface,
+    pub grid: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -614,6 +628,7 @@ impl Default for Config {
                 suspend_after: 0,
             },
             apps: Apps { colors: false },
+            style: Styles::default(),
             night: Night {
                 hours: None,
                 temperature: 4000,

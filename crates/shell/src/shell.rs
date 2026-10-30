@@ -964,8 +964,28 @@ impl Shell {
         match key.as_ref() {
             Key::Named(Named::Escape) if self.overlay.is_some() => return self.set_overlay(None),
             Key::Named(Named::Escape) if self.demo => return iced::exit(),
-            Key::Named(Named::ArrowDown) if launcher => return self.launcher.step(1),
-            Key::Named(Named::ArrowUp) if launcher => return self.launcher.step(-1),
+            Key::Named(Named::ArrowDown) if launcher => {
+                let by = if self.launcher.grid() {
+                    crate::launcher::COLUMNS
+                } else {
+                    1
+                };
+                return self.launcher.step(by as isize);
+            }
+            Key::Named(Named::ArrowUp) if launcher => {
+                let by = if self.launcher.grid() {
+                    crate::launcher::COLUMNS
+                } else {
+                    1
+                };
+                return self.launcher.step(-(by as isize));
+            }
+            Key::Named(Named::ArrowRight) if launcher && self.launcher.grid() => {
+                return self.launcher.step(1);
+            }
+            Key::Named(Named::ArrowLeft) if launcher && self.launcher.grid() => {
+                return self.launcher.step(-1);
+            }
             _ if captured => {}
             Key::Named(Named::Backspace) if launcher => {
                 let mut query = self.launcher.query.clone();
@@ -1051,6 +1071,8 @@ impl Shell {
             Some(Overlay::Launcher) => Task::batch([
                 {
                     self.launcher.set_windows(self.open_windows());
+                    self.launcher
+                        .set_look(self.config.style.launcher, self.config.style.grid);
                     self.launcher.open()
                 },
                 Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps),
@@ -1598,6 +1620,7 @@ impl Shell {
                 power_menu: self.power_menu,
                 armed: self.armed,
                 awake: self.awake,
+                look: self.config.style.panel,
                 night: self.night.1.unwrap_or(self.night.0),
                 history: &self.history,
                 detail: self.detail,

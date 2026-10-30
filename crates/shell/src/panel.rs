@@ -70,6 +70,7 @@ pub struct Panel<'a> {
     pub power_menu: bool,
     pub armed: Option<Power>,
     pub awake: bool,
+    pub look: apolline_config::Surface,
     pub night: bool,
     pub history: &'a [Notification],
     pub detail: Option<Detail>,
@@ -100,7 +101,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             Detail::Wifi => wifi_list(&panel),
             Detail::Bluetooth => paired_list(&panel),
         });
-        return frame(body, panel.at_bottom);
+        return frame(body, panel.at_bottom, panel.look);
     }
 
     let wifi = radio_tile(
@@ -217,7 +218,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     }
     body = body.push(history(panel.history));
 
-    frame(body, panel.at_bottom)
+    frame(body, panel.at_bottom, panel.look)
 }
 
 fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
@@ -637,10 +638,14 @@ fn devices_row<'a>(
         .into()
 }
 
-fn frame<'a>(body: iced::widget::Column<'a, Message>, at_bottom: bool) -> Element<'a, Message> {
+fn frame<'a>(
+    body: iced::widget::Column<'a, Message>,
+    at_bottom: bool,
+    look: apolline_config::Surface,
+) -> Element<'a, Message> {
     let card = container(body.width(WIDTH))
         .padding(16)
-        .style(style::surface);
+        .style(style::surface_as(look));
     mouse_area(
         container(opaque(card))
             .width(Fill)

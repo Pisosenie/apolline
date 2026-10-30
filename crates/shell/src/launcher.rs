@@ -2,7 +2,7 @@ use apolline_theme::{Palette, neutral};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
-    Column, button, column, container, image, mouse_area, opaque, row, scrollable, space, svg,
+    Column, Row, button, column, container, image, mouse_area, opaque, row, scrollable, space, svg,
     text, text_input,
 };
 use iced::{Alignment, Element, Fill, Length, Task};
@@ -18,6 +18,8 @@ use crate::style;
 const WIDTH: f32 = 680.0;
 const ROW: f32 = 54.0;
 const VISIBLE: usize = 8;
+pub const COLUMNS: usize = 6;
+const TILE: f32 = 104.0;
 const SEARCH: &str = "launcher-search";
 const LIST: &str = "launcher-list";
 
@@ -43,6 +45,8 @@ pub struct Launcher {
     modes: Vec<(String, String)>,
     windows: Vec<OpenWindow>,
     files: Vec<std::path::PathBuf>,
+    look: apolline_config::Surface,
+    grid: bool,
 }
 
 pub struct OpenWindow {
@@ -167,6 +171,15 @@ impl Launcher {
         self.files = files;
     }
 
+    pub fn set_look(&mut self, look: apolline_config::Surface, grid: bool) {
+        self.look = look;
+        self.grid = grid;
+    }
+
+    pub fn grid(&self) -> bool {
+        self.grid && !self.query.trim_start().starts_with(['/', ':'])
+    }
+
     pub fn search(&mut self, query: String) -> Task<Message> {
         self.query = query;
         self.selected = 0;
@@ -179,7 +192,11 @@ impl Launcher {
             return Task::none();
         }
         self.selected = (self.selected as isize + by).rem_euclid(count as isize) as usize;
-        let top = self.selected.saturating_sub(VISIBLE / 2) as f32 * ROW;
+        let top = if self.grid() {
+            (self.selected / COLUMNS).saturating_sub(1) as f32 * TILE
+        } else {
+            self.selected.saturating_sub(VISIBLE / 2) as f32 * ROW
+        };
         scroll_to(LIST, AbsoluteOffset { x: 0.0, y: top })
     }
 
@@ -379,6 +396,25 @@ impl Launcher {
             .center_x(Fill)
             .padding([48, 0])
             .into()
+        } else if self.grid() {
+            let mut grid = Column::new().spacing(4);
+            for (line, chunk) in entries.chunks(COLUMNS).enumerate() {
+                let mut tiles = Row::new().spacing(4);
+                for (column, entry) in chunk.iter().enumerate() {
+                    tiles = tiles.push(self.tile(line * COLUMNS + column, entry, palette));
+                }
+                for _ in chunk.len()..COLUMNS {
+                    tiles = tiles.push(space().width(Fill));
+                }
+                grid = grid.push(tiles);
+            }
+            let lines = entries.len().div_ceil(COLUMNS).min(3);
+            scrollable(grid)
+                .id(LIST)
+                .height(Length::Fixed(TILE * lines as f32 + 8.0))
+                .direction(style::thin())
+                .style(style::scroller)
+                .into()
         } else {
             let rows = Column::with_children(
                 entries
@@ -412,7 +448,14 @@ impl Launcher {
             space::horizontal(),
             hint("/", "files"),
             hint(":", "emoji"),
-            hint("↑↓", "move"),
+            hint(
+                if self.grid() {
+                    "←↑↓→"
+                } else {
+                    "↑↓"
+                },
+                "move"
+            ),
             hint("↵", "open"),
             hint("esc", "close"),
         ]
@@ -430,7 +473,7 @@ impl Launcher {
             ]
             .width(WIDTH),
         )
-        .style(style::surface);
+        .style(style::surface_as(self.look));
 
         mouse_area(
             container(opaque(panel))
@@ -441,6 +484,44 @@ impl Launcher {
                 .style(style::scrim),
         )
         .on_press(Message::Overlay(None::<Overlay>))
+        .into()
+    }
+
+    fn tile<'a>(&self, index: usize, entry: &Entry<'a>, palette: Palette) -> Element<'a, Message> {
+        let selected = index == self.selected;
+        let picture: Element<'a, Message> = match entry.picture {
+            Pic::App(Some(Picture::Raster(path))) => image(image::Handle::from_path(path))
+                .width(44)
+                .height(44)
+                .into(),
+            Pic::App(Some(Picture::Vector(path))) => svg(svg::Handle::from_path(path))
+                .width(44)
+                .height(44)
+                .into(),
+            Pic::App(None) => container(letter(&entry.title, palette)).center(44).into(),
+            Pic::Glyph(glyph) => container(text(glyph).size(30)).center(44).into(),
+            Pic::Icon(glyph) => container(icon(glyph, 22.0, neutral::TEXT))
+                .center(44)
+                .into(),
+        };
+        let name = crate::media::shorten(&entry.title, 14);
+        button(
+            column![picture, text(name).size(12).align_x(Alignment::Center)]
+                .spacing(8)
+                .align_x(Alignment::Center)
+                .width(Fill),
+        )
+        .width(Fill)
+        .height(TILE - 4.0)
+        .padding([12, 4])
+        .style(move |theme, status| {
+            let mut style = style::ghost(12.0)(theme, status);
+            if selected {
+                style.background = Some(iced::Background::Color(style::color(style::FILL)));
+            }
+            style
+        })
+        .on_press(Message::Run(entry.target.clone()))
         .into()
     }
 
@@ -641,6 +722,17 @@ mod tests {
             launcher.chosen(),
             Some(Target::App("apolline settings".into()))
         );
+    }
+
+    #[test]
+    fn a_grid_moves_by_rows_and_files_stay_a_list() {
+        let mut launcher = launcher();
+        launcher.set_look(apolline_config::Surface::default(), true);
+        assert!(launcher.grid());
+        let _ = launcher.step(COLUMNS as isize);
+        assert_eq!(launcher.selected, COLUMNS);
+        let _ = launcher.search("/notes".into());
+        assert!(!launcher.grid(), "file results read better as a list");
     }
 
     #[test]
