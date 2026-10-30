@@ -72,6 +72,7 @@ pub enum Message {
     KeysQuery(String),
     Overlay(Option<Overlay>),
     Opened,
+    ConfigChanged,
     Thumb(String, Option<image::Handle>),
     Polkit(polkit::Request),
     PolkitGone(String),
@@ -347,26 +348,21 @@ impl Shell {
             Message::Tick => {
                 self.now = Local::now();
                 self.ticks += 1;
-                let reload = match stamp(&self.config_path) {
-                    stamp if stamp != self.config_stamp => {
-                        self.config_stamp = stamp;
-                        self.reload_config()
-                    }
-                    _ => Task::none(),
-                };
-                let every = if self.overlay == Some(Overlay::Panel) {
-                    1
-                } else {
-                    5
-                };
-                let controls = if self.ticks.is_multiple_of(every) {
+                let controls = if self.overlay == Some(Overlay::Panel) {
                     self.read_controls()
                 } else {
                     Task::none()
                 };
                 self.publish();
                 let triggers = self.triggers();
-                return Task::batch([reload, self.expire(), controls, triggers]);
+                return Task::batch([self.expire(), controls, triggers]);
+            }
+            Message::ConfigChanged => {
+                let now = stamp(&self.config_path);
+                if now != self.config_stamp {
+                    self.config_stamp = now;
+                    return self.reload_config();
+                }
             }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
                 return self.key(key, text.as_deref(), captured);
@@ -1327,6 +1323,10 @@ fn stamp(path: &std::path::Path) -> Option<SystemTime> {
 
 impl Shell {
     pub fn subscription(&self) -> iced::Subscription<Message> {
+        let busy = self.demo
+            || self.config.bar.seconds
+            || self.overlay.is_some()
+            || !self.popups.is_empty();
         let resting = self.awake || self.sample() || self.current().is_some_and(|m| m.keep_awake);
         let stages = if resting {
             Vec::new()
@@ -1338,17 +1338,65 @@ impl Shell {
         } else {
             clipboard::subscription().map(Message::Clip)
         };
+        let watched = if self.demo {
+            iced::Subscription::none()
+        } else {
+            iced::Subscription::batch([
+                iced::Subscription::run_with(self.config_path.clone(), watch_config),
+                controls::watch().map(Message::Controls),
+            ])
+        };
         iced::Subscription::batch([
             subscription(),
+            iced::Subscription::run_with(busy, ticks),
+            watched,
             clipboard,
             idle::subscription(stages).map(|(stage, idle)| Message::Idle(stage, idle)),
         ])
     }
 }
 
+fn ticks(busy: &bool) -> impl iced::futures::Stream<Item = Message> + use<> {
+    let busy = *busy;
+    iced::stream::channel(1, async move |mut output| {
+        use chrono::Timelike;
+        use iced::futures::SinkExt;
+        loop {
+            let now = Local::now();
+            let millis = u64::from(now.timestamp_subsec_millis().min(999));
+            let wait = if busy {
+                1000 - millis
+            } else {
+                u64::from(60 - now.second()) * 1000 - millis
+            };
+            tokio::time::sleep(Duration::from_millis(wait.max(5))).await;
+            if output.send(Message::Tick).await.is_err() {
+                return;
+            }
+        }
+    })
+}
+
+fn watch_config(path: &PathBuf) -> impl iced::futures::Stream<Item = Message> + use<> {
+    let path = path.clone();
+    iced::stream::channel(1, async move |mut output| {
+        use iced::futures::SinkExt;
+        let mut seen = stamp(&path);
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let now = stamp(&path);
+            if now != seen {
+                seen = now;
+                if output.send(Message::ConfigChanged).await.is_err() {
+                    return;
+                }
+            }
+        }
+    })
+}
+
 fn subscription() -> iced::Subscription<Message> {
     iced::Subscription::batch([
-        iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick),
         iced::window::open_events().map(|_| Message::Opened),
         iced::event::listen_with(|event, status, _| match event {
             iced::Event::Keyboard(key @ keyboard::Event::KeyPressed { .. }) => {

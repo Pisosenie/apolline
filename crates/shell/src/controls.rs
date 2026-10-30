@@ -104,6 +104,27 @@ impl Controls {
     }
 }
 
+pub fn watch() -> iced::Subscription<Controls> {
+    iced::Subscription::run(changes)
+}
+
+fn changes() -> impl iced::futures::Stream<Item = Controls> {
+    iced::stream::channel(1, async |mut output| {
+        use iced::futures::SinkExt;
+        let mut last = None;
+        loop {
+            let now = read().await;
+            if last.as_ref() != Some(&now) {
+                last = Some(now.clone());
+                if output.send(now).await.is_err() {
+                    return;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    })
+}
+
 pub async fn read() -> Controls {
     let (volume, brightness, wifi, wifi_network, bluetooth, bluetooth_device, status) = iced::futures::join!(
         run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]),

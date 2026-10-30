@@ -42,8 +42,8 @@ Apolline doesn't race them on widgets:
   include line, and CI will run Apolline against every new niri release.
 - **No surprise writes.** Coloring apps is opt-in, every file it writes is listed next to the switch,
   and turning it off removes exactly that. A gtk.css that is a dotfiles link is never touched.
-- **Light at rest.** 0.2% CPU and under 100 MB idle on the CPU renderer; no GPU driver needed for the bar
-  or the lock screen.
+- **Quiet at rest.** The shell wakes once a minute for the clock and repaints nothing else until something
+  changes; the lock screen draws on the CPU, so a GPU driver problem can't keep you out.
 
 ## Principles
 
@@ -124,6 +124,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   on every push.
 - CI against every niri release, replaying recorded IPC sessions, so a niri update never breaks the bar.
 - Idle CPU and memory measured on real hardware next to Noctalia and Dux, the same way each time.
+  In a VM on Mesa's software renderer the shell idles at 0.2–0.4% CPU; its memory there is mostly llvmpipe's.
 - A Fedora COPR after the AUR.
 
 ## Not now

@@ -20,6 +20,7 @@ mod notify;
 mod osd;
 mod paint;
 mod panel;
+mod pick;
 mod polkit;
 mod popup;
 mod power;
@@ -55,6 +56,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME]
+       apolline pick [--prompt TEXT] < lines
        apolline setup
        apolline settings [--page NAME]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
@@ -70,9 +72,9 @@ struct Options {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if std::env::var_os("ICED_BACKEND").is_none() && args.first().is_none_or(|a| a != "settings") {
-        // The shell and the lock screen stay on the CPU renderer: they are mostly still,
-        // so it costs less memory and never depends on a GPU driver.
+    if std::env::var_os("ICED_BACKEND").is_none() && args.first().is_some_and(|a| a == "lock") {
+        // The lock screen must come up even when the GPU driver doesn't; it is opaque,
+        // so the CPU renderer's lack of transparency on Wayland doesn't show.
         // SAFETY: nothing else runs yet, so no other thread reads the environment.
         unsafe { std::env::set_var("ICED_BACKEND", "tiny-skia") };
     }
@@ -83,6 +85,7 @@ fn main() -> ExitCode {
         }
         Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
         Some("theme") => return theme(args.get(1).map(String::as_str)),
+        Some("pick") => return pick::main(&args[1..]),
         Some("setup") => return setup(),
         Some("settings") => return open_settings(&args[1..]),
         Some("lock") => return lock_screen(&args[1..]),
