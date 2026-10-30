@@ -98,7 +98,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   (radius, opacity, size).
 - **Wallpapers**: done — a gallery from folders, one per monitor, rotation, a thumbnail cache and a cross-fade.
 - **Fonts, icons, cursor and GTK theme** pickers — done.
-- **More apps in the accent**: KDE apps through kdeglobals, live reload of running GTK apps, Flatpak.
+- **More apps in the accent**: done for KDE apps (an `Apolline` color scheme); next are live reload of
+  running GTK apps and Flatpak.
   Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.
 
 ### 4. Finding things and getting in

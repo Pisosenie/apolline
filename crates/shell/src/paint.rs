@@ -7,26 +7,27 @@ use crate::gsettings;
 
 const CSS: &str = "apolline.css";
 const IMPORT: &str = "@import url(\"apolline.css\");";
+const KDE: &str = "Apolline.colors";
 
 pub fn apply(palette: Palette) -> Vec<String> {
-    let Some(config) = config_home() else {
+    let (Some(config), Some(data)) = (config_home(), data_home()) else {
         return Vec::new();
     };
-    let notes = write(&config, palette);
+    let notes = write(&config, &data, palette);
     gsettings::set("color-scheme", "prefer-dark");
     gsettings::set("accent-color", gnome_accent(palette.accent));
     notes
 }
 
 pub fn remove() {
-    if let Some(config) = config_home() {
-        erase(&config);
+    if let (Some(config), Some(data)) = (config_home(), data_home()) {
+        erase(&config, &data);
     }
     gsettings::restore("color-scheme");
     gsettings::restore("accent-color");
 }
 
-fn write(config: &Path, palette: Palette) -> Vec<String> {
+fn write(config: &Path, data: &Path, palette: Palette) -> Vec<String> {
     let mut notes = Vec::new();
     for version in ["gtk-3.0", "gtk-4.0"] {
         let dir = config.join(version);
@@ -50,10 +51,19 @@ fn write(config: &Path, palette: Palette) -> Vec<String> {
         let _ = fs::create_dir_all(&colors)
             .and_then(|()| fs::write(colors.join("apolline.conf"), qt_colors(palette)));
     }
+    // KDE apps and qt6ct both list schemes from here; picking it stays your call.
+    if config.join("kdeglobals").is_file() || qt.is_dir() {
+        let schemes = data.join("color-schemes");
+        if let Err(err) = fs::create_dir_all(&schemes)
+            .and_then(|()| fs::write(schemes.join(KDE), kde_colors(palette)))
+        {
+            notes.push(format!("{}: {err}", schemes.display()));
+        }
+    }
     notes
 }
 
-fn erase(config: &Path) -> bool {
+fn erase(config: &Path, data: &Path) -> bool {
     let mut ours = false;
     for version in ["gtk-3.0", "gtk-4.0"] {
         let dir = config.join(version);
@@ -81,6 +91,7 @@ fn erase(config: &Path) -> bool {
         }
     }
     ours |= fs::remove_file(config.join("qt6ct/colors/apolline.conf")).is_ok();
+    ours |= fs::remove_file(data.join("color-schemes").join(KDE)).is_ok();
     ours
 }
 
@@ -90,6 +101,7 @@ pub fn files() -> Vec<String> {
         "~/.config/gtk-4.0/apolline.css".into(),
         format!("{IMPORT} at the top of gtk.css"),
         "~/.config/qt6ct/colors/apolline.conf, if you use qt6ct".into(),
+        "~/.local/share/color-schemes/Apolline.colors, if you use KDE apps or qt6ct".into(),
         "gsettings color-scheme and accent-color".into(),
     ]
 }
@@ -152,6 +164,12 @@ pub fn cursors() -> Vec<String> {
     found
 }
 
+fn data_home() -> Option<PathBuf> {
+    std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
+}
+
 fn config_home() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -194,6 +212,48 @@ fn gtk_css(palette: Palette) -> String {
 @define-color theme_selected_bg_color {accent};
 @define-color theme_selected_fg_color {on};
 "
+    )
+}
+
+fn kde_colors(palette: Palette) -> String {
+    let rgb = |c: Rgba| format!("{},{},{}", c.r, c.g, c.b);
+    let text = Rgba::hex(0xf4f3f0);
+    let faint = Rgba::hex(0x8a8c90);
+    let accent = rgb(palette.accent);
+    let set = |name: &str, back: Rgba, alternate: Rgba, fore: Rgba| {
+        format!(
+            "[Colors:{name}]\nBackgroundAlternate={}\nBackgroundNormal={}\nDecorationFocus={accent}\nDecorationHover={accent}\nForegroundActive={accent}\nForegroundInactive={}\nForegroundLink={accent}\nForegroundNegative=255,122,107\nForegroundNeutral=242,179,92\nForegroundNormal={}\nForegroundPositive=125,207,145\nForegroundVisited={}\n\n",
+            rgb(alternate),
+            rgb(back),
+            rgb(faint),
+            rgb(fore),
+            rgb(palette.accent.shift_hue(40.0)),
+        )
+    };
+    let dark = |back: u32, alternate: u32| (Rgba::hex(back), Rgba::hex(alternate));
+    let mut text_sets: Vec<String> = [
+        ("Button", dark(0x2a2c31, 0x33363c)),
+        ("Complementary", dark(0x141619, 0x1b1d21)),
+        ("Header", dark(0x1b1d21, 0x23252a)),
+        ("Tooltip", dark(0x2a2c31, 0x33363c)),
+        ("View", dark(0x17191d, 0x1e2024)),
+        ("Window", dark(0x1e2024, 0x23252a)),
+    ]
+    .into_iter()
+    .map(|(name, (back, alternate))| set(name, back, alternate, text))
+    .collect();
+    text_sets.push(set(
+        "Selection",
+        palette.accent,
+        palette.accent_soft,
+        palette.on_accent,
+    ));
+    format!(
+        "[General]\nColorScheme=Apolline\nName=Apolline\n\n{}[WM]\nactiveBackground=27,29,33\nactiveBlend={accent}\nactiveForeground={}\ninactiveBackground=23,25,29\ninactiveBlend={}\ninactiveForeground={}\n",
+        text_sets.concat(),
+        rgb(text),
+        rgb(faint),
+        rgb(faint),
     )
 }
 
@@ -289,8 +349,15 @@ mod tests {
         fs::create_dir_all(dir.join("gtk-4.0")).unwrap();
         let gtk = dir.join("gtk-4.0/gtk.css");
         fs::write(&gtk, "window { border: none; }\n").unwrap();
-        write(&dir, Palette::new(ACCENTS[3]));
-        write(&dir, Palette::new(ACCENTS[3]));
+        fs::write(dir.join("kdeglobals"), "[General]\n").unwrap();
+        let share = dir.join("share");
+        write(&dir, &share, Palette::new(ACCENTS[3]));
+        write(&dir, &share, Palette::new(ACCENTS[3]));
+        let kde = fs::read_to_string(share.join("color-schemes").join(KDE)).unwrap();
+        assert!(kde.contains(
+            "[Colors:Selection]\nBackgroundAlternate=192,132,252\nBackgroundNormal=192,132,252\n"
+        ));
+        assert_eq!(kde.matches("[Colors:").count(), 7);
         let text = fs::read_to_string(&gtk).unwrap();
         assert_eq!(text, format!("{IMPORT}\nwindow {{ border: none; }}\n"));
         assert!(
@@ -298,7 +365,8 @@ mod tests {
                 .unwrap()
                 .contains("#c084fc")
         );
-        erase(&dir);
+        erase(&dir, &share);
+        assert!(!share.join("color-schemes").join(KDE).exists());
         assert_eq!(
             fs::read_to_string(&gtk).unwrap(),
             "window { border: none; }\n"
@@ -321,7 +389,7 @@ mod tests {
         fs::create_dir_all(dir.join("dotfiles/gtk-4.0")).unwrap();
         std::os::unix::fs::symlink(dir.join("dotfiles/gtk-4.0"), dir.join("gtk-4.0")).unwrap();
 
-        let notes = write(&dir, Palette::new(ACCENTS[0]));
+        let notes = write(&dir, &dir.join("share"), Palette::new(ACCENTS[0]));
         assert_eq!(fs::read(dir.join("gtk-3.0/gtk.css")).unwrap(), latin);
         assert!(!dir.join("dotfiles/gtk-4.0/apolline.css").exists());
         assert_eq!(notes.len(), 2, "{notes:?}");
