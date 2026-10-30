@@ -47,6 +47,8 @@ pub struct Notification {
     pub actions: Vec<(String, String)>,
     // A picture the app sent along, such as who wrote.
     pub image: Option<iced::widget::image::Handle>,
+    // How far along something is, 0 to 100, for downloads and the like.
+    pub progress: Option<u8>,
     pub summary: String,
     pub body: String,
     pub urgency: Urgency,
@@ -126,6 +128,7 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         desktop: None,
         actions: Vec::new(),
         image: None,
+        progress: None,
         summary: capitalize(&first.message),
         body,
         urgency: Urgency::Normal,
@@ -144,6 +147,7 @@ pub fn shot_card(path: &str) -> Notification {
         desktop: None,
         actions: Vec::new(),
         image: None,
+        progress: None,
         summary: "Screenshot copied".into(),
         body: "Click to add arrows, boxes or hide a part".into(),
         urgency: Urgency::Normal,
@@ -329,12 +333,17 @@ impl Server {
             .map(|[key, label]| (key.clone(), label.clone()))
             .collect();
         let image = picture(&hints, &app_icon);
+        let progress = hints
+            .get("value")
+            .and_then(|v| v.downcast_ref::<i32>().ok())
+            .map(|value| value.clamp(0, 100) as u8);
         let notification = Notification {
             id,
             app: app_name,
             desktop,
             actions,
             image,
+            progress,
             summary,
             body,
             urgency,

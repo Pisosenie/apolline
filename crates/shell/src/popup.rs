@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use apolline_theme::{Palette, font, metrics, neutral};
-use iced::widget::{button, column, container, image, row, space, text};
+use iced::widget::{button, column, container, image, progress_bar, row, space, text};
 use iced::{Background, Border, ContentFit, Element, Fill, Theme};
 
 use crate::apps::App;
@@ -18,12 +18,20 @@ const BUTTONS: u32 = 38;
 const GAP: u32 = 8;
 const FACE: f32 = 36.0;
 
+const PROGRESS: u32 = 12;
+
 fn card_height(notification: &Notification) -> u32 {
-    if notification.buttons().next().is_some() {
-        HEIGHT + BUTTONS
+    let buttons = if notification.buttons().next().is_some() {
+        BUTTONS
     } else {
-        HEIGHT
-    }
+        0
+    };
+    let progress = if notification.progress.is_some() {
+        PROGRESS
+    } else {
+        0
+    };
+    HEIGHT + buttons + progress
 }
 
 #[cfg(any(target_os = "linux", test))]
@@ -106,6 +114,18 @@ fn card<'a>(
                 .into()
         })
         .collect();
+    let content = match notification.progress {
+        Some(value) => content.push(space().height(4)).push(
+            progress_bar(0.0..=100.0, f32::from(value))
+                .girth(4)
+                .style(move |_| progress_bar::Style {
+                    background: Background::Color(style::color(neutral::HAIRLINE)),
+                    bar: Background::Color(style::color(palette.accent)),
+                    border: Border::default().rounded(2),
+                }),
+        ),
+        None => content,
+    };
     let content = if buttons.is_empty() {
         content
     } else {
