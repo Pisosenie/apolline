@@ -195,7 +195,8 @@ fn day_list<'a>(
                 format!("{} – {}", start.format("%H:%M"), end.format("%H:%M"))
             }
             (Some(start), None) => start.format("%H:%M").to_string(),
-            _ => "All day".to_owned(),
+            (None, Some(end)) => format!("Until {}", end.format("%H:%M")),
+            (None, None) => "All day".to_owned(),
         };
         let mut what = column![
             text(when).size(11).color(style::color(style::FAINT)),

@@ -2040,7 +2040,7 @@ impl Shell {
             next: self
                 .agenda
                 .soon(self.now.naive_local())
-                .map(|(o, wait)| (o.summary.as_str(), wait)),
+                .map(|(o, wait)| (&*o.summary, wait)),
             modules: self
                 .module_text
                 .iter()
