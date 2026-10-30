@@ -16,13 +16,13 @@ tools/headless.sh shot.png --mode play         # Linux: the real session under a
 
 ## With niri
 
-Add this line at the end of `~/.config/niri/config.kdl`:
-
-```kdl
-include "/usr/share/apolline/niri.kdl"
+```sh
+apolline setup
 ```
 
-It starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, and binds `Mod+Shift+M` to the next mode. Switch modes from anywhere with `apolline mode work|play|evening|next`. From a checkout, point the include at [`assets/niri.kdl`](assets/niri.kdl).
+It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one `include` line at the end of your niri config, after saving a copy of it. The fragment starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, and binds `Mod+Shift+M` to the next mode.
+
+Switch modes from anywhere with `apolline mode work|play|evening|next`. Each switch recolors window borders to the mode's accent and opens the mode's apps that aren't running yet (`open` in the config).
 
 ## Config
 

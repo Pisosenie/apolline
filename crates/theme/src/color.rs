@@ -28,6 +28,10 @@ impl Rgba {
         u32::from_str_radix(hex, 16).ok().map(Self::hex)
     }
 
+    pub fn to_hex(self) -> String {
+        format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+    }
+
     pub fn over(self, below: Rgba) -> Rgba {
         let mix = |top: u8, bottom: u8| {
             (top as f32 * self.a + bottom as f32 * (1.0 - self.a)).round() as u8
@@ -68,6 +72,7 @@ mod tests {
         assert_eq!(Rgba::parse("ff6a3d"), None);
         assert_eq!(Rgba::parse("#ff6a3"), None);
         assert_eq!(Rgba::parse("#+f6a3d"), None);
+        assert_eq!(Rgba::hex(0x0b1724).to_hex(), "#0b1724");
     }
 
     #[test]

@@ -1,9 +1,7 @@
-// Apolline for niri. Add this line at the end of ~/.config/niri/config.kdl:
-//
-//     include "/usr/share/apolline/niri.kdl"
-//
-// It goes last so it wins over niri's stock defaults. Anything you put
-// after it wins over Apolline.
+// Apolline for niri. `apolline setup` copies this to ~/.config/apolline/niri.kdl
+// and includes it at the end of your niri config, so it wins over niri's stock
+// defaults. The copy is rewritten on every mode switch to follow the accent;
+// to change something for good, put it after the include line in your own config.
 
 spawn-at-startup "apolline"
 

@@ -1,5 +1,6 @@
 mod bar;
 mod control;
+mod fragment;
 mod media;
 mod niri;
 mod power;
@@ -27,6 +28,7 @@ use apolline_theme::Mode;
 
 const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--screenshot FILE]
        apolline mode work|play|evening|next
+       apolline setup
        apolline check [FILE]";
 
 #[derive(Default)]
@@ -41,6 +43,7 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("mode") => return mode(&args.join(" ")),
+        Some("setup") => return setup(),
         _ => {}
     }
 
@@ -94,6 +97,21 @@ fn parse(args: &[String]) -> Result<Options, String> {
 fn mode(line: &str) -> ExitCode {
     match control::Command::parse(line).and_then(|_| control::send(line)) {
         Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn setup() -> ExitCode {
+    let (config, _) = Config::load(&apolline_config::default_path());
+    let accent = config.palette(config.mode).accent;
+    match fragment::setup(&fragment::path(), &fragment::niri_config(), accent) {
+        Ok(done) => {
+            done.iter().for_each(|line| println!("{line}"));
+            ExitCode::SUCCESS
+        }
         Err(err) => {
             eprintln!("apolline: {err}");
             ExitCode::FAILURE

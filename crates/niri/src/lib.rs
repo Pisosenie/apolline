@@ -8,10 +8,11 @@ pub fn socket() -> Option<PathBuf> {
     std::env::var_os("NIRI_SOCKET").map(PathBuf::from)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Request {
     EventStream,
     FocusWorkspace(u64),
+    Spawn(String),
 }
 
 impl Request {
@@ -21,6 +22,7 @@ impl Request {
             Request::FocusWorkspace(id) => {
                 json!({ "Action": { "FocusWorkspace": { "reference": { "Id": id } } } })
             }
+            Request::Spawn(command) => json!({ "Action": { "SpawnSh": { "command": command } } }),
         };
         format!("{value}\n")
     }
@@ -150,6 +152,17 @@ impl State {
             .any(|w| w.workspace_id == Some(workspace))
     }
 
+    pub fn is_running(&self, command: &str) -> bool {
+        let Some(program) = command.split_whitespace().next() else {
+            return false;
+        };
+        let name = program.rsplit('/').next().unwrap_or(program);
+        self.windows
+            .values()
+            .filter_map(|w| w.app_id.as_deref())
+            .any(|app| app.eq_ignore_ascii_case(name))
+    }
+
     pub fn focused_window(&self) -> Option<&Window> {
         self.windows.values().find(|w| w.is_focused)
     }
@@ -183,6 +196,10 @@ mod tests {
             Request::FocusWorkspace(2).line(),
             "{\"Action\":{\"FocusWorkspace\":{\"reference\":{\"Id\":2}}}}\n"
         );
+        assert_eq!(
+            Request::Spawn("firefox --new-window".into()).line(),
+            "{\"Action\":{\"SpawnSh\":{\"command\":\"firefox --new-window\"}}}\n"
+        );
     }
 
     #[test]
@@ -213,6 +230,10 @@ mod tests {
         assert!(!state.is_busy(workspaces[2].id));
         assert_eq!(state.focused_window().map(|w| w.id), Some(2));
         assert_eq!(state.layout(), Some("English (US)"));
+        assert!(state.is_running("foot"));
+        assert!(state.is_running("/usr/bin/foot --server"));
+        assert!(!state.is_running("steam"));
+        assert!(!state.is_running("  "));
     }
 
     #[test]

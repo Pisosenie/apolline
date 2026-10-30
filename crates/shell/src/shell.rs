@@ -7,6 +7,7 @@ use iced::{ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::bar::{self, Bar};
 use crate::control::{self, Command};
+use crate::fragment;
 use crate::niri;
 use crate::power::{self, Battery};
 use crate::status::Status;
@@ -70,6 +71,7 @@ impl Shell {
             wallpaper: None,
             now: Local::now(),
         };
+        fragment::sync(shell.config.palette(mode).accent);
         let load = shell.load_wallpaper();
         (shell, load)
     }
@@ -127,7 +129,22 @@ impl Shell {
             self.status = Status::sample(mode);
             self.workspace = self.status.active;
         }
-        self.load_wallpaper()
+        fragment::sync(self.config.palette(mode).accent);
+        Task::batch([self.load_wallpaper(), self.open_apps()])
+    }
+
+    fn open_apps(&self) -> Task<Message> {
+        let Some(state) = &self.niri else {
+            return Task::none();
+        };
+        Task::batch(
+            self.config
+                .mode(self.mode)
+                .open
+                .iter()
+                .filter(|command| !state.is_running(command))
+                .map(|command| niri::send(apolline_niri::Request::Spawn(command.clone()))),
+        )
     }
 
     fn load_wallpaper(&self) -> Task<Message> {

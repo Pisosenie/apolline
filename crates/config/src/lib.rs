@@ -105,12 +105,15 @@ impl ModeSettings {
     }
 }
 
-pub fn default_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
+pub fn config_home() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .unwrap_or_default();
-    base.join("apolline").join("config.toml")
+        .unwrap_or_default()
+}
+
+pub fn default_path() -> PathBuf {
+    config_home().join("apolline").join("config.toml")
 }
 
 #[cfg(test)]
