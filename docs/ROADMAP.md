@@ -82,7 +82,7 @@ keep awake and its own shortcuts. It can switch itself on while a game runs, on 
 or when a monitor is plugged in; when that ends, the mode you had comes back, and switching by hand
 always wins.
 
-**Next:** Settings → Modes shows what turned the current mode on; a mode can switch the theme.
+Settings → Modes shows what turned the current mode on, and a mode can wear a theme while it's on.
 
 ### 2. Many windows, comfortably — done
 niri's Alt+Tab with live previews in Apolline colors, open windows and pinned apps on the bar, window

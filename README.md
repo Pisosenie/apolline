@@ -132,7 +132,9 @@ name = "Evening"
 when = ["20:00-07:00", "battery", "monitor HDMI-A-1"]
 ```
 
-When the reason ends, the mode you had before comes back. Triggers act only when something changes, so switching by hand always wins. A switch recolors window borders, opens the mode's apps that aren't running yet and rewrites the mode's keys into niri.
+When the reason ends, the mode you had before comes back. Triggers act only when something changes, so switching by hand always wins.
+
+A mode can also wear a theme (`theme = "Glass"`): its look applies while the mode is on and leaves with it, without touching the config; the mode's own wallpaper and accent still win. A switch recolors window borders, opens the mode's apps that aren't running yet and rewrites the mode's keys into niri.
 
 Performance turns off animations and window shadows, lets games (Steam and Proton, gamescope, Wine) drive the monitor's variable refresh rate, and sets the power profile to performance — and back to what it was when you leave, unless you changed it yourself in between. Variable refresh rate is set for monitors your niri config doesn't already describe; for those, add `variable-refresh-rate on-demand=true` to their `output` block.
 

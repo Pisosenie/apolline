@@ -384,6 +384,7 @@ pub struct ModeSettings {
     pub keep_awake: bool,
     pub keys: Vec<(String, String)>,
     pub when: Vec<Trigger>,
+    pub theme: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -677,6 +678,7 @@ impl ModeSettings {
             keep_awake: false,
             keys: Vec::new(),
             when: Vec::new(),
+            theme: None,
         }
     }
 

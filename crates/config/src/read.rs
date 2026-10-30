@@ -36,7 +36,7 @@ const SECTIONS: [&str; 17] = [
     "mode",
 ];
 
-const MODE_OPTIONS: [&str; 10] = [
+const MODE_OPTIONS: [&str; 11] = [
     "name",
     "icon",
     "wallpaper",
@@ -47,6 +47,7 @@ const MODE_OPTIONS: [&str; 10] = [
     "keep_awake",
     "keys",
     "when",
+    "theme",
 ];
 
 const WINDOW_OPTIONS: [&str; 13] = [
@@ -840,6 +841,11 @@ impl Reader<'_> {
                 "keep_awake" => {
                     if let Some(v) = self.boolean(key, value) {
                         settings.keep_awake = v
+                    }
+                }
+                "theme" => {
+                    if let Some(v) = self.string(key, value) {
+                        settings.theme = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
                 "when" => {

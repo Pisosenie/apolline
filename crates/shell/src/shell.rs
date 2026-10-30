@@ -140,6 +140,7 @@ pub struct Shell {
     reason: Option<Trigger>,
     rotated: Option<(String, Instant)>,
     picked: String,
+    plain: Config,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -245,6 +246,7 @@ impl Shell {
             power_menu: false,
             armed: None,
             thumbs: HashMap::new(),
+            plain: config.clone(),
             config,
             wallpapers: Vec::new(),
             ticks: 0,
@@ -253,6 +255,7 @@ impl Shell {
         };
         shell.report(&diagnostics);
         shell.picked = shell.config.desktop.wallpaper.clone();
+        shell.dress();
         shell.sync();
         shell.launcher.set_modes(shell.mode_names());
         let welcome = if !demo && !shell.config_path.exists() {
@@ -321,8 +324,9 @@ impl Shell {
         if let Some((name, _)) = &self.rotated {
             config.desktop.wallpaper = name.clone();
         }
-        self.config = config;
-        self.mode = key.and_then(|key| self.config.find(&key));
+        self.mode = key.and_then(|key| config.find(&key));
+        self.plain = config;
+        self.dress();
         self.launcher.set_modes(self.mode_names());
         self.report(&diagnostics);
         self.sync();
@@ -1220,7 +1224,7 @@ impl Shell {
             return Task::none();
         }
         let library = wallpaper::library(&self.config.desktop.folders);
-        let current = &self.config.desktop.wallpaper;
+        let current = &self.plain.desktop.wallpaper;
         let next = if self.config.desktop.shuffle && library.len() > 1 {
             let others: Vec<&String> = library.iter().filter(|name| *name != current).collect();
             let pick = Instant::now().elapsed().as_nanos() as usize
@@ -1238,7 +1242,8 @@ impl Shell {
             self.rotated = Some((current.clone(), Instant::now()));
             return Task::none();
         };
-        self.config.desktop.wallpaper = next.clone();
+        self.plain.desktop.wallpaper = next.clone();
+        self.dress();
         self.rotated = Some((next, Instant::now()));
         self.sync();
         self.load_wallpaper()
@@ -1323,9 +1328,27 @@ impl Shell {
             _ => Task::none(),
         };
         self.mode = mode;
+        self.dress();
         self.sync();
         self.release_held();
         Task::batch([close, self.load_wallpaper(), self.open_apps(), profile])
+    }
+
+    fn dress(&mut self) {
+        let mut config = self.plain.clone();
+        let theme = self
+            .mode
+            .and_then(|i| self.plain.modes.get(i))
+            .and_then(|m| m.theme.as_deref())
+            .map(apolline_config::slug);
+        if let Some(wanted) = theme
+            && let Some((theme, _)) = crate::themes::all()
+                .into_iter()
+                .find(|(t, _)| apolline_config::slug(&t.name) == wanted)
+        {
+            theme.dress(&mut config);
+        }
+        self.config = config;
     }
 
     fn release_held(&mut self) {

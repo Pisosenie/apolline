@@ -262,6 +262,7 @@ enum Message {
     Notifications(usize, Notifications),
     Performance(bool),
     KeepAwake(bool),
+    ModeTheme(Option<String>),
     WhenGame(bool),
     WhenBattery(bool),
     HoursDraft(String),
@@ -722,6 +723,10 @@ impl Settings {
             Message::Notifications(index, n) => self.edit(|e| e.set_mode_notifications(index, n)),
             Message::Performance(on) => self.edit(|e| e.set_mode(index, "performance", on)),
             Message::KeepAwake(on) => self.edit(|e| e.set_mode(index, "keep_awake", on)),
+            Message::ModeTheme(theme) => self.edit(|e| match &theme {
+                Some(name) => e.set_mode(index, "theme", name.as_str()),
+                None => e.unset_mode(index, "theme"),
+            }),
             Message::WhenGame(on) => self.set_trigger(index, Trigger::Game, on),
             Message::WhenBattery(on) => self.set_trigger(index, Trigger::Battery, on),
             Message::HoursDraft(draft) => self.hours_draft = draft,
@@ -1856,6 +1861,31 @@ impl Settings {
                 )]
             ),
             group("Open when this mode starts", vec![padded(apps)]),
+            group(
+                "Theme",
+                vec![padded(
+                    Row::with_children(
+                        std::iter::once(None)
+                            .chain(
+                                self.themes
+                                    .iter()
+                                    .map(|(theme, _)| Some(theme.name.clone()))
+                            )
+                            .map(|name| {
+                                let on = mode.theme.as_deref().map(apolline_config::slug)
+                                    == name.as_deref().map(apolline_config::slug);
+                                let label = name.clone().unwrap_or_else(|| "The desktop's".into());
+                                button(text(label).size(12))
+                                    .padding([6, 12])
+                                    .style(style::choice(on))
+                                    .on_press(Message::ModeTheme(name))
+                                    .into()
+                            }),
+                    )
+                    .spacing(4)
+                    .wrap(),
+                )]
+            ),
             group(
                 "Behaviour",
                 vec![

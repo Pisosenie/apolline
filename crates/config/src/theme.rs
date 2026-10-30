@@ -62,6 +62,22 @@ impl Theme {
         editor.set("desktop", "theme", self.name.as_str());
     }
 
+    pub fn dress(&self, config: &mut Config) {
+        config.desktop.wallpaper = self.wallpaper.clone();
+        config.desktop.accent = self.accent;
+        config.layout = self.layout;
+        config.bar.position = self.bar.position;
+        config.bar.floating = self.bar.floating;
+        config.bar.opacity = self.bar.opacity;
+        config.bar.blur = self.bar.blur;
+        config.windows.opacity = self.opacity;
+        config.windows.inactive_opacity = self.inactive_opacity;
+        config.windows.animations = self.animations;
+        config.windows.motion = self.motion;
+        config.windows.appear = self.appear;
+        config.windows.blur = self.blur;
+    }
+
     fn write(&self, editor: &mut Editor) {
         editor.set("desktop", "wallpaper", self.wallpaper.as_str());
         editor.set("desktop", "accent", accent_text(self.accent));
@@ -142,6 +158,20 @@ mod tests {
         );
         assert_eq!(config.modes[0].keys.len(), 1, "modes are left alone");
         assert_eq!(Theme::parse(&theme.text()).unwrap(), theme);
+    }
+
+    #[test]
+    fn dressing_matches_applying() {
+        let theme = Theme::parse(GLASS).unwrap();
+        let file = "[bar]\nseconds = true\n[layout]\ngaps = 2\n";
+        let mut editor = Editor::parse(file).unwrap();
+        theme.apply(&mut editor);
+        let (mut applied, _) = Config::parse(&editor.text());
+        let (mut dressed, _) = Config::parse(file);
+        theme.dress(&mut dressed);
+        applied.desktop.theme = None;
+        assert_eq!(dressed, applied);
+        assert!(dressed.bar.seconds, "what a theme doesn't carry stays");
     }
 
     #[test]
