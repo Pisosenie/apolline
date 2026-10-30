@@ -60,12 +60,13 @@ impl Layers {
             ..Default::default()
         });
 
+        let (shell, load) = Shell::new(mode);
         let layers = Self {
-            shell: Shell::new(mode),
+            shell,
             wallpaper,
             bar,
         };
-        (layers, Task::batch([open_wallpaper, open_bar]))
+        (layers, Task::batch([open_wallpaper, open_bar, load]))
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -83,7 +84,7 @@ impl Layers {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        shell::ticks()
+        shell::subscription()
     }
 }
 

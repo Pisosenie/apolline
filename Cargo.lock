@@ -131,6 +131,7 @@ dependencies = [
  "chrono",
  "iced",
  "iced_layershell",
+ "image",
  "png",
  "tokio",
 ]

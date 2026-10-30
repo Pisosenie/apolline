@@ -11,10 +11,15 @@ use crate::shell::{self, Message, Shell};
 
 pub fn run(mode: Option<Mode>, screenshot: Option<PathBuf>) -> iced::Result {
     iced::application(
-        move || Preview {
-            shell: Shell::new(mode),
-            screenshot: screenshot.clone(),
-            ticks: 0,
+        move || {
+            let (shell, load) = Shell::new(mode);
+            let preview = Preview {
+                shell,
+                screenshot: screenshot.clone(),
+                ticks: 0,
+                shooting: false,
+            };
+            (preview, load)
         },
         Preview::update,
         Preview::view,
@@ -31,6 +36,7 @@ struct Preview {
     shell: Shell,
     screenshot: Option<PathBuf>,
     ticks: u32,
+    shooting: bool,
 }
 
 impl Preview {
@@ -38,7 +44,8 @@ impl Preview {
         match message {
             Message::Tick if self.screenshot.is_some() => {
                 self.ticks += 1;
-                if self.ticks == 2 {
+                if !self.shooting && self.ticks >= 2 && self.shell.is_ready() {
+                    self.shooting = true;
                     return window::latest()
                         .and_then(window::screenshot)
                         .map(Message::Captured);
@@ -62,7 +69,7 @@ impl Preview {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        shell::ticks()
+        shell::subscription()
     }
 }
 

@@ -1,4 +1,5 @@
 mod bar;
+mod control;
 mod niri;
 mod preview;
 mod shell;
@@ -23,6 +24,7 @@ use apolline_config::Config;
 use apolline_theme::Mode;
 
 const USAGE: &str = "usage: apolline [--mode work|play|evening] [--preview] [--screenshot FILE]
+       apolline mode work|play|evening|next
        apolline check [FILE]";
 
 #[derive(Default)]
@@ -34,8 +36,10 @@ struct Options {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("check") {
-        return check(args.get(1).map(PathBuf::from));
+    match args.first().map(String::as_str) {
+        Some("check") => return check(args.get(1).map(PathBuf::from)),
+        Some("mode") => return mode(&args.join(" ")),
+        _ => {}
     }
 
     let options = match parse(&args) {
@@ -83,6 +87,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
         }
     }
     Ok(options)
+}
+
+fn mode(line: &str) -> ExitCode {
+    match control::Command::parse(line).and_then(|_| control::send(line)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn check(path: Option<PathBuf>) -> ExitCode {

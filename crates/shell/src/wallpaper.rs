@@ -30,3 +30,20 @@ fn search_dirs() -> Vec<PathBuf> {
     }
     dirs
 }
+
+pub async fn load(path: PathBuf) -> Result<iced::widget::image::Handle, String> {
+    let decode = move || {
+        let decoded = ::image::open(&path)
+            .map_err(|err| format!("{}: {err}", path.display()))?
+            .to_rgba8();
+        let (width, height) = decoded.dimensions();
+        Ok(iced::widget::image::Handle::from_rgba(
+            width,
+            height,
+            decoded.into_raw(),
+        ))
+    };
+    tokio::task::spawn_blocking(decode)
+        .await
+        .map_err(|err| err.to_string())?
+}
