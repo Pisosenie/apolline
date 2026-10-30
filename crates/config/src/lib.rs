@@ -208,6 +208,8 @@ pub struct Desktop {
     pub rotate: u32,
     pub shuffle: bool,
     pub outputs: Vec<(String, String)>,
+    pub cursor: Option<String>,
+    pub cursor_size: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -553,6 +555,8 @@ impl Default for Config {
                 rotate: 0,
                 shuffle: false,
                 outputs: Vec::new(),
+                cursor: None,
+                cursor_size: None,
             },
             layout: Layout {
                 gaps: 10,

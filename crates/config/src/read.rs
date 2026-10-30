@@ -724,6 +724,12 @@ impl Reader<'_> {
                         desktop.shuffle = v
                     }
                 }
+                "cursor" => {
+                    if let Some(v) = self.string(key, value) {
+                        desktop.cursor = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
+                    }
+                }
+                "cursor_size" => desktop.cursor_size = self.number(key, value, 12..=96),
                 "outputs" => {
                     let DeValue::Table(table) = value.get_ref() else {
                         self.wrong::<()>(
@@ -752,6 +758,8 @@ impl Reader<'_> {
                         "rotate",
                         "shuffle",
                         "outputs",
+                        "cursor",
+                        "cursor_size",
                     ],
                 ),
             }

@@ -179,6 +179,17 @@ window-rule {{
             )
         ));
     }
+    let desktop = &config.desktop;
+    if desktop.cursor.is_some() || desktop.cursor_size.is_some() {
+        let mut lines = Vec::new();
+        if let Some(theme) = &desktop.cursor {
+            lines.push(format!("xcursor-theme \"{}\"", quote(theme)));
+        }
+        if let Some(size) = desktop.cursor_size {
+            lines.push(format!("xcursor-size {size}"));
+        }
+        text.push_str(&format!("\n{}", block("cursor", &lines)));
+    }
     if let Some(animations) = animations(windows, play) {
         text.push_str(&format!("\n{animations}"));
     }

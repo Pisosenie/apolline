@@ -141,6 +141,7 @@ pub struct Shell {
     rotated: Option<(String, Instant)>,
     picked: String,
     plain: Config,
+    cursor: Option<(Option<String>, Option<u16>)>,
     started: Instant,
     system: Option<System>,
     boosted: Option<String>,
@@ -247,6 +248,7 @@ impl Shell {
             armed: None,
             thumbs: HashMap::new(),
             plain: config.clone(),
+            cursor: None,
             config,
             wallpapers: Vec::new(),
             ticks: 0,
@@ -277,6 +279,19 @@ impl Shell {
         fragment::sync(&self.look());
         if self.demo {
             return;
+        }
+        let cursor = (
+            self.config.desktop.cursor.clone(),
+            self.config.desktop.cursor_size,
+        );
+        if Some(&cursor) != self.cursor.as_ref() {
+            if let Some(theme) = &cursor.0 {
+                paint::gsettings("cursor-theme", theme);
+            }
+            if let Some(size) = cursor.1 {
+                paint::gsettings("cursor-size", &size.to_string());
+            }
+            self.cursor = Some(cursor);
         }
         let palette = self.config.palette(self.mode);
         if !self.config.apps.colors {

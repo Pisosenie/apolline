@@ -81,6 +81,25 @@ pub fn files() -> Vec<String> {
     ]
 }
 
+pub fn cursors() -> Vec<String> {
+    let mut dirs = vec![PathBuf::from("/usr/share/icons")];
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join(".local/share/icons"));
+        dirs.push(home.join(".icons"));
+    }
+    let mut found: Vec<String> = dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter(|entry| entry.path().join("cursors").is_dir())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != "default")
+        .collect();
+    found.sort();
+    found.dedup();
+    found
+}
+
 fn config_home() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -197,7 +216,7 @@ fn gnome_accent(accent: Rgba) -> &'static str {
         .map_or("blue", |(name, _)| name)
 }
 
-fn gsettings(key: &str, value: &str) {
+pub fn gsettings(key: &str, value: &str) {
     let _ = std::process::Command::new("gsettings")
         .args(["set", "org.gnome.desktop.interface", key, value])
         .stdout(std::process::Stdio::null())

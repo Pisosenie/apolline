@@ -28,6 +28,7 @@ use crate::{bar, fonts, keys, notify, shot, style, themes, wallpaper};
 const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
 const HISTORY: usize = 100;
+const SYSTEM_CURSOR: &str = "System's";
 const WALLS: usize = 11;
 const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
@@ -241,6 +242,8 @@ enum Message {
     UseWallpaper,
     AllWallpapers,
     ColorApps(bool),
+    Cursor(String),
+    CursorSize(u16),
     DisplayMode(String, String),
     DisplayScale(String, u16),
     DisplayTurn(String, &'static str),
@@ -385,6 +388,7 @@ struct Settings {
     monitors: Vec<String>,
     monitor: Option<String>,
     outputs: Vec<apolline_niri::Output>,
+    cursors: Vec<String>,
     place: (String, String),
     revert: Option<std::time::Instant>,
     hours_draft: String,
@@ -459,6 +463,7 @@ impl Settings {
             monitors: wallpaper::monitors(),
             monitor: None,
             outputs: crate::niri::outputs(),
+            cursors: crate::paint::cursors(),
             place: (String::new(), String::new()),
             revert: None,
             hours_draft: String::new(),
@@ -647,6 +652,16 @@ impl Settings {
                     e.unset("desktop", "shuffle");
                 }
             }),
+            Message::Cursor(theme) => self.edit(|e| {
+                if theme == SYSTEM_CURSOR {
+                    e.unset("desktop", "cursor");
+                } else {
+                    e.set("desktop", "cursor", theme.as_str());
+                }
+            }),
+            Message::CursorSize(size) => {
+                self.edit(|e| e.set("desktop", "cursor_size", i64::from(size)))
+            }
             Message::ColorApps(on) => self.edit(|e| {
                 if on {
                     e.set("apps", "colors", true);
@@ -2476,6 +2491,34 @@ impl Settings {
                     desktop_accent,
                     palette,
                 )),
+                setting(
+                    "Pointer",
+                    "Cursor theme and size, for niri and GTK apps",
+                    row![
+                        iced::widget::pick_list(
+                            std::iter::once(SYSTEM_CURSOR.to_owned())
+                                .chain(self.cursors.iter().cloned())
+                                .collect::<Vec<_>>(),
+                            Some(
+                                self.config
+                                    .desktop
+                                    .cursor
+                                    .clone()
+                                    .unwrap_or_else(|| SYSTEM_CURSOR.to_owned()),
+                            ),
+                            Message::Cursor,
+                        )
+                        .text_size(13)
+                        .padding([7, 12]),
+                        segmented(
+                            [(24u16, "24", None), (32, "32", None), (48, "48", None)],
+                            self.config.desktop.cursor_size.unwrap_or(24),
+                            Message::CursorSize,
+                        ),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ),
                 self.color_apps(palette),
             ],
         );
