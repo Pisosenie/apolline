@@ -208,13 +208,41 @@ impl Shell {
         shell.report(&diagnostics);
         fragment::sync(&shell.look());
         shell.launcher.set_modes(shell.mode_names());
+        let welcome = if !demo && !shell.config_path.exists() {
+            shell.first_run()
+        } else {
+            Task::none()
+        };
         let load = Task::batch([
             shell.load_wallpaper(),
             shell.load_thumbs(),
             shell.read_controls(),
             Task::perform(apps::scan(), Message::Apps),
+            welcome,
         ]);
         (shell, load)
+    }
+
+    fn first_run(&mut self) -> Task<Message> {
+        let written = self
+            .config_path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| {
+                std::fs::write(
+                    &self.config_path,
+                    include_str!("../../../assets/config.toml"),
+                )
+            });
+        if let Err(err) = written {
+            eprintln!(
+                "apolline: cannot write {}: {err}",
+                self.config_path.display()
+            );
+            return Task::none();
+        }
+        self.config_stamp = stamp(&self.config_path);
+        self.spawn(&format!("{} settings --page welcome", me()))
     }
 
     fn reload_config(&mut self) -> Task<Message> {
