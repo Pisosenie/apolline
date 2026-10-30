@@ -24,6 +24,7 @@ use crate::media::{self, Action, Track};
 use crate::niri;
 use crate::notify::{self, Closed, Notification};
 use crate::osd;
+use crate::paint;
 use crate::panel::{self, Panel, Power};
 use crate::polkit;
 use crate::popup;
@@ -133,6 +134,7 @@ pub struct Shell {
     keymap: Vec<Entry>,
     keys_query: String,
     polkit: Option<polkit::Dialog>,
+    painted: Option<Option<apolline_theme::Rgba>>,
     apps: Vec<App>,
     overlay: Option<Overlay>,
     launcher: Launcher,
@@ -189,6 +191,7 @@ impl Shell {
             keymap: Vec::new(),
             keys_query: String::new(),
             polkit: None,
+            painted: None,
             apps: Vec::new(),
             overlay: None,
             launcher: Launcher::default(),
@@ -208,7 +211,7 @@ impl Shell {
             now: Local::now(),
         };
         shell.report(&diagnostics);
-        fragment::sync(&shell.look());
+        shell.sync();
         shell.launcher.set_modes(shell.mode_names());
         let welcome = if !demo && !shell.config_path.exists() {
             shell.first_run()
@@ -223,6 +226,25 @@ impl Shell {
             welcome,
         ]);
         (shell, load)
+    }
+
+    fn sync(&mut self) {
+        fragment::sync(&self.look());
+        if self.demo {
+            return;
+        }
+        let palette = self.config.palette(self.mode);
+        if !self.config.apps.colors {
+            if self.painted != Some(None) {
+                paint::remove();
+                self.painted = Some(None);
+            }
+        } else if self.painted != Some(Some(palette.accent)) {
+            for note in paint::apply(palette) {
+                eprintln!("apolline: {note}");
+            }
+            self.painted = Some(Some(palette.accent));
+        }
     }
 
     fn first_run(&mut self) -> Task<Message> {
@@ -255,7 +277,7 @@ impl Shell {
         self.mode = key.and_then(|key| self.config.find(&key));
         self.launcher.set_modes(self.mode_names());
         self.report(&diagnostics);
-        fragment::sync(&self.look());
+        self.sync();
         self.release_held();
         let wallpaper = if self.config.wallpaper(self.mode) != before {
             self.load_wallpaper()
@@ -527,13 +549,13 @@ impl Shell {
                 let outputs = state.outputs();
                 if outputs != self.outputs {
                     self.outputs = outputs;
-                    fragment::sync(&self.look());
+                    self.sync();
                 }
             }
             Message::NiriReply(Err(err)) => eprintln!("apolline: niri: {err}"),
             Message::Wallpaper(name, Ok(handle)) if name == self.config.wallpaper(self.mode) => {
                 self.wallpaper = Some((name, handle));
-                fragment::sync(&self.look());
+                self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
             Message::Battery(battery) => self.system.get_or_insert_default().battery = battery,
@@ -1044,7 +1066,7 @@ impl Shell {
             _ => Task::none(),
         };
         self.mode = mode;
-        fragment::sync(&self.look());
+        self.sync();
         self.release_held();
         Task::batch([close, self.load_wallpaper(), self.open_apps(), profile])
     }

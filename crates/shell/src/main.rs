@@ -18,6 +18,7 @@ mod media;
 mod niri;
 mod notify;
 mod osd;
+mod paint;
 mod panel;
 mod polkit;
 mod popup;

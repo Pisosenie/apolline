@@ -26,6 +26,7 @@ pub struct Config {
     pub shortcuts: Shortcuts,
     pub lock: Lock,
     pub idle: Idle,
+    pub apps: Apps,
     pub windows: Windows,
     pub rules: Vec<Rule>,
     pub pinned: Vec<String>,
@@ -160,6 +161,11 @@ impl Center {
             Center::Always => "always",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Apps {
+    pub colors: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -496,6 +502,7 @@ impl Default for Config {
                 screen_off_after: 10,
                 suspend_after: 0,
             },
+            apps: Apps { colors: false },
             windows: Windows {
                 width: None,
                 presets: None,

@@ -194,7 +194,7 @@ impl Page {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
             Page::Themes => &["desktop", "layout", "windows", "bar"],
-            Page::Appearance => &["desktop", "layout"],
+            Page::Appearance => &["desktop", "layout", "apps"],
             Page::Windows => &["windows"],
             Page::Bar => &["bar"],
             Page::Lock => &["lock", "idle"],
@@ -233,6 +233,7 @@ enum Message {
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,
+    ColorApps(bool),
     Apps(Vec<App>),
     PinQuery(String),
     PinApp(String),
@@ -549,6 +550,13 @@ impl Settings {
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
             Message::AllWallpapers => self.all_walls = !self.all_walls,
+            Message::ColorApps(on) => self.edit(|e| {
+                if on {
+                    e.set("apps", "colors", true);
+                } else {
+                    e.unset("apps", "colors");
+                }
+            }),
             Message::Apps(apps) => self.apps = apps,
             Message::PinQuery(query) => self.pin_query = query,
             Message::PinApp(id) => {
@@ -2230,6 +2238,7 @@ impl Settings {
                     desktop_accent,
                     palette,
                 )),
+                self.color_apps(palette),
             ],
         );
         let preview = self.preview(&self.config.desktop.wallpaper, 200.0, {
@@ -3299,6 +3308,42 @@ impl Settings {
         form.into()
     }
 
+    fn color_apps(&self, palette: Palette) -> Element<'_, Message> {
+        let on = self.config.apps.colors;
+        let mut about =
+            column![
+                row![
+                    column![
+                    text("Color apps too").size(14),
+                    text("GTK and Qt apps get the accent and the dark style, and follow your modes")
+                        .size(12)
+                        .color(style::color(style::FAINT)),
+                ]
+                    .spacing(3)
+                    .width(Fill),
+                    switch(on, Message::ColorApps, palette),
+                ]
+                .spacing(16)
+                .align_y(Alignment::Center),
+            ]
+            .spacing(8);
+        let heading = if on {
+            "Writes, and removes when you turn it off:"
+        } else {
+            "Would write, and remove when you turn it off:"
+        };
+        about = about.push(text(heading).size(11).color(style::color(style::FAINT)));
+        for file in crate::paint::files() {
+            about = about.push(
+                text(file)
+                    .size(11)
+                    .font(style::mono())
+                    .color(style::color(style::FAINT)),
+            );
+        }
+        padded(about)
+    }
+
     fn welcome(&self) -> Element<'_, Message> {
         let palette = self.palette();
         let included = std::fs::read_to_string(fragment::niri_config())
@@ -3406,7 +3451,17 @@ impl Settings {
                 2,
                 "Pick a look",
                 "Wallpaper, accent, corners and motion in one click.",
-                looks.into()
+                column![
+                    looks,
+                    row![
+                        switch(self.config.apps.colors, Message::ColorApps, palette),
+                        text("Color GTK and Qt apps with the same accent").size(13),
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(14)
+                .into()
             ),
             welcome_step(
                 palette,

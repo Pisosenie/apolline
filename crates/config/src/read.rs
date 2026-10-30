@@ -16,7 +16,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 15] = [
+const SECTIONS: [&str; 16] = [
     "general",
     "theme",
     "desktop",
@@ -29,6 +29,7 @@ const SECTIONS: [&str; 15] = [
     "shortcuts",
     "lock",
     "idle",
+    "apps",
     "windows",
     "rule",
     "mode",
@@ -159,6 +160,20 @@ impl Reader<'_> {
                 "idle" => {
                     if let Some(t) = self.section(key, value) {
                         self.idle(t, &mut config.idle)
+                    }
+                }
+                "apps" => {
+                    if let Some(t) = self.section(key, value) {
+                        for (key, value) in t.iter() {
+                            match key.get_ref().as_ref() {
+                                "colors" => {
+                                    if let Some(v) = self.boolean(key, value) {
+                                        config.apps.colors = v
+                                    }
+                                }
+                                _ => self.unknown(key, "option", &["colors"]),
+                            }
+                        }
                     }
                 }
                 "desktop" => {
