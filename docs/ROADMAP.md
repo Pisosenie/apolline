@@ -123,7 +123,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 ### 6. Getting it to people
 - Screenshots and a short video in the README, `apolline-git` on the AUR, CI that builds and tests
   on every push.
-- CI against every niri release, replaying recorded IPC sessions, so a niri update never breaks the bar.
+- CI against the newest niri — done for the config side: every week and on every push, the fragment for
+  sample configs goes through `niri validate`. Next: replaying recorded IPC sessions.
 - Idle CPU and memory measured on real hardware next to Noctalia and Dux, the same way each time.
   In a VM on Mesa's software renderer the shell idles at 0.2–0.4% CPU; its memory there is mostly llvmpipe's.
 - A Fedora COPR after the AUR.

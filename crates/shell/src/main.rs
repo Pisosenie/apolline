@@ -67,6 +67,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline pick [--prompt TEXT] < lines
        apolline greet [--preview] [--screenshot FILE]
        apolline setup
+       apolline fragment [CONFIG] [MODE]
        apolline settings [--page NAME]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]";
@@ -124,6 +125,29 @@ fn main() -> ExitCode {
         Some("pick") => return pick::main(&args[1..]),
         Some("greet") => return greet::main(&args[1..]),
         Some("setup") => return setup(),
+        Some("fragment") => {
+            let path = args
+                .get(1)
+                .map_or_else(apolline_config::default_path, PathBuf::from);
+            let (config, problems) = Config::load(&path);
+            for problem in &problems {
+                eprintln!("{}:{}: {problem}", path.display(), problem.line);
+            }
+            let mode = args.get(2).and_then(|name| config.find(name));
+            print!(
+                "{}",
+                fragment::render(&fragment::Fragment {
+                    config: &config,
+                    mode,
+                    outputs: &["eDP-1".to_owned()],
+                })
+            );
+            return if problems.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            };
+        }
         Some("settings") => return open_settings(&args[1..]),
         Some("lock") => return lock_screen(&args[1..]),
         _ => {}

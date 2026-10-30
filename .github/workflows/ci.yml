@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
 
 jobs:
   check:
@@ -19,3 +21,22 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+
+  niri:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the toolchain and the newest niri
+        run: pacman -Syu --noconfirm --needed rust gcc pkgconf pam libxkbcommon wayland git niri
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - name: Every sample config gives niri a fragment it accepts
+        run: |
+          niri --version
+          for config in tests/configs/*.toml; do
+            for mode in "" play; do
+              ./target/debug/apolline fragment "$config" $mode > fragment.kdl
+              niri validate -c fragment.kdl
+            done
+          done
