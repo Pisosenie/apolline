@@ -9,6 +9,8 @@ mod controls;
 mod files;
 mod fonts;
 mod fragment;
+mod greet;
+mod greetd;
 mod icon;
 mod idle;
 mod keymap;
@@ -60,6 +62,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME]
        apolline pick [--prompt TEXT] < lines
+       apolline greet [--preview] [--screenshot FILE]
        apolline setup
        apolline settings [--page NAME]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
@@ -83,6 +86,7 @@ fn main() -> ExitCode {
         Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
         Some("theme") => return theme(args.get(1).map(String::as_str)),
         Some("pick") => return pick::main(&args[1..]),
+        Some("greet") => return greet::main(&args[1..]),
         Some("setup") => return setup(),
         Some("settings") => return open_settings(&args[1..]),
         Some("lock") => return lock_screen(&args[1..]),

@@ -14,7 +14,10 @@ optdepends=(
   'bluez-utils: Bluetooth in quick settings'
   'brightnessctl: brightness in quick settings'
   'upower: battery in the bar'
-  'power-profiles-daemon: performance profile in Play'
+  'power-profiles-daemon: performance profiles in modes'
+  'polkit: the admin password dialog'
+  'greetd: the login screen, apolline greet'
+  'cage: a kiosk compositor to run apolline greet in'
 )
 makedepends=('cargo' 'git')
 provides=("$_name")

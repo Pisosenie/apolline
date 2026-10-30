@@ -146,6 +146,18 @@ The shell also locks on `loginctl lock-session`, right before the laptop sleeps,
 
 Apolline is a polkit agent: when an app needs an admin password (pkexec, GParted, package managers), the request shows up as an Apolline dialog with the users who may approve it. It talks to polkit's socket-activated helper and falls back to the setuid one. If another agent (polkit-gnome, hyprpolkitagent) is already running, Apolline steps aside.
 
+## Login screen
+
+`apolline greet` is a greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) that looks like the lock screen: the time, the people who can log in, the session (from `/usr/share/wayland-sessions`, niri first), the password, restart and power off. Run it in a kiosk compositor such as cage, in `/etc/greetd/config.toml`:
+
+```toml
+[default_session]
+command = "cage -s -- apolline greet"
+user = "greeter"
+```
+
+`apolline greet --preview` shows it in a window.
+
 ## Notifications
 
 Apolline is a notification daemon too, unless another one (mako, dunst, …) already holds the name — then it stays out of the way. Without a mode everything shows; each mode can show all, hold the low-priority ones, or let only urgent ones (calls, alarms) through, and do not disturb holds everything but urgent anywhere. Held notifications wait behind a counter in the bar and come out when you switch to a mode that allows them. Everything that arrived is kept in quick settings, newest first, until you clear it.
