@@ -62,6 +62,44 @@ impl Theme {
         editor.set("desktop", "theme", self.name.as_str());
     }
 
+    pub fn tweaks(&self, now: &Theme) -> Vec<&'static str> {
+        let mut changed = Vec::new();
+        let mut differ = |name: &'static str, same: bool| {
+            if !same {
+                changed.push(name);
+            }
+        };
+        differ("wallpaper", self.wallpaper == now.wallpaper);
+        differ("accent", self.accent == now.accent);
+        differ("gaps", self.layout.gaps == now.layout.gaps);
+        differ("corners", self.layout.radius == now.layout.radius);
+        differ(
+            "borders",
+            self.layout.borders == now.layout.borders
+                && self.layout.gradient == now.layout.gradient,
+        );
+        differ("shadows", self.layout.shadows == now.layout.shadows);
+        differ(
+            "bar",
+            self.bar.position == now.bar.position
+                && self.bar.floating == now.bar.floating
+                && self.bar.opacity == now.bar.opacity
+                && self.bar.blur == now.bar.blur,
+        );
+        differ(
+            "window opacity",
+            self.opacity == now.opacity && self.inactive_opacity == now.inactive_opacity,
+        );
+        differ(
+            "motion",
+            self.animations == now.animations
+                && self.motion == now.motion
+                && self.appear == now.appear,
+        );
+        differ("blur", self.blur == now.blur);
+        changed
+    }
+
     pub fn dress(&self, config: &mut Config) {
         config.desktop.wallpaper = self.wallpaper.clone();
         config.desktop.accent = self.accent;
@@ -172,6 +210,17 @@ mod tests {
         applied.desktop.theme = None;
         assert_eq!(dressed, applied);
         assert!(dressed.bar.seconds, "what a theme doesn't carry stays");
+    }
+
+    #[test]
+    fn tweaks_name_what_differs_from_the_theme() {
+        let theme = Theme::parse(GLASS).unwrap();
+        let mut editor = Editor::parse("").unwrap();
+        theme.apply(&mut editor);
+        editor.set("layout", "gaps", 4);
+        let (config, _) = Config::parse(&editor.text());
+        let now = Theme::of(&config, "now", None);
+        assert_eq!(theme.tweaks(&now), ["gaps"]);
     }
 
     #[test]

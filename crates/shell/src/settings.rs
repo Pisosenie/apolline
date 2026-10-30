@@ -2391,9 +2391,52 @@ impl Settings {
         .into()
     }
 
+    fn layers(&self, palette: Palette) -> Option<Element<'_, Message>> {
+        let name = self.config.desktop.theme.as_deref()?;
+        let (index, (theme, _)) =
+            self.themes.iter().enumerate().find(|(_, (t, _))| {
+                apolline_config::slug(&t.name) == apolline_config::slug(name)
+            })?;
+        let tweaks = theme.tweaks(&Look::of(&self.config, "now", None));
+        let words = if tweaks.is_empty() {
+            format!("{} as it comes", theme.name)
+        } else {
+            let list = match tweaks.split_last() {
+                Some((last, [])) => (*last).to_owned(),
+                Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+                None => String::new(),
+            };
+            format!("{}, with your own {list}", theme.name)
+        };
+        let mut line = row![
+            icon(Icon::Layers, 15.0, palette.accent),
+            text(words).size(13).width(Fill),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+        if !tweaks.is_empty() {
+            line = line.push(
+                button(text(format!("Back to {}", theme.name)).size(12))
+                    .padding([6, 12])
+                    .style(style::secondary)
+                    .on_press(Message::ApplyTheme(index)),
+            );
+        }
+        Some(
+            container(line)
+                .padding([10, 14])
+                .width(Fill)
+                .style(style::pill(palette.accent_soft))
+                .into(),
+        )
+    }
+
     fn themes(&self) -> Element<'_, Message> {
         let palette = self.palette();
         let mut gallery = Column::new().spacing(14);
+        if let Some(layers) = self.layers(palette) {
+            gallery = gallery.push(layers);
+        }
         let cards: Vec<Element<'_, Message>> = self
             .themes
             .iter()
@@ -2712,6 +2755,7 @@ impl Settings {
         });
 
         column![
+            self.layers(palette),
             preview,
             desktop,
             group(
