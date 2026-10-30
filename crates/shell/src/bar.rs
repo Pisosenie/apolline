@@ -3,6 +3,7 @@ use chrono::{DateTime, Local};
 use iced::widget::{Row, button, container, row, space, text};
 use iced::{Alignment, Element, Fill, Font};
 
+use crate::power::Battery;
 use crate::shell::Message;
 use crate::status::Status;
 use crate::style;
@@ -12,6 +13,8 @@ pub struct Bar<'a> {
     pub palette: Palette,
     pub active: usize,
     pub status: &'a Status,
+    pub battery: Option<Battery>,
+    pub media: Option<&'a str>,
     pub now: DateTime<Local>,
 }
 
@@ -60,12 +63,19 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     .spacing(10);
 
     let mut status = Row::new().spacing(14).align_y(Alignment::Center);
-    if let Some(media) = &bar.status.media {
+    if let Some(media) = bar.media {
         status = status.push(text(format!("♪ {media}")).color(muted).size(font::SMALL));
     }
     status = status.push(text(&bar.status.keyboard).font(mono).size(font::SMALL));
-    if let Some(level) = bar.status.battery {
-        status = status.push(text(format!("{level}%")).font(mono).size(font::SMALL));
+    if let Some(battery) = bar.battery {
+        let level = text(format!("{}%", battery.percent))
+            .font(mono)
+            .size(font::SMALL);
+        status = status.push(if battery.charging {
+            level.color(style::color(bar.palette.accent))
+        } else {
+            level
+        });
     }
 
     container(

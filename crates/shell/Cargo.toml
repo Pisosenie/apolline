@@ -17,6 +17,7 @@ tokio.workspace = true
 chrono.workspace = true
 image.workspace = true
 png.workspace = true
+zbus.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = "0.19"

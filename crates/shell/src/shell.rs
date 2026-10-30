@@ -8,8 +8,9 @@ use iced::{ContentFit, Element, Fill, Padding, Task, window};
 use crate::bar::{self, Bar};
 use crate::control::{self, Command};
 use crate::niri;
+use crate::power::{self, Battery};
 use crate::status::Status;
-use crate::{style, wallpaper};
+use crate::{media, style, wallpaper};
 
 #[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
 #[derive(Clone, Debug)]
@@ -23,6 +24,14 @@ pub enum Message {
     NiriReply(Result<(), String>),
     Control(Command),
     Wallpaper(Mode, Result<image::Handle, String>),
+    Battery(Option<Battery>),
+    Media(Option<String>),
+}
+
+#[derive(Default)]
+struct System {
+    battery: Option<Battery>,
+    media: Option<String>,
 }
 
 pub struct Shell {
@@ -30,6 +39,7 @@ pub struct Shell {
     mode: Mode,
     status: Status,
     niri: Option<apolline_niri::State>,
+    system: Option<System>,
     workspace: usize,
     wallpaper: Option<(Mode, image::Handle)>,
     now: DateTime<Local>,
@@ -55,6 +65,7 @@ impl Shell {
             workspace: status.active,
             status,
             niri,
+            system: None,
             config,
             wallpaper: None,
             now: Local::now(),
@@ -103,6 +114,8 @@ impl Shell {
                 self.wallpaper = Some((mode, handle));
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
+            Message::Battery(battery) => self.system.get_or_insert_default().battery = battery,
+            Message::Media(media) => self.system.get_or_insert_default().media = media,
             _ => {}
         }
         Task::none()
@@ -141,11 +154,17 @@ impl Shell {
     }
 
     pub fn bar(&self) -> Element<'_, Message> {
+        let (battery, media) = match &self.system {
+            Some(system) => (system.battery, system.media.as_deref()),
+            None => (self.status.battery, self.status.media.as_deref()),
+        };
         let bar = bar::view(Bar {
             mode: self.mode,
             palette: self.config.palette(self.mode),
             active: self.workspace,
             status: &self.status,
+            battery,
+            media,
             now: self.now,
         });
         container(bar)
@@ -160,5 +179,7 @@ pub fn subscription() -> iced::Subscription<Message> {
         keyboard::listen().map(Message::Key),
         niri::events(),
         control::listen(),
+        power::subscription(),
+        media::subscription(),
     ])
 }

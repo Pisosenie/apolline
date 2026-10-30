@@ -1,5 +1,7 @@
 use apolline_theme::Mode;
 
+use crate::power::Battery;
+
 #[derive(Default)]
 pub struct Status {
     pub workspaces: usize,
@@ -7,7 +9,7 @@ pub struct Status {
     pub busy: Vec<usize>,
     pub ids: Vec<u64>,
     pub keyboard: String,
-    pub battery: Option<u8>,
+    pub battery: Option<Battery>,
     pub media: Option<String>,
 }
 
@@ -24,7 +26,10 @@ impl Status {
             busy,
             ids: Vec::new(),
             keyboard: "EN".into(),
-            battery: Some(82),
+            battery: Some(Battery {
+                percent: 82,
+                charging: false,
+            }),
             media: media.map(Into::into),
         }
     }

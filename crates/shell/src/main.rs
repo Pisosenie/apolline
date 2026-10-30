@@ -1,6 +1,8 @@
 mod bar;
 mod control;
+mod media;
 mod niri;
+mod power;
 mod preview;
 mod shell;
 mod status;
