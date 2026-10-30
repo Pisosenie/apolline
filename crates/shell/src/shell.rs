@@ -90,7 +90,7 @@ pub enum Message {
     PolkitUser(usize),
     PolkitPassword(String),
     PolkitSubmit,
-    PolkitDone(Result<(), String>),
+    PolkitDone(String, Result<(), String>),
     PolkitCancel,
     SettingsPage(&'static str),
     Apps(Vec<App>),
@@ -645,20 +645,29 @@ impl Shell {
                         .unwrap_or_default();
                     let cookie = dialog.request.cookie.clone();
                     let password = std::mem::take(&mut dialog.password);
-                    return Task::perform(
-                        polkit::authenticate(user, cookie, password),
-                        Message::PolkitDone,
-                    );
+                    let (check, handle) = Task::perform(
+                        polkit::authenticate(user, cookie.clone(), password),
+                        move |result| Message::PolkitDone(cookie.clone(), result),
+                    )
+                    .abortable();
+                    dialog.check = Some(handle.abort_on_drop());
+                    return check;
                 }
             }
-            Message::PolkitDone(Ok(())) => {
+            Message::PolkitDone(cookie, _)
+                if self
+                    .polkit
+                    .as_ref()
+                    .is_none_or(|d| d.request.cookie != cookie) => {}
+            Message::PolkitDone(_, Ok(())) => {
                 if let Some(dialog) = self.polkit.take() {
                     polkit::finish(&dialog.request.cookie, true);
                 }
                 return self.set_overlay(None);
             }
-            Message::PolkitDone(Err(error)) => {
+            Message::PolkitDone(_, Err(error)) => {
                 if let Some(dialog) = &mut self.polkit {
+                    dialog.check = None;
                     dialog.busy = false;
                     dialog.error = Some(error);
                     return iced::widget::operation::focus(polkit::FIELD);

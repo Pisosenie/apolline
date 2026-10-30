@@ -33,6 +33,7 @@ pub struct Dialog {
     pub password: String,
     pub error: Option<String>,
     pub busy: bool,
+    pub check: Option<iced::task::Handle>,
 }
 
 impl Dialog {
@@ -43,6 +44,7 @@ impl Dialog {
             password: String::new(),
             error: None,
             busy: false,
+            check: None,
         }
     }
 }
@@ -139,6 +141,14 @@ async fn register(connection: &Connection) -> Result<(), String> {
 fn users(identities: &[(String, HashMap<String, OwnedVariant>)]) -> Vec<String> {
     let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
     let groups = std::fs::read_to_string("/etc/group").unwrap_or_default();
+    let lookup = |db: &str, id: u32| {
+        std::process::Command::new("getent")
+            .args([db, &id.to_string()])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
     let number = |details: &HashMap<String, OwnedVariant>, key: &str| {
         details.get(key).and_then(|v| u32::try_from(v).ok())
     };
@@ -146,13 +156,18 @@ fn users(identities: &[(String, HashMap<String, OwnedVariant>)]) -> Vec<String> 
     for (kind, details) in identities {
         match kind.as_str() {
             "unix-user" => {
-                if let Some(name) = number(details, "uid").and_then(|uid| login(&passwd, uid)) {
+                if let Some(name) = number(details, "uid").and_then(|uid| {
+                    lookup("passwd", uid)
+                        .and_then(|line| login(&line, uid))
+                        .or_else(|| login(&passwd, uid))
+                }) {
                     users.push(name);
                 }
             }
             "unix-group" => {
                 if let Some(gid) = number(details, "gid") {
-                    users.extend(members(&groups, &passwd, gid));
+                    let line = lookup("group", gid).unwrap_or_else(|| groups.clone());
+                    users.extend(members(&line, &passwd, gid));
                 }
             }
             _ => {}
@@ -160,7 +175,11 @@ fn users(identities: &[(String, HashMap<String, OwnedVariant>)]) -> Vec<String> 
     }
     let me = std::env::var("USER").unwrap_or_default();
     users.sort_by_key(|user| *user != me);
-    users.dedup();
+    let mut seen = std::collections::HashSet::new();
+    users.retain(|user| seen.insert(user.clone()));
+    if users.is_empty() && !me.is_empty() {
+        users.push(me);
+    }
     users
 }
 
