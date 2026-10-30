@@ -5,6 +5,7 @@ use iced::widget::{button, column, container, image, progress_bar, row, space, t
 use iced::{Background, Border, ContentFit, Element, Fill, Theme};
 
 use crate::apps::App;
+use crate::icon::{Icon, icon};
 
 use crate::media::shorten;
 use crate::notify::{Notification, Urgency};
@@ -91,7 +92,13 @@ fn card<'a>(
             text(ago(notification.received.elapsed()))
                 .size(11)
                 .color(muted),
-        ],
+            button(icon(Icon::X, 11.0, neutral::MUTED))
+                .padding(2)
+                .style(style::ghost(6.0))
+                .on_press(Message::Dismiss(notification.id)),
+        ]
+        .spacing(6)
+        .align_y(iced::Alignment::Center),
         text(shorten(&notification.summary, 34))
             .size(14)
             .font(iced::Font {

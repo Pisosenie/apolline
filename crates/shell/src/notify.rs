@@ -215,11 +215,16 @@ pub fn invoke(id: u32, key: String) -> Task<Message> {
     .discard()
 }
 
+// A card shows pictures this big at most, so nothing larger is kept, in the card or the history.
+const PICTURE: u32 = 144;
+
+enum Picture {
+    Pixels(u32, u32, Vec<u8>),
+    File(std::path::PathBuf),
+}
+
 // The picture a notification carries: raw pixels, a file, or an icon given as a path.
-fn picture(
-    hints: &HashMap<String, OwnedVariant>,
-    app_icon: &str,
-) -> Option<iced::widget::image::Handle> {
+fn picture(hints: &HashMap<String, OwnedVariant>, app_icon: &str) -> Option<Picture> {
     let pixels = ["image-data", "image_data", "icon_data"]
         .iter()
         .find_map(|key| hints.get(*key))
@@ -231,7 +236,7 @@ fn picture(
             rgba(width, height, stride, bits, channels, &data)
         });
     if let Some((width, height, rgba)) = pixels {
-        return Some(iced::widget::image::Handle::from_rgba(width, height, rgba));
+        return Some(Picture::Pixels(width, height, rgba));
     }
     let path = ["image-path", "image_path"]
         .iter()
@@ -240,7 +245,32 @@ fn picture(
         .unwrap_or_else(|| app_icon.to_owned());
     let path = path.strip_prefix("file://").unwrap_or(&path);
     let file = Path::new(path);
-    (file.is_absolute() && file.is_file()).then(|| iced::widget::image::Handle::from_path(file))
+    let small = std::fs::metadata(file).is_ok_and(|m| m.is_file() && m.len() < 32 << 20);
+    (file.is_absolute() && small).then(|| Picture::File(file.to_path_buf()))
+}
+
+fn shrink(picture: Picture) -> Option<iced::widget::image::Handle> {
+    let image = match picture {
+        Picture::Pixels(width, height, rgba) => ::image::RgbaImage::from_raw(width, height, rgba)?,
+        Picture::File(file) => ::image::open(file).ok()?.into_rgba8(),
+    };
+    let (width, height) = image.dimensions();
+    let image = if width.max(height) > PICTURE {
+        let scale = PICTURE as f32 / width.max(height) as f32;
+        ::image::imageops::thumbnail(
+            &image,
+            ((width as f32 * scale).round() as u32).max(1),
+            ((height as f32 * scale).round() as u32).max(1),
+        )
+    } else {
+        image
+    };
+    let (width, height) = image.dimensions();
+    Some(iced::widget::image::Handle::from_rgba(
+        width,
+        height,
+        image.into_raw(),
+    ))
 }
 
 fn rgba(
@@ -312,7 +342,8 @@ impl Server {
         expire_timeout: i32,
     ) -> u32 {
         // Apolline's own cards aren't anyone else's to replace.
-        let id = if replaces_id == 0 || replaces_id >= CONFIG_CARD {
+        // Only an id handed out since this start can be replaced; anything else is new.
+        let id = if replaces_id == 0 || replaces_id > self.last {
             self.last += 1;
             self.last
         } else {
@@ -332,7 +363,13 @@ impl Server {
             .iter()
             .map(|[key, label]| (key.clone(), label.clone()))
             .collect();
-        let image = picture(&hints, &app_icon);
+        let image = match picture(&hints, &app_icon) {
+            Some(picture) => tokio::task::spawn_blocking(move || shrink(picture))
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
         let progress = hints
             .get("value")
             .and_then(|v| v.downcast_ref::<i32>().ok())

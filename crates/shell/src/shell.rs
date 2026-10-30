@@ -855,14 +855,21 @@ impl Shell {
                     notification.timeout = Some(Duration::from_secs(seconds));
                 }
                 self.history.retain(|n| n.id != notification.id);
+                let mut dropped = Vec::new();
                 if notification.id != notify::CONFIG_CARD {
                     self.history.insert(0, notification.clone());
-                    self.history.truncate(50);
+                    dropped = self.history.split_off(self.history.len().min(50));
                 }
+                let dropped = Task::batch(
+                    dropped
+                        .into_iter()
+                        .filter(|n| !self.popups.iter().any(|(p, _)| p.id == n.id))
+                        .map(|n| notify::closed(n.id, Closed::Expired)),
+                );
                 // Into the history and nowhere else; the app isn't told it was closed,
                 // since some take that as read.
                 if self.config.alerts.muted(&notification.app) {
-                    return Task::none();
+                    return dropped;
                 }
                 if self.config.alerts.always(&notification.app)
                     || notify::lets_through(self.rule(), notification.urgency)
@@ -871,6 +878,7 @@ impl Shell {
                 } else {
                     self.held.push(notification);
                 }
+                return dropped;
             }
             Message::Unnotify(id) => {
                 self.forget(id);
@@ -892,16 +900,13 @@ impl Shell {
             }
             Message::KeepAwake(on) => self.awake = on,
             Message::Idle(stage, true) => return self.idle(stage),
-            Message::Dismiss(notify::SHOT_CARD) => {
-                self.forget(notify::SHOT_CARD);
-                return self.open_marks();
-            }
             Message::Dismiss(id) => {
                 self.forget(id);
                 return notify::closed(id, Closed::Dismissed);
             }
             Message::Activate(notify::SHOT_CARD) => {
-                return self.update(Message::Dismiss(notify::SHOT_CARD));
+                self.forget(notify::SHOT_CARD);
+                return self.open_marks();
             }
             Message::Activate(id) => {
                 let Some(notification) = self
@@ -935,6 +940,7 @@ impl Shell {
             }
             Message::Invoke(id, key) => {
                 self.forget(id);
+                self.history.retain(|n| n.id != id);
                 return notify::invoke(id, key);
             }
             Message::MarksOpened(Ok(marks)) => {
@@ -1788,13 +1794,15 @@ impl Shell {
             .into_iter()
             .partition(|(n, shown)| n.timeout.is_some_and(|t| now.duration_since(*shown) >= t));
         self.popups = live;
+        // A card that slips into the history isn't closed for the app: a click there
+        // still has to reach it. Only what isn't kept is.
         Task::batch(
             gone.into_iter()
+                .filter(|(n, _)| !self.history.iter().any(|kept| kept.id == n.id))
                 .map(|(n, _)| notify::closed(n.id, Closed::Expired)),
         )
     }
 
-    #[cfg(target_os = "linux")]
     #[cfg(target_os = "linux")]
     pub fn popup_height(&self) -> u32 {
         popup::height(self.popups.iter().rev().map(|(n, _)| n))
