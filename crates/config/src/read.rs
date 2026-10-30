@@ -6,8 +6,8 @@ use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
     Accent, Alerts, Appear, Blur, Center, Config, Desktop, Diagnostic, Display, Edge, Idle,
-    Keyboard, Layout, Lock, ModeSettings, Motion, Mouse, Notifications, Rule, Shortcut, Shortcuts,
-    Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
+    Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Rule, Shortcut,
+    Shortcuts, Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -16,7 +16,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 18] = [
+const SECTIONS: [&str; 19] = [
     "general",
     "theme",
     "desktop",
@@ -34,6 +34,7 @@ const SECTIONS: [&str; 18] = [
     "windows",
     "rule",
     "display",
+    "module",
     "mode",
 ];
 
@@ -228,6 +229,7 @@ impl Reader<'_> {
                 }
                 "rule" => self.rules(key, value, config),
                 "display" => self.displays(key, value, config),
+                "module" => self.modules(key, value, config),
                 "mode" => self.modes(key, value, config),
                 _ => self.unknown(key, "section", &SECTIONS),
             }
@@ -590,6 +592,48 @@ impl Reader<'_> {
                 "appear" => windows.appear = self.choice(key, value, &appears).or(windows.appear),
                 "blur" => windows.blur = self.choice(key, value, &blurs).or(windows.blur),
                 _ => self.unknown(key, "option", &WINDOW_OPTIONS),
+            }
+        }
+    }
+
+    fn modules(&mut self, key: &Key, value: &Value, config: &mut Config) {
+        let DeValue::Array(items) = value.get_ref() else {
+            self.wrong::<()>(key, value, "a list of [[module]] sections");
+            return;
+        };
+        for item in items {
+            let DeValue::Table(table) = item.get_ref() else {
+                continue;
+            };
+            let mut module = Module {
+                command: String::new(),
+                every: None,
+                click: None,
+            };
+            for (key, value) in table.iter() {
+                match key.get_ref().as_ref() {
+                    "command" => {
+                        if let Some(v) = self.string(key, value) {
+                            module.command = v.trim().to_owned()
+                        }
+                    }
+                    "every" => module.every = self.number(key, value, 1..=65535).map(u32::from),
+                    "click" => {
+                        module.click = self
+                            .string(key, value)
+                            .map(|v| v.trim().to_owned())
+                            .filter(|v| !v.is_empty())
+                    }
+                    _ => self.unknown(key, "option", &["command", "every", "click"]),
+                }
+            }
+            if module.command.is_empty() {
+                self.diagnostics.push(
+                    Diagnostic::new(self.line(item.span()), "a module needs a command")
+                        .hint("add command = \"date +%A\"; each line it prints shows on the bar"),
+                );
+            } else {
+                config.modules.push(module);
             }
         }
     }

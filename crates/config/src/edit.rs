@@ -186,6 +186,19 @@ impl Editor {
         }
     }
 
+    pub fn add_module(&mut self, command: &str) {
+        let mut table = Table::new();
+        table.insert("command", command.into());
+        list(self.doc.as_table_mut(), "module").push(table);
+    }
+
+    pub fn remove_module(&mut self, index: usize) {
+        let modules = list(self.doc.as_table_mut(), "module");
+        if index < modules.len() {
+            modules.remove(index);
+        }
+    }
+
     pub fn remove_rule(&mut self, index: usize) {
         let rules = list(self.doc.as_table_mut(), "rule");
         if index < rules.len() {

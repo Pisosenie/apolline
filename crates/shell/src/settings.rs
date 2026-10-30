@@ -259,6 +259,9 @@ enum Message {
     Shuffle(bool),
     Apps(Vec<App>),
     PinQuery(String),
+    ModuleDraft(String),
+    AddModule,
+    RemoveModule(usize),
     WeatherDraft(String),
     SetWeather,
     PinApp(String),
@@ -385,6 +388,7 @@ struct Settings {
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
+    module_draft: String,
     weather_draft: Option<String>,
     live: crate::control::Shared,
     monitors: Vec<String>,
@@ -461,6 +465,7 @@ impl Settings {
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
+            module_draft: String::new(),
             weather_draft: None,
             live: crate::control::shared(),
             monitors: wallpaper::monitors(),
@@ -707,6 +712,15 @@ impl Settings {
             }),
             Message::Apps(apps) => self.apps = apps,
             Message::PinQuery(query) => self.pin_query = query,
+            Message::ModuleDraft(draft) => self.module_draft = draft,
+            Message::AddModule => {
+                let command = self.module_draft.trim().to_owned();
+                if !command.is_empty() {
+                    self.edit(|e| e.add_module(&command));
+                    self.module_draft.clear();
+                }
+            }
+            Message::RemoveModule(index) => self.edit(|e| e.remove_module(index)),
             Message::WeatherDraft(draft) => self.weather_draft = Some(draft),
             Message::SetWeather => {
                 if let Some(place) = self.weather_draft.take() {
@@ -1413,6 +1427,11 @@ impl Settings {
             }
             (Ok(_), Page::Modes) => Some(String::new()),
             (Ok(editor), Page::Displays) => Some(editor.lists("display")),
+            (Ok(editor), Page::Bar) => Some(format!(
+                "{}\n{}",
+                editor.sections(page.sections()),
+                editor.lists("module")
+            )),
             (Ok(editor), Page::Windows) => Some(format!(
                 "{}\n{}",
                 editor.sections(page.sections()),
@@ -2993,6 +3012,65 @@ impl Settings {
         .into()
     }
 
+    fn module_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let mut rows: Vec<Element<'_, Message>> = self
+            .config
+            .modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| {
+                let mut about = Vec::new();
+                if let Some(every) = module.every {
+                    about.push(format!("every {every} s"));
+                }
+                if module.click.is_some() {
+                    about.push("clickable".to_owned());
+                }
+                row![
+                    text(module.command.as_str())
+                        .size(12)
+                        .font(style::mono())
+                        .width(Fill),
+                    text(about.join(" · "))
+                        .size(11)
+                        .color(style::color(style::FAINT)),
+                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::RemoveModule(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([8, 16])
+                .into()
+            })
+            .collect();
+        rows.push(
+            row![
+                text_input("A command, like  date +%A", &self.module_draft)
+                    .on_input(Message::ModuleDraft)
+                    .on_submit(Message::AddModule)
+                    .padding([8, 12])
+                    .size(13)
+                    .font(style::mono())
+                    .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::secondary)
+                    .on_press_maybe(
+                        (!self.module_draft.trim().is_empty()).then_some(Message::AddModule)
+                    ),
+            ]
+            .spacing(8)
+            .padding([12, 16])
+            .into(),
+        );
+        rows.push(note(
+            "Each line the command prints shows on the bar. One that prints once and exits can rerun with every = seconds, and click = a command runs on a click; both go in the file.",
+        ));
+        rows
+    }
+
     fn pinned_apps(&self, palette: Palette) -> Vec<Element<'_, Message>> {
         let mut rows: Vec<Element<'_, Message>> = self
             .config
@@ -3092,6 +3170,7 @@ impl Settings {
                         focused: false,
                     })
                     .collect(),
+                modules: Vec::new(),
             })
             .map(|_| Message::Noop);
             let inset = if look.floating { 10.0 } else { 0.0 };
@@ -3147,6 +3226,7 @@ impl Settings {
                 ]
             ),
             group("Pinned apps", self.pinned_apps(palette)),
+            group("Your modules", self.module_rows(palette)),
             group(
                 "Calendar",
                 vec![

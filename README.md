@@ -74,6 +74,20 @@ opacity = 0.95
 
 Nothing in `[windows]` is written to niri until you set it, so your niri config keeps deciding the rest.
 
+## Your own bar modules
+
+Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.
+
+```toml
+[[module]]
+command = "while true; do date +%V; sleep 3600; done"   # the week number, kept up to date
+
+[[module]]
+command = "curl -s 'wttr.in/?format=%t'"
+every = 900
+click = "xdg-open https://wttr.in"
+```
+
 ## Themes
 
 A theme is one small file: wallpaper, accent, gaps, corners, borders, shadows, window opacity, animation speed and the bar's place and look. Settings → Themes shows them as a gallery: five come with Apolline (Fog, Ember, Night, Minimal, Glass), *Save my look* turns your current setup into one, and *Add someone's theme* takes a file somebody sent you. They live in `~/.config/apolline/themes`, so sharing a look is sending a file.

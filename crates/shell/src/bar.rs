@@ -30,6 +30,7 @@ pub struct Bar<'a> {
     pub panel_open: bool,
     pub apps: &'a [App],
     pub pinned: Vec<Pinned>,
+    pub modules: Vec<(usize, &'a str, bool)>,
 }
 
 pub struct Pinned {
@@ -149,6 +150,17 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
                 .padding([5, 8])
                 .style(style::ghost(style::PILL))
                 .on_press(Message::Overlay(Some(Overlay::Panel))),
+        );
+    }
+    for (index, line, clickable) in &bar.modules {
+        let label = text(line.to_string())
+            .size(12)
+            .color(style::color(neutral::MUTED));
+        right = right.push(
+            button(label)
+                .padding([4, 8])
+                .style(style::ghost(8.0))
+                .on_press_maybe(clickable.then_some(Message::ModuleClick(*index))),
         );
     }
     right = right.push(tray(&bar));

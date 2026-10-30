@@ -74,6 +74,8 @@ pub enum Message {
     Overlay(Option<Overlay>),
     Opened,
     ConfigChanged,
+    Module(usize, String),
+    ModuleClick(usize),
     NightLight(bool),
     Frame,
     CalendarMonth(i32),
@@ -180,6 +182,7 @@ pub struct Shell {
     wallpapers: Vec<(String, image::Handle)>,
     fade: Option<(image::Handle, Instant)>,
     night: (bool, Option<bool>),
+    module_text: Vec<(usize, String)>,
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
@@ -260,6 +263,7 @@ impl Shell {
             wallpapers: Vec::new(),
             fade: None,
             night: (false, None),
+            module_text: Vec::new(),
             ticks: 0,
             published: None,
             now: Local::now(),
@@ -529,6 +533,18 @@ impl Shell {
                 }
             }
             Message::NightLight(on) => self.night.1 = Some(on),
+            Message::Module(index, text) => {
+                self.module_text.retain(|(i, _)| *i != index);
+                if !text.is_empty() {
+                    self.module_text.push((index, text));
+                    self.module_text.sort_by_key(|(i, _)| *i);
+                }
+            }
+            Message::ModuleClick(index) => {
+                if let Some(click) = self.config.modules.get(index).and_then(|m| m.click.clone()) {
+                    return self.spawn(&click);
+                }
+            }
             Message::Frame => {
                 if self
                     .fade
@@ -1657,6 +1673,12 @@ impl Shell {
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
+            modules: self
+                .module_text
+                .iter()
+                .filter(|(i, _)| *i < self.config.modules.len())
+                .map(|(i, text)| (*i, text.as_str(), self.config.modules[*i].click.is_some()))
+                .collect(),
         })
     }
 
@@ -1713,6 +1735,7 @@ impl Shell {
             subscription(),
             fading,
             crate::night::subscription(self.night_light()).map(|()| Message::Frame),
+            crate::modules::subscription(&self.config.modules),
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,

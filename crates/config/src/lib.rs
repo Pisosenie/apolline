@@ -31,6 +31,7 @@ pub struct Config {
     pub windows: Windows,
     pub rules: Vec<Rule>,
     pub displays: Vec<Display>,
+    pub modules: Vec<Module>,
     pub pinned: Vec<String>,
     pub weather: Option<String>,
     pub modes: Vec<ModeSettings>,
@@ -175,6 +176,13 @@ pub struct Night {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Apps {
     pub colors: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Module {
+    pub command: String,
+    pub every: Option<u32>,
+    pub click: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -623,6 +631,7 @@ impl Default for Config {
             },
             rules: Vec::new(),
             displays: Vec::new(),
+            modules: Vec::new(),
             pinned: Vec::new(),
             weather: None,
             modes: Vec::new(),

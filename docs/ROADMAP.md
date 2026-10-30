@@ -117,7 +117,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - A click on the clock: the month, today's weather from Open-Meteo, events from an ICS or CalDAV
   calendar, no account sign-in.
 - Capture: region and window screenshots with quick marks, a screen recorder, a color picker.
-- A bar module of your own: a command that prints a new line whenever its text changes.
+- A bar module of your own — done (`[[module]]`: command, every, click).
 
 ### 6. Getting it to people
 - Screenshots and a short video in the README, `apolline-git` on the AUR, CI that builds and tests
