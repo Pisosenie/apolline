@@ -14,6 +14,18 @@ cargo run -p apolline-shell -- --mode play --screenshot shot.png
 tools/headless.sh shot.png --mode play         # Linux: the real session under a headless sway, saved with grim
 ```
 
+## With niri
+
+Add this line at the end of `~/.config/niri/config.kdl`:
+
+```kdl
+include "/usr/share/apolline/niri.kdl"
+```
+
+It starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, and binds `Mod+Shift+M` to the next mode. Switch modes from anywhere with `apolline mode work|play|evening|next`. From a checkout, point the include at [`assets/niri.kdl`](assets/niri.kdl).
+
+## Config
+
 The config is forgiving: a typo is reported with the line and a suggestion, and everything else still applies. See [`assets/config.toml`](assets/config.toml).
 
 ## Layout
@@ -24,7 +36,7 @@ The config is forgiving: a typo is reported with the line and a suggestion, and 
 | `crates/config` | config model and its parser |
 | `crates/niri` | niri IPC protocol and the state it describes, no I/O |
 | `crates/shell` | the `apolline` binary: shared core, preview window, layer-shell session |
-| `assets/` | wallpapers and the default config |
+| `assets/` | wallpapers, the default config, the niri fragment |
 | `tools/` | wallpaper generator, headless screenshot script |
 
 ## License
