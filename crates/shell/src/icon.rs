@@ -37,6 +37,7 @@ icons! {
     BluetoothOff = "bluetooth-off",
     Briefcase = "briefcase",
     Brush = "paintbrush",
+    Calculator = "calculator",
     Camera = "camera",
     Check = "check",
     ChevronRight = "chevron-right",

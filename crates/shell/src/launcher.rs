@@ -8,6 +8,7 @@ use iced::widget::{
 use iced::{Alignment, Element, Fill, Length, Task};
 
 use crate::apps::{self, App, Picture};
+use crate::calc;
 use crate::icon::{Icon, icon};
 use crate::panel::Power;
 use crate::shell::{Message, Overlay};
@@ -22,6 +23,8 @@ const LIST: &str = "launcher-list";
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
     App(String),
+    Window(u64),
+    Copy(String),
     Mode(Option<usize>),
     Settings,
     Clipboard,
@@ -35,6 +38,13 @@ pub struct Launcher {
     pub selected: usize,
     apps: Vec<App>,
     modes: Vec<(String, String)>,
+    windows: Vec<OpenWindow>,
+}
+
+pub struct OpenWindow {
+    pub id: u64,
+    pub title: String,
+    pub app: String,
 }
 
 struct Entry<'a> {
@@ -105,6 +115,10 @@ impl Launcher {
         self.apps = apps;
     }
 
+    pub fn set_windows(&mut self, windows: Vec<OpenWindow>) {
+        self.windows = windows;
+    }
+
     pub fn search(&mut self, query: String) -> Task<Message> {
         self.query = query;
         self.selected = 0;
@@ -132,7 +146,38 @@ impl Launcher {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
+        if let Some(result) = calc::answer(query) {
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: format!("= {result}"),
+                    about: "Enter copies it".to_owned(),
+                    picture: Pic::Icon(Icon::Calculator),
+                    target: Target::Copy(result),
+                    game: false,
+                },
+            ));
+        }
         if !query.is_empty() {
+            for window in &self.windows {
+                let app = apps::find(&self.apps, &window.app);
+                let name = app.map_or(window.app.as_str(), |app| app.name.as_str());
+                let extra = format!("{name} {} window", window.app);
+                if let Some(score) = apps::rank(query, &window.title, &extra)
+                    .max(apps::rank(query, name, "").map(|s| s.saturating_sub(1)))
+                {
+                    ranked.push((
+                        score + 40,
+                        Entry {
+                            title: window.title.clone(),
+                            about: format!("Open window · {name}"),
+                            picture: Pic::App(app.and_then(|app| app.icon.as_ref())),
+                            target: Target::Window(window.id),
+                            game: false,
+                        },
+                    ));
+                }
+            }
             let modes = self.modes.iter().enumerate().map(|(index, (name, glyph))| {
                 (
                     name.clone(),
@@ -431,6 +476,28 @@ mod tests {
         assert!(entries[..3].iter().all(|e| e.game));
         assert!(entries[3..].iter().all(|e| !e.game));
         assert!(entries.iter().all(|e| !matches!(e.target, Target::Mode(_))));
+    }
+
+    #[test]
+    fn sums_and_open_windows_come_before_apps() {
+        let mut launcher = launcher();
+        launcher.set_windows(vec![OpenWindow {
+            id: 7,
+            title: "Mozilla Firefox — Release notes".into(),
+            app: "firefox".into(),
+        }]);
+        let _ = launcher.search("15% of 340".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("51".into())));
+        let _ = launcher.search("release".into());
+        assert_eq!(launcher.chosen(), Some(Target::Window(7)));
+        let _ = launcher.search("firefox".into());
+        assert_eq!(
+            launcher.chosen(),
+            Some(Target::Window(7)),
+            "the running one is a jump away"
+        );
+        let _ = launcher.step(1);
+        assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
     }
 
     #[test]

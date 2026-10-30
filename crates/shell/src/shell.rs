@@ -18,7 +18,7 @@ use crate::controls::{self, Change, Controls, Nudge, Osd};
 use crate::fragment::{self, Fragment};
 use crate::idle::{self, Stage};
 use crate::keymap::{self, Entry};
-use crate::launcher::{Launcher, Target};
+use crate::launcher::{Launcher, OpenWindow, Target};
 use crate::logind;
 use crate::media::{self, Action, Track};
 use crate::niri;
@@ -632,7 +632,10 @@ impl Shell {
         self.armed = None;
         match overlay {
             Some(Overlay::Launcher) => Task::batch([
-                self.launcher.open(),
+                {
+                    self.launcher.set_windows(self.open_windows());
+                    self.launcher.open()
+                },
                 Task::perform(apps::scan(), Message::Apps),
             ]),
             Some(Overlay::Panel) => {
@@ -654,6 +657,15 @@ impl Shell {
         let close = self.set_overlay(None);
         let task = match target {
             Target::App(command) => self.spawn(&command),
+            Target::Window(id) => {
+                return Task::batch([close, self.update(Message::FocusWindow(id))]);
+            }
+            Target::Copy(text) => {
+                let content = clipboard::Content::Text(text);
+                clipboard::copy(&content);
+                clipboard::remember(&mut self.clips, Clip::new(content));
+                Task::none()
+            }
             Target::Mode(mode) => self.switch(mode),
             Target::Settings => self.spawn(&format!("{} settings", me())),
             Target::Keys => {
@@ -665,6 +677,32 @@ impl Shell {
             Target::Power(power) => self.spawn(&power.command()),
         };
         Task::batch([close, task])
+    }
+
+    fn open_windows(&self) -> Vec<OpenWindow> {
+        match &self.niri {
+            Some(state) => state
+                .recent()
+                .into_iter()
+                .filter(|window| !window.is_focused)
+                .map(|window| OpenWindow {
+                    id: window.id,
+                    title: window.title.clone().unwrap_or_default(),
+                    app: window.app_id.clone().unwrap_or_default(),
+                })
+                .collect(),
+            None => self
+                .status
+                .windows
+                .iter()
+                .filter(|(_, _, focused)| !focused)
+                .map(|(id, app, _)| OpenWindow {
+                    id: *id,
+                    title: app.clone(),
+                    app: app.clone(),
+                })
+                .collect(),
+        }
     }
 
     fn spawn(&self, command: &str) -> Task<Message> {

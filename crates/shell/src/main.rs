@@ -1,5 +1,6 @@
 mod apps;
 mod bar;
+mod calc;
 mod clipboard;
 mod clips;
 mod control;
