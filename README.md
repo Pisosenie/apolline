@@ -10,9 +10,10 @@ Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar
 
 | | |
 |---|---|
-| ![The launcher finds the running Firefox before offering a new one](docs/screenshots/launcher.jpg) | ![The lock screen](docs/screenshots/lock.jpg) |
+| ![The launcher finds the running Firefox before offering a new one](docs/screenshots/launcher.jpg) | ![The lock screen, with the weather and what's coming up](docs/screenshots/lock.jpg) |
 | ![Switching modes](docs/screenshots/switch.jpg) | ![Settings → Modes, with the lines it writes](docs/screenshots/modes.jpg) |
-| ![Settings → Themes](docs/screenshots/themes.jpg) | |
+| ![Settings → Themes](docs/screenshots/themes.jpg) | ![The calendar under the clock: the weather and the day's events](docs/screenshots/calendar.jpg) |
+| ![Notifications with a picture, a progress bar and the app's own buttons](docs/screenshots/notifications.jpg) | |
 
 ## Install on Arch
 

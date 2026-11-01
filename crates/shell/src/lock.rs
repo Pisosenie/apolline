@@ -145,7 +145,15 @@ impl Lock {
         let sample = preview && !niri::connected();
         let lock = Self {
             mode,
-            user: user(),
+            user: if sample {
+                User {
+                    login: "lena".into(),
+                    name: "Lena".into(),
+                    face: None,
+                }
+            } else {
+                user()
+            },
             password: String::new(),
             state: State::Typing,
             wallpaper: None,
