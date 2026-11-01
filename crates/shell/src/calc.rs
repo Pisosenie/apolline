@@ -29,12 +29,23 @@ pub fn money(input: &str, rates: &crate::rates::Rates) -> Option<String> {
 // True when the words look like a sum of money, before any rates are known.
 pub fn wants_rates(input: &str) -> bool {
     let lower = input.trim().to_lowercase();
+    let known = |code: &str| COMMON.contains(&code);
     [" in ", " to "].iter().any(|word| {
         lower.split_once(word).is_some_and(|(from, to)| {
-            amount(from).is_some() && currency(to.trim()).is_some() && convert(input).is_none()
+            amount(from).is_some_and(|(_, code)| known(&code))
+                && currency(to.trim()).is_some_and(|code| known(&code))
+                && convert(input).is_none()
         })
     })
 }
+
+// The currencies worth asking for rates over; any other three letters are likelier a word.
+const COMMON: [&str; 44] = [
+    "USD", "EUR", "GBP", "JPY", "CNY", "RUB", "KZT", "UAH", "BYN", "UZS", "KGS", "GEL", "AMD",
+    "AZN", "TRY", "INR", "CHF", "CAD", "AUD", "NZD", "SEK", "NOK", "DKK", "ISK", "PLN", "CZK",
+    "HUF", "RON", "BGN", "RSD", "BRL", "MXN", "ARS", "CLP", "KRW", "SGD", "HKD", "TWD", "THB",
+    "IDR", "AED", "SAR", "ILS", "ZAR",
+];
 
 const SYMBOLS: [(char, &str); 8] = [
     ('$', "USD"),
@@ -77,7 +88,24 @@ fn amount(text: &str) -> Option<(f64, String)> {
         }
     };
     let code = currency(&code)?;
-    Some((eval(number.trim())?, code))
+    Some((eval(&thousands(number.trim()))?, code))
+}
+
+// "1,000" and "12,500.50" are thousands, while "1,5" stays a decimal comma.
+fn thousands(number: &str) -> String {
+    let groups: Vec<&str> = number.split(',').collect();
+    let whole = groups.len() > 1
+        && (1..=3).contains(&groups[0].len())
+        && groups[0].chars().all(|c| c.is_ascii_digit())
+        && groups[1..].iter().all(|group| {
+            let digits = group.split('.').next().unwrap_or_default();
+            digits.len() == 3 && digits.chars().all(|c| c.is_ascii_digit())
+        });
+    if whole {
+        number.replace(',', "")
+    } else {
+        number.to_owned()
+    }
 }
 
 fn money_format(value: f64) -> String {
@@ -358,6 +386,16 @@ mod tests {
         assert!(wants_rates("$5 to ₽"));
         assert!(!wants_rates("10 km in mi"), "units are no money");
         assert!(!wants_rates("firefox"));
+        assert!(
+            !wants_rates("10 sec in min"),
+            "three letters aren't a currency yet"
+        );
+        assert_eq!(money("$1,000 in eur", &rates).as_deref(), Some("920 EUR"));
+        assert_eq!(
+            money("12,500.50 usd in eur", &rates).as_deref(),
+            Some("11500.46 EUR")
+        );
+        assert_eq!(money("1,5 eur in usd", &rates).as_deref(), Some("1.63 USD"));
     }
 
     #[test]

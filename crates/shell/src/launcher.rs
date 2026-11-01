@@ -47,7 +47,7 @@ pub struct Launcher {
     files: Vec<std::path::PathBuf>,
     look: apolline_config::Surface,
     grid: bool,
-    rates: Option<std::sync::Arc<crate::rates::Rates>>,
+    rates: Option<(std::sync::Arc<crate::rates::Rates>, std::time::Instant)>,
     asked: bool,
 }
 
@@ -166,13 +166,18 @@ impl Launcher {
 
     // True once a sum of money is typed and there are no rates yet; asked once a launch.
     pub fn wants_rates(&mut self) -> bool {
-        let wanted = self.rates.is_none() && !self.asked && calc::wants_rates(&self.query);
+        // Kept for half a day, like the file they come from.
+        let stale = self
+            .rates
+            .as_ref()
+            .is_none_or(|(_, got)| got.elapsed() > std::time::Duration::from_secs(12 * 3600));
+        let wanted = stale && !self.asked && calc::wants_rates(&self.query);
         self.asked |= wanted;
         wanted
     }
 
     pub fn set_rates(&mut self, rates: std::sync::Arc<crate::rates::Rates>) {
-        self.rates = Some(rates);
+        self.rates = Some((rates, std::time::Instant::now()));
     }
 
     pub fn set_modes(&mut self, modes: Vec<(String, String)>) {
@@ -283,7 +288,7 @@ impl Launcher {
                     game: false,
                 },
             ));
-        } else if let Some(rates) = &self.rates
+        } else if let Some((rates, _)) = &self.rates
             && let Some(result) = calc::money(query, rates)
         {
             ranked.push((

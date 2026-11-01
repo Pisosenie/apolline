@@ -32,6 +32,9 @@ pub async fn load() -> Result<Arc<Rates>, String> {
             return Ok(Arc::new(rates));
         }
         let body = ureq::get(SOURCE)
+            .config()
+            .timeout_global(Some(Duration::from_secs(20)))
+            .build()
             .call()
             .map_err(|err| err.to_string())?
             .body_mut()
