@@ -49,6 +49,10 @@ pub struct Notification {
     pub image: Option<iced::widget::image::Handle>,
     // How far along something is, 0 to 100, for downloads and the like.
     pub progress: Option<u8>,
+    // Not worth keeping once it's gone, like a volume level another tool shows.
+    pub transient: bool,
+    // Stays after one of its buttons is pressed, for a player's controls and the like.
+    pub resident: bool,
     pub summary: String,
     pub body: String,
     pub urgency: Urgency,
@@ -129,6 +133,8 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         actions: Vec::new(),
         image: None,
         progress: None,
+        transient: false,
+        resident: false,
         summary: capitalize(&first.message),
         body,
         urgency: Urgency::Normal,
@@ -148,6 +154,8 @@ pub fn shot_card(path: &str) -> Notification {
         actions: Vec::new(),
         image: None,
         progress: None,
+        transient: false,
+        resident: false,
         summary: "Screenshot copied".into(),
         body: "Click to add arrows, boxes or hide a part".into(),
         urgency: Urgency::Normal,
@@ -178,6 +186,25 @@ pub fn closed(id: u32, reason: Closed) -> Task<Message> {
                 NAME,
                 "NotificationClosed",
                 &(id, reason as u32),
+            )
+            .await;
+    })
+    .discard()
+}
+
+// Tells the app which of its buttons was pressed, and nothing more: the card stays.
+pub fn act(id: u32, key: String) -> Task<Message> {
+    let Some(connection) = CONNECTION.get().cloned().filter(|_| id < CONFIG_CARD) else {
+        return Task::none();
+    };
+    Task::future(async move {
+        let _ = connection
+            .emit_signal(
+                None::<&str>,
+                PATH,
+                NAME,
+                "ActionInvoked",
+                &(id, key.as_str()),
             )
             .await;
     })
@@ -374,6 +401,12 @@ impl Server {
             .get("value")
             .and_then(|v| v.downcast_ref::<i32>().ok())
             .map(|value| value.clamp(0, 100) as u8);
+        let flag = |key: &str| {
+            hints
+                .get(key)
+                .and_then(|v| v.downcast_ref::<bool>().ok())
+                .unwrap_or(false)
+        };
         let notification = Notification {
             id,
             app: app_name,
@@ -381,6 +414,8 @@ impl Server {
             actions,
             image,
             progress,
+            transient: flag("transient"),
+            resident: flag("resident"),
             summary,
             body,
             urgency,

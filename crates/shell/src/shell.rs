@@ -856,7 +856,7 @@ impl Shell {
                 }
                 self.history.retain(|n| n.id != notification.id);
                 let mut dropped = Vec::new();
-                if notification.id != notify::CONFIG_CARD {
+                if notification.id != notify::CONFIG_CARD && !notification.transient {
                     self.history.insert(0, notification.clone());
                     dropped = self.history.split_off(self.history.len().min(50));
                 }
@@ -939,6 +939,10 @@ impl Shell {
                 return Task::batch([close, focus, told]);
             }
             Message::Invoke(id, key) => {
+                let resident = self.popups.iter().any(|(n, _)| n.id == id && n.resident);
+                if resident {
+                    return notify::act(id, key);
+                }
                 self.forget(id);
                 self.history.retain(|n| n.id != id);
                 return notify::invoke(id, key);
