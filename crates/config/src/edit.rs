@@ -200,6 +200,25 @@ impl Editor {
         remove_kept(list(self.doc.as_table_mut(), "rule"), index, "app");
     }
 
+    // A key in a table inside a table, such as `[style.launcher]`.
+    pub fn set_in(&mut self, path: &[&str], key: &str, value: impl Into<Value>) {
+        let mut at = self.doc.as_table_mut();
+        for (depth, name) in path.iter().enumerate() {
+            let item = at.entry(name).or_insert(Item::None);
+            *item = match std::mem::take(item) {
+                Item::Table(table) => Item::Table(table),
+                Item::Value(Value::InlineTable(inline)) => Item::Table(inline.into_table()),
+                _ => {
+                    let mut table = Table::new();
+                    table.set_implicit(depth + 1 < path.len());
+                    Item::Table(table)
+                }
+            };
+            at = item.as_table_mut().expect("just made a table");
+        }
+        put(at, key, value.into());
+    }
+
     pub fn unset(&mut self, section: &str, key: &str) {
         if let Some(table) = self.doc.get_mut(section).and_then(Item::as_table_mut) {
             table.remove(key);
@@ -404,6 +423,31 @@ mod tests {
         assert_eq!(problems, vec![]);
         assert_eq!(config.desktop.accent, Accent::Fixed(Rgba::hex(0xc084fc)));
         assert!(config.modes.is_empty());
+    }
+
+    #[test]
+    fn nested_tables_are_written_as_sections() {
+        let mut editor = Editor::parse("[layout]\ngaps = 4\n").unwrap();
+        editor.set_in(&["style", "launcher"], "radius", 8);
+        editor.set_in(&["style", "panel"], "size", 1.1);
+        let text = editor.text();
+        assert!(text.contains("[style.launcher]\nradius = 8"), "{text}");
+        assert!(!text.contains("[style]\n"), "{text}");
+        let (config, problems) = Config::parse(&text);
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.style.launcher.radius, Some(8));
+        assert_eq!(config.style.panel.size, Some(1.1));
+
+        let mut editor = Editor::parse("[style]\nlauncher = { size = 1.2 }\n").unwrap();
+        editor.set_in(&["style", "launcher"], "grid", true);
+        let (config, problems) = Config::parse(&editor.text());
+        assert_eq!(problems, vec![]);
+        assert_eq!(
+            config.style.launcher.size,
+            Some(1.2),
+            "an inline table keeps what it had"
+        );
+        assert!(config.style.grid);
     }
 
     #[test]

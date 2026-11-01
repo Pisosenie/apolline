@@ -79,7 +79,7 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 ## Surfaces your way
 
-`[style.launcher]` and `[style.panel]` set `radius`, `opacity` and `size` (0.8 to 1.5, text and spacing together) for the launcher and quick settings; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
+`[style.launcher]` and `[style.panel]` (or Settings → Appearance) set `radius`, `opacity` and `size` (0.8 to 1.5, text and spacing together) for the launcher and quick settings; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
 
 ## Your own bar modules
 

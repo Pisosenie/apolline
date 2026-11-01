@@ -293,6 +293,13 @@ enum Message {
     Add,
     Remove(usize),
     Gaps(u16),
+    LauncherRadius(u16),
+    LauncherGlass(u16),
+    LauncherSize(u16),
+    LauncherGrid(bool),
+    PanelRadius(u16),
+    PanelGlass(u16),
+    PanelSize(u16),
     Radius(u16),
     BorderStyle(u8),
     Shadows(bool),
@@ -937,6 +944,27 @@ impl Settings {
             }
             Message::Gaps(v) => self.stage(|e| e.set("layout", "gaps", i64::from(v))),
             Message::Radius(v) => self.stage(|e| e.set("layout", "radius", i64::from(v))),
+            Message::LauncherRadius(v) => {
+                self.stage(|e| e.set_in(&["style", "launcher"], "radius", i64::from(v)))
+            }
+            Message::LauncherGlass(v) => {
+                self.stage(|e| e.set_in(&["style", "launcher"], "opacity", hundredths(v)))
+            }
+            Message::LauncherSize(v) => {
+                self.stage(|e| e.set_in(&["style", "launcher"], "size", hundredths(v)))
+            }
+            Message::LauncherGrid(on) => {
+                self.edit(|e| e.set_in(&["style", "launcher"], "grid", on))
+            }
+            Message::PanelRadius(v) => {
+                self.stage(|e| e.set_in(&["style", "panel"], "radius", i64::from(v)))
+            }
+            Message::PanelGlass(v) => {
+                self.stage(|e| e.set_in(&["style", "panel"], "opacity", hundredths(v)))
+            }
+            Message::PanelSize(v) => {
+                self.stage(|e| e.set_in(&["style", "panel"], "size", hundredths(v)))
+            }
             Message::BorderStyle(style) => self.edit(|e| {
                 e.set("layout", "borders", style > 0);
                 if style == 2 {
@@ -2843,9 +2871,99 @@ impl Settings {
                     ),
                 ]
             ),
+            self.surfaces(palette),
         ]
         .spacing(22)
         .into()
+    }
+
+    fn surfaces(&self, palette: Palette) -> Element<'_, Message> {
+        let style = &self.config.style;
+        let corners = |look: apolline_config::Surface| look.radius.unwrap_or(20);
+        let glass =
+            |look: apolline_config::Surface| (look.opacity.unwrap_or(0.95) * 100.0).round() as u16;
+        let size =
+            |look: apolline_config::Surface| (look.size.unwrap_or(1.0) * 100.0).round() as u16;
+        group(
+            "Launcher and quick settings",
+            vec![
+                setting(
+                    "Launcher layout",
+                    "A list with details, or a grid of big icons moved through with the arrows",
+                    segmented(
+                        [(false, "List", None), (true, "Grid", None)],
+                        style.grid,
+                        Message::LauncherGrid,
+                    ),
+                ),
+                setting(
+                    "Launcher size",
+                    "Text, icons and spacing together",
+                    value_slider(
+                        80..=150,
+                        size(style.launcher),
+                        Message::LauncherSize,
+                        "%",
+                        palette,
+                    ),
+                ),
+                setting(
+                    "Launcher corners",
+                    "",
+                    value_slider(
+                        0..=40,
+                        corners(style.launcher),
+                        Message::LauncherRadius,
+                        "px",
+                        palette,
+                    ),
+                ),
+                setting(
+                    "Launcher glass",
+                    "How solid it is over what's behind",
+                    value_slider(
+                        30..=100,
+                        glass(style.launcher),
+                        Message::LauncherGlass,
+                        "%",
+                        palette,
+                    ),
+                ),
+                setting(
+                    "Quick settings size",
+                    "",
+                    value_slider(
+                        80..=150,
+                        size(style.panel),
+                        Message::PanelSize,
+                        "%",
+                        palette,
+                    ),
+                ),
+                setting(
+                    "Quick settings corners",
+                    "",
+                    value_slider(
+                        0..=40,
+                        corners(style.panel),
+                        Message::PanelRadius,
+                        "px",
+                        palette,
+                    ),
+                ),
+                setting(
+                    "Quick settings glass",
+                    "",
+                    value_slider(
+                        30..=100,
+                        glass(style.panel),
+                        Message::PanelGlass,
+                        "%",
+                        palette,
+                    ),
+                ),
+            ],
+        )
     }
 
     fn windows(&self) -> Element<'_, Message> {
@@ -5265,6 +5383,11 @@ fn broken(err: &str) -> Element<'_, Message> {
 
 fn stamp(path: &std::path::Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+// 87 % as 0.87, the way the file keeps fractions.
+fn hundredths(percent: u16) -> f64 {
+    f64::from(percent) / 100.0
 }
 
 fn list_section(key: &str) -> &'static str {
