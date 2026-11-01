@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{
     DateTime, Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone,
@@ -16,7 +16,8 @@ const RETRY: Duration = Duration::from_secs(60);
 // How far from today occurrences are worked out, both ways.
 const REACH: i64 = 400;
 // Limits against a calendar that would eat the machine.
-const MOST: usize = 20_000;
+const MOST: usize = 60_000;
+const PER_DAY: usize = 60;
 const STEPS: usize = 200_000;
 const LONGEST: usize = 200;
 
@@ -68,14 +69,17 @@ impl Agenda {
         upcoming.map(|(occurrence, wait)| (occurrence, Some(wait)))
     }
 
+    // Capped per day as well as in all, so a crowded feed can't crowd out today.
     fn add(&mut self, day: NaiveDate, occurrence: Occurrence) {
-        if self.count < MOST {
+        let list = self.days.entry(day).or_default();
+        if self.count < MOST && list.len() < PER_DAY {
             self.count += 1;
-            self.days.entry(day).or_default().push(occurrence);
+            list.push(occurrence);
         }
     }
 
     fn finish(mut self) -> Self {
+        self.days.retain(|_, list| !list.is_empty());
         for list in self.days.values_mut() {
             list.sort();
             list.dedup();
@@ -98,45 +102,66 @@ pub fn subscription(sources: &[String]) -> Subscription<Message> {
 fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
     let sources = sources.clone();
     iced::stream::channel(1, async move |mut output| {
-        // A source that can't be read this time keeps what it said last time.
-        let mut last: HashMap<String, String> = HashMap::new();
+        // A source that can't be read keeps what it said last time, and only it is asked
+        // again soon, waiting longer after each failure.
+        let mut texts: HashMap<String, String> = HashMap::new();
+        let start = Instant::now();
+        let mut due: HashMap<String, (Instant, Duration)> = sources
+            .iter()
+            .map(|source| (source.clone(), (start, RETRY)))
+            .collect();
         loop {
-            let wanted = sources.clone();
-            let known = last.clone();
-            let done = tokio::task::spawn_blocking(move || {
-                let mut texts = known;
-                let mut failed = false;
-                for source in &wanted {
-                    match read(source) {
+            let now = Instant::now();
+            let ready: Vec<String> = due
+                .iter()
+                .filter(|(_, (at, _))| *at <= now)
+                .map(|(source, _)| source.clone())
+                .collect();
+            if !ready.is_empty() {
+                // Pushed back first, so even a reader that dies can't spin this loop.
+                for source in &ready {
+                    if let Some(next) = due.get_mut(source) {
+                        next.0 = now + next.1;
+                    }
+                }
+                let fetched = tokio::task::spawn_blocking(move || {
+                    ready
+                        .into_iter()
+                        .map(|source| {
+                            let text = read(&source);
+                            (source, text)
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .await
+                .unwrap_or_default();
+                for (source, result) in fetched {
+                    let Some(next) = due.get_mut(&source) else {
+                        continue;
+                    };
+                    match result {
                         Ok(text) => {
-                            texts.insert(source.clone(), text);
+                            texts.insert(source, text);
+                            *next = (Instant::now() + EVERY, RETRY);
                         }
                         Err(err) => {
-                            failed = true;
-                            eprintln!("apolline: calendar {}: {err}", shown(source));
+                            eprintln!("apolline: calendar {}: {err}", shown(&source));
+                            next.1 = (next.1 * 2).min(EVERY);
                         }
                     }
                 }
-                texts.retain(|source, _| wanted.contains(source));
                 let all: Vec<String> = texts.values().cloned().collect();
-                (agenda(&all, Local::now().date_naive()), texts, failed)
-            })
-            .await;
-            let wait = match done {
-                Ok((agenda, texts, failed)) => {
-                    last = texts;
-                    if output
-                        .send(Message::Agenda(Arc::new(agenda)))
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
-                    if failed { RETRY } else { EVERY }
+                let built =
+                    tokio::task::spawn_blocking(move || agenda(&all, Local::now().date_naive()))
+                        .await;
+                if let Ok(built) = built
+                    && output.send(Message::Agenda(Arc::new(built))).await.is_err()
+                {
+                    return;
                 }
-                Err(_) => EVERY,
-            };
-            tokio::time::sleep(wait).await;
+            }
+            let next = due.values().map(|(at, _)| *at).min().unwrap_or(now + EVERY);
+            tokio::time::sleep_until(tokio::time::Instant::from_std(next)).await;
         }
     })
 }
@@ -166,8 +191,8 @@ fn read(source: &str) -> Result<String, String> {
         .strip_prefix("webcal://")
         .map(|rest| format!("https://{rest}"))
         .unwrap_or_else(|| source.to_owned());
-    if link.starts_with("https://") {
-        return ureq::get(&link)
+    let bytes = if link.starts_with("https://") {
+        ureq::get(&link)
             .config()
             .timeout_global(Some(Duration::from_secs(30)))
             .build()
@@ -176,19 +201,43 @@ fn read(source: &str) -> Result<String, String> {
             .body_mut()
             .with_config()
             .limit(8 * 1024 * 1024)
-            .read_to_string()
-            .map_err(|err| err.to_string());
-    }
-    if link.starts_with("http://") {
+            .read_to_vec()
+            .map_err(|err| err.to_string())?
+    } else if link.starts_with("http://") {
         return Err("only https links are read".into());
-    }
-    let path = match link.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME")
-            .map(|home| std::path::PathBuf::from(home).join(rest))
-            .ok_or("no home folder")?,
-        None => std::path::PathBuf::from(&link),
+    } else {
+        let path = match link.strip_prefix("~/") {
+            Some(rest) => std::env::var_os("HOME")
+                .map(|home| std::path::PathBuf::from(home).join(rest))
+                .ok_or("no home folder")?,
+            None => std::path::PathBuf::from(&link),
+        };
+        std::fs::read(&path).map_err(|err| err.to_string())?
     };
-    std::fs::read_to_string(&path).map_err(|err| err.to_string())
+    let text = unfold_bytes(&bytes);
+    // A sign-in page from a café's Wi-Fi is no calendar, and shouldn't replace the last one.
+    if !text.contains("BEGIN:VCALENDAR") {
+        return Err("this isn't a calendar".into());
+    }
+    Ok(text)
+}
+
+// Folds are undone before the bytes become text: a fold may split a letter in two.
+fn unfold_bytes(bytes: &[u8]) -> String {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        match &bytes[at..] {
+            [b'\r', b'\n', b' ' | b'\t', ..] => at += 3,
+            [b'\n', b' ' | b'\t', ..] => at += 2,
+            [byte, ..] => {
+                out.push(*byte);
+                at += 1;
+            }
+            [] => break,
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -199,14 +248,21 @@ enum Zone {
 }
 
 impl Zone {
+    // A time the clocks skipped in spring is read as the hour after.
     fn instant(self, at: NaiveDateTime) -> Option<DateTime<Utc>> {
+        let later = at + TimeDelta::hours(1);
         Some(match self {
             Zone::Floating => Local
                 .from_local_datetime(&at)
-                .earliest()?
+                .earliest()
+                .or_else(|| Local.from_local_datetime(&later).earliest())?
                 .with_timezone(&Utc),
             Zone::Utc => Utc.from_utc_datetime(&at),
-            Zone::Named(tz) => tz.from_local_datetime(&at).earliest()?.with_timezone(&Utc),
+            Zone::Named(tz) => tz
+                .from_local_datetime(&at)
+                .earliest()
+                .or_else(|| tz.from_local_datetime(&later).earliest())?
+                .with_timezone(&Utc),
         })
     }
 
@@ -316,6 +372,7 @@ struct Rule {
     by_month_day: Vec<i32>,
     by_month: Vec<u32>,
     by_set_pos: Vec<i32>,
+    week_start: Option<Weekday>,
 }
 
 #[derive(Debug, Default)]
@@ -325,6 +382,8 @@ struct Event {
     location: Option<Arc<str>>,
     start: Option<Moment>,
     end: Option<Moment>,
+    // How long it lasts, for events that give a length instead of an end.
+    duration: Option<TimeDelta>,
     rule: Option<Rule>,
     except: Vec<Moment>,
     instead_of: Option<Moment>,
@@ -365,6 +424,7 @@ pub fn agenda(texts: &[String], today: NaiveDate) -> Agenda {
                 let length = event
                     .end
                     .map(|end| (end.at.date() - start.at.date()).num_days())
+                    .or_else(|| event.duration.map(|d| d.num_days()))
                     .unwrap_or(1)
                     .clamp(1, 60);
                 for offset in 0..length {
@@ -384,6 +444,7 @@ pub fn agenda(texts: &[String], today: NaiveDate) -> Agenda {
             let length = event
                 .end
                 .map(|end| end.local() - start.local())
+                .or(event.duration)
                 .filter(|length| *length > TimeDelta::zero())
                 .unwrap_or_default()
                 .min(TimeDelta::days(14));
@@ -517,6 +578,35 @@ fn moment(params: &[(String, String)], value: &str) -> Option<Moment> {
     })
 }
 
+// "PT1H30M", "P3D", "P1W": a length as RFC 5545 writes it.
+fn duration(value: &str) -> Option<TimeDelta> {
+    let value = value.trim().trim_start_matches('+');
+    let rest = value.strip_prefix('P')?;
+    let mut total = TimeDelta::zero();
+    let mut number = String::new();
+    let mut time = false;
+    for c in rest.chars() {
+        match c {
+            'T' => time = true,
+            '0'..='9' => number.push(c),
+            unit => {
+                let n: i64 = number.parse().ok()?;
+                number.clear();
+                let part = match (unit, time) {
+                    ('W', false) => TimeDelta::try_weeks(n)?,
+                    ('D', false) => TimeDelta::try_days(n)?,
+                    ('H', true) => TimeDelta::try_hours(n)?,
+                    ('M', true) => TimeDelta::try_minutes(n)?,
+                    ('S', true) => TimeDelta::try_seconds(n)?,
+                    _ => return None,
+                };
+                total = total.checked_add(&part)?;
+            }
+        }
+    }
+    number.is_empty().then_some(total)
+}
+
 fn weekday(code: &str) -> Option<Weekday> {
     Some(match code {
         "MO" => Weekday::Mon,
@@ -556,7 +646,8 @@ fn rule(value: &str) -> Option<Rule> {
                 rule.by_day = value
                     .split(',')
                     .filter_map(|day| {
-                        let day = day.trim();
+                        let day = day.trim().to_ascii_uppercase();
+                        let day = day.as_str();
                         let split = day
                             .len()
                             .checked_sub(2)
@@ -573,7 +664,7 @@ fn rule(value: &str) -> Option<Rule> {
             "BYMONTHDAY" => rule.by_month_day = numbers(value),
             "BYMONTH" => rule.by_month = numbers(value),
             "BYSETPOS" => rule.by_set_pos = numbers(value),
-            "WKST" => {}
+            "WKST" => rule.week_start = Some(weekday(&value.trim().to_ascii_uppercase())?),
             _ => return None,
         }
     }
@@ -627,8 +718,9 @@ fn expand(start: Moment, rule: &Rule, from: NaiveDate, limit: NaiveDate) -> Vec<
                     .iter()
                     .any(|d| month_day(*day, *d) == Some(*day)))
     };
+    let week_start = rule.week_start.unwrap_or(Weekday::Mon);
     let mut period = match rule.freq.as_str() {
-        "WEEKLY" => first.week(Weekday::Mon).first_day(),
+        "WEEKLY" => first.week(week_start).first_day(),
         "MONTHLY" => first.with_day(1).unwrap_or(first),
         "YEARLY" => first.with_ordinal(1).unwrap_or(first),
         _ => first,
@@ -649,9 +741,9 @@ fn expand(start: Moment, rule: &Rule, from: NaiveDate, limit: NaiveDate) -> Vec<
                 wanted
                     .iter()
                     .filter_map(|d| {
-                        period.checked_add_signed(TimeDelta::days(i64::from(
-                            d.num_days_from_monday(),
-                        )))
+                        let offset =
+                            (d.num_days_from_monday() + 7 - week_start.num_days_from_monday()) % 7;
+                        period.checked_add_signed(TimeDelta::days(i64::from(offset)))
                     })
                     .filter(fits)
                     .collect()
@@ -661,15 +753,18 @@ fn expand(start: Moment, rule: &Rule, from: NaiveDate, limit: NaiveDate) -> Vec<
                 .filter(fits)
                 .collect(),
             _ => {
-                let months: Vec<u32> = if rule.by_month.is_empty() {
-                    vec![first.month()]
-                } else {
-                    rule.by_month.clone()
-                };
+                // Days of the month without months mean every month of the year.
+                let months: Vec<u32> =
+                    match (rule.by_month.is_empty(), rule.by_month_day.is_empty()) {
+                        (false, _) => rule.by_month.clone(),
+                        (true, false) => (1..=12).collect(),
+                        (true, true) => vec![first.month()],
+                    };
                 months
                     .iter()
                     .filter_map(|m| period.with_month(*m))
                     .flat_map(|month| in_month(month, rule, first))
+                    .filter(fits)
                     .collect()
             }
         };
@@ -794,6 +889,7 @@ fn parse(text: &str) -> Vec<Event> {
             }
             ("DTSTART", Some(event)) => event.start = moment(&params, value),
             ("DTEND", Some(event)) => event.end = moment(&params, value),
+            ("DURATION", Some(event)) => event.duration = duration(value),
             ("RRULE", Some(event)) => event.rule = rule(value),
             ("EXDATE", Some(event)) => event
                 .except
@@ -1122,6 +1218,113 @@ DTSTART:20261102T100000"
             agenda.on(day(2026, 11, 2))[0].summary.chars().count(),
             LONGEST
         );
+    }
+
+    #[test]
+    fn what_review_found_in_real_calendars() {
+        // A fold that splits a Cyrillic letter in half.
+        let bytes =
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Встреча\r\nEND:VEVENT\r\n".as_bytes();
+        let cut = bytes.windows(2).position(|w| w == "ч".as_bytes()).unwrap() + 1;
+        let folded = [&bytes[..cut], b"\r\n ", &bytes[cut..]].concat();
+        assert!(unfold_bytes(&folded).contains("SUMMARY:Встреча"));
+
+        // Google and Apple write WKST=SU.
+        let days = days_of(
+            "DTSTART:20261101T100000\nRRULE:FREQ=WEEKLY;INTERVAL=2;WKST=SU;BYDAY=SU,WE",
+            day(2026, 11, 1),
+            day(2026, 11, 30),
+        );
+        assert_eq!(
+            days,
+            [
+                day(2026, 11, 1),
+                day(2026, 11, 4),
+                day(2026, 11, 15),
+                day(2026, 11, 18),
+                day(2026, 11, 29)
+            ]
+        );
+
+        // A length instead of an end.
+        let agenda = agenda(
+            &[event("DTSTART:20261102T100000\nDURATION:PT1H30M")],
+            day(2026, 11, 1),
+        );
+        assert_eq!(
+            agenda.on(day(2026, 11, 2))[0].end,
+            NaiveTime::from_hms_opt(11, 30, 0)
+        );
+        let trip = days_of(
+            "DTSTART;VALUE=DATE:20261102\nDURATION:P3D",
+            day(2026, 11, 1),
+            day(2026, 11, 10),
+        );
+        assert_eq!(trip.len(), 3);
+        assert_eq!(
+            duration("P1W2D"),
+            TimeDelta::try_days(9),
+            "lenient, as calendars are"
+        );
+        assert_eq!(duration("PT"), Some(TimeDelta::zero()));
+        assert_eq!(duration("P5"), None);
+        assert_eq!(duration("PT15M"), TimeDelta::try_minutes(15));
+
+        // The RFC's election day: the Tuesday after the first Monday of November.
+        let election = days_of(
+            "DTSTART;VALUE=DATE:20241105\nRRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=TU;BYMONTHDAY=2,3,4,5,6,7,8",
+            day(2026, 11, 1),
+            day(2026, 11, 30),
+        );
+        assert_eq!(election, [day(2026, 11, 3)]);
+        let firsts = days_of(
+            "DTSTART;VALUE=DATE:20260101\nRRULE:FREQ=YEARLY;BYMONTHDAY=1",
+            day(2026, 11, 1),
+            day(2026, 12, 31),
+        );
+        assert_eq!(firsts, [day(2026, 11, 1), day(2026, 12, 1)]);
+
+        // Lowercase is still a rule.
+        let lower = days_of(
+            "DTSTART:20261102T100000\nRRULE:freq=weekly;byday=mo,we",
+            day(2026, 11, 2),
+            day(2026, 11, 8),
+        );
+        assert_eq!(lower, [day(2026, 11, 2), day(2026, 11, 4)]);
+
+        // A time the clocks skip is read as the hour after, not left as it was.
+        let gap = Moment {
+            at: day(2027, 3, 14).and_hms_opt(2, 30, 0).unwrap(),
+            zone: Zone::named("America/New_York"),
+            whole_day: false,
+        };
+        assert_eq!(
+            gap.in_zone(Zone::Utc),
+            day(2027, 3, 14).and_hms_opt(7, 30, 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_page_that_isnt_a_calendar_is_refused() {
+        let file = std::env::temp_dir().join(format!("apolline-not-ics-{}", std::process::id()));
+        std::fs::write(&file, "<html>Sign in to the Wi-Fi</html>").unwrap();
+        assert!(read(file.to_str().unwrap()).is_err());
+        std::fs::write(&file, b"BEGIN:VCALENDAR\r\nX:\xff\r\nEND:VCALENDAR\r\n").unwrap();
+        assert!(
+            read(file.to_str().unwrap()).is_ok(),
+            "a bad byte isn't the end of it"
+        );
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_crowded_day_keeps_room_for_the_rest() {
+        let busy: String = (0..200)
+            .map(|i| format!("BEGIN:VEVENT\nUID:{i}\nSUMMARY:Item {i}\nDTSTART:20261102T{:02}0000\nEND:VEVENT\n", i % 24))
+            .collect();
+        let agenda = agenda(&[busy, event("DTSTART:20261103T100000")], day(2026, 11, 1));
+        assert!(agenda.on(day(2026, 11, 2)).len() <= PER_DAY);
+        assert_eq!(agenda.on(day(2026, 11, 3)).len(), 1);
     }
 
     #[test]
