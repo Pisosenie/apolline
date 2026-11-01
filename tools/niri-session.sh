@@ -42,12 +42,20 @@ inner=$(basename "$NIRI_SOCKET" | cut -d. -f2)
 niri msg -j event-stream > "$out" &
 sleep 1
 act() { niri msg action "$@" >/dev/null; sleep 0.4; }
+window() {
+    for _ in $(seq 150); do
+        niri msg -j windows | grep -q "\"$1\"" && return 0
+        sleep 0.1
+    done
+    echo "no window for $1" >&2
+    exit 1
+}
 WAYLAND_DISPLAY=$inner foot -a session-one >/dev/null 2>&1 &
 one=$!
-sleep 1.5
+window session-one
 WAYLAND_DISPLAY=$inner foot -a session-two >/dev/null 2>&1 &
 two=$!
-sleep 1.5
+window session-two
 act focus-column-left
 act focus-workspace 2
 act focus-workspace 1
