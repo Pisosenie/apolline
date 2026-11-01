@@ -88,6 +88,7 @@ pub enum Message {
     Frame,
     CalendarMonth(i32),
     CalendarDay(chrono::NaiveDate),
+    Stats(crate::stats::Stats),
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
     Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
@@ -181,6 +182,7 @@ pub struct Shell {
     painted: Option<Option<apolline_theme::Rgba>>,
     month: i32,
     day: Option<chrono::NaiveDate>,
+    stats: crate::stats::Stats,
     agenda: std::sync::Arc<crate::events::Agenda>,
     weather: Option<crate::weather::Weather>,
     detail: Option<panel::Detail>,
@@ -260,6 +262,7 @@ impl Shell {
             painted: None,
             month: 0,
             day: None,
+            stats: crate::stats::Stats::default(),
             agenda: std::sync::Arc::default(),
             weather: None,
             detail: None,
@@ -522,6 +525,7 @@ impl Shell {
                 self.day = None;
             }
             Message::CalendarDay(day) => self.day = Some(day),
+            Message::Stats(stats) => self.stats = stats,
             Message::Rates(Ok(rates)) => self.launcher.set_rates(rates),
             Message::Rates(Err(err)) => eprintln!("apolline: exchange rates: {err}"),
             Message::Agenda(agenda) => self.agenda = agenda,
@@ -2049,6 +2053,7 @@ impl Shell {
             apps: &self.apps,
             pinned: self.pinned(),
             recording: self.recording.as_ref().map(|r| r.started.elapsed()),
+            stats: self.stats,
             next: self
                 .agenda
                 .soon(self.now.naive_local())
@@ -2110,6 +2115,7 @@ impl Shell {
                 iced::Subscription::run(watch_config),
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
+                crate::stats::subscription(self.config.bar.stats.any()),
                 controls::watch().map(Message::Controls),
             ])
         };

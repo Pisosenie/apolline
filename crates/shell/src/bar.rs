@@ -32,6 +32,7 @@ pub struct Bar<'a> {
     pub pinned: Vec<Pinned>,
     pub modules: Vec<(usize, &'a str, bool)>,
     pub recording: Option<std::time::Duration>,
+    pub stats: crate::stats::Stats,
     // The calendar's next thing, and in how many minutes (None: it's on now).
     pub next: Option<(&'a str, Option<i64>)>,
 }
@@ -198,6 +199,36 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
                 .style(style::ghost(8.0))
                 .on_press_maybe(clickable.then_some(Message::ModuleClick(*index))),
         );
+    }
+    let shown = bar.look.stats;
+    let figures = [
+        (shown.cpu, Icon::Cpu, bar.stats.cpu.map(|v| format!("{v}%"))),
+        (
+            shown.memory,
+            Icon::MemoryStick,
+            bar.stats.memory.map(|v| format!("{v}%")),
+        ),
+        (
+            shown.temperature,
+            Icon::Thermometer,
+            bar.stats.temperature.map(|v| format!("{v}°")),
+        ),
+    ];
+    for (on, glyph, value) in figures {
+        if let (true, Some(value)) = (on, value) {
+            right = right.push(
+                row![
+                    icon(glyph, 13.0, neutral::MUTED),
+                    text(value)
+                        .size(12)
+                        .font(style::mono())
+                        .color(style::color(neutral::MUTED)),
+                ]
+                .spacing(5)
+                .align_y(Alignment::Center)
+                .padding([0, 4]),
+            );
+        }
     }
     right = right.push(tray(&bar));
 

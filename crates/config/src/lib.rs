@@ -266,6 +266,32 @@ pub struct Bar {
     pub floating: bool,
     pub opacity: f32,
     pub blur: bool,
+    pub stats: Stats,
+}
+
+// What the bar shows of the machine itself.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Stats {
+    pub cpu: bool,
+    pub memory: bool,
+    pub temperature: bool,
+}
+
+impl Stats {
+    pub const ALL: [&'static str; 3] = ["cpu", "memory", "temperature"];
+
+    pub fn any(self) -> bool {
+        self.cpu || self.memory || self.temperature
+    }
+
+    pub fn names(self) -> Vec<String> {
+        Self::ALL
+            .iter()
+            .zip([self.cpu, self.memory, self.temperature])
+            .filter(|(_, on)| *on)
+            .map(|(name, _)| (*name).to_owned())
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -626,6 +652,7 @@ impl Default for Config {
                 floating: true,
                 opacity: 0.55,
                 blur: false,
+                stats: Stats::default(),
             },
             keyboard: Keyboard::default(),
             touchpad: None,

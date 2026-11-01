@@ -374,6 +374,26 @@ impl Reader<'_> {
                         bar.blur = v
                     }
                 }
+                "stats" => {
+                    if let Some(names) = self.strings(key, value) {
+                        let mut stats = crate::Stats::default();
+                        for name in &names {
+                            match name.as_str() {
+                                "cpu" => stats.cpu = true,
+                                "memory" => stats.memory = true,
+                                "temperature" => stats.temperature = true,
+                                _ => {
+                                    self.wrong::<()>(
+                                        key,
+                                        value,
+                                        r#"a list of "cpu", "memory" and "temperature""#,
+                                    );
+                                }
+                            }
+                        }
+                        bar.stats = stats;
+                    }
+                }
                 "pinned" => {
                     if let Some(v) = self.strings(key, value) {
                         config.pinned = v
@@ -404,6 +424,7 @@ impl Reader<'_> {
                         "pinned",
                         "weather",
                         "calendars",
+                        "stats",
                     ],
                 ),
             }

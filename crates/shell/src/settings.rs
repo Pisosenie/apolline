@@ -293,6 +293,7 @@ enum Message {
     Add,
     Remove(usize),
     Gaps(u16),
+    Stat(&'static str, bool),
     NightSchedule(bool),
     NightDraft(String),
     SetNight,
@@ -950,6 +951,21 @@ impl Settings {
             }
             Message::Gaps(v) => self.stage(|e| e.set("layout", "gaps", i64::from(v))),
             Message::Radius(v) => self.stage(|e| e.set("layout", "radius", i64::from(v))),
+            Message::Stat(name, on) => {
+                let mut names = self.config.bar.stats.names();
+                names.retain(|n| n != name);
+                if on {
+                    names.push(name.to_owned());
+                }
+                names.sort_by_key(|n| apolline_config::Stats::ALL.iter().position(|a| a == n));
+                self.edit(|e| {
+                    if names.is_empty() {
+                        e.unset("bar", "stats");
+                    } else {
+                        e.set_list("bar", "stats", &names);
+                    }
+                });
+            }
             Message::NightSchedule(on) => {
                 self.night_draft = None;
                 self.edit(|e| {
@@ -3487,6 +3503,7 @@ impl Settings {
                 modules: Vec::new(),
                 recording: None,
                 next: None,
+                stats: crate::stats::Stats::default(),
             })
             .map(|_| Message::Noop);
             let inset = if look.floating { 10.0 } else { 0.0 };
@@ -3595,6 +3612,28 @@ impl Settings {
                         Message::Workspaces,
                     ),
                 )]
+            ),
+            group(
+                "The machine",
+                vec![setting(
+                    "Show on the bar",
+                    "Read every few seconds while shown; the bar repaints only when a number changes",
+                    {
+                        let stats = self.config.bar.stats;
+                        let chip = |name: &'static str, label: &'static str, on: bool| {
+                            button(text(label).size(12))
+                                .padding([6, 12])
+                                .style(style::choice(on))
+                                .on_press(Message::Stat(name, !on))
+                        };
+                        row![
+                            chip("cpu", "CPU", stats.cpu),
+                            chip("memory", "Memory", stats.memory),
+                            chip("temperature", "Temperature", stats.temperature),
+                        ]
+                        .spacing(6)
+                    },
+                )],
             ),
             group(
                 "Clock",
@@ -5502,6 +5541,24 @@ fn mode_overrides(mode: &ModeSettings) -> Vec<String> {
 mod tests {
     use super::*;
     use apolline_config::{Mouse, Touchpad};
+
+    #[test]
+    fn the_bar_can_show_the_machine() {
+        let dir = std::env::temp_dir().join(format!("apolline-stats-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "").unwrap();
+        let (mut settings, _) = Settings::open(path.clone(), None);
+        let _ = settings.update(Message::Stat("temperature", true));
+        let _ = settings.update(Message::Stat("cpu", true));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#"stats = ["cpu", "temperature"]"#), "{text}");
+        assert!(settings.config.bar.stats.cpu && !settings.config.bar.stats.memory);
+        let _ = settings.update(Message::Stat("cpu", false));
+        let _ = settings.update(Message::Stat("temperature", false));
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("stats"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn night_light_gets_its_hours_and_warmth() {

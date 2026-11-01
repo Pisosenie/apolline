@@ -81,6 +81,8 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 `[style.launcher]` and `[style.panel]` (or Settings → Appearance) set `radius`, `opacity` and `size` (0.8 to 1.5, text and spacing together) for the launcher and quick settings; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
 
+`[bar] stats = ["cpu", "memory", "temperature"]`, or Settings → Bar, shows the machine on the bar. It is read every five seconds and rounded (CPU in steps of 5%, temperature of 2°), so the bar repaints only when a number really moves.
+
 ## Your own bar modules
 
 Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.

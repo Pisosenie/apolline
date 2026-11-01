@@ -41,6 +41,7 @@ mod rates;
 mod settings;
 mod shell;
 mod shot;
+mod stats;
 mod status;
 mod style;
 mod switcher;
