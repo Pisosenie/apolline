@@ -873,12 +873,22 @@ impl Shell {
                 let dropped = Task::batch(
                     dropped
                         .into_iter()
-                        .filter(|n| !self.popups.iter().any(|(p, _)| p.id == n.id))
+                        .filter(|n| {
+                            !self.popups.iter().any(|(p, _)| p.id == n.id)
+                                && !self.held.iter().any(|h| h.id == n.id)
+                        })
                         .map(|n| notify::closed(n.id, Closed::Expired)),
                 );
                 // Into the history and nowhere else; the app isn't told it was closed,
                 // since some take that as read.
                 if self.config.alerts.muted(&notification.app) {
+                    // Kept nowhere, so the app hears it's gone.
+                    if notification.transient {
+                        return Task::batch([
+                            dropped,
+                            notify::closed(notification.id, Closed::Expired),
+                        ]);
+                    }
                     return dropped;
                 }
                 if self.config.alerts.always(&notification.app)
@@ -912,6 +922,10 @@ impl Shell {
             Message::Idle(stage, true) => return self.idle(stage),
             Message::Dismiss(id) => {
                 self.forget(id);
+                // Still in the history, where a click has to reach the app.
+                if self.history.iter().any(|n| n.id == id) {
+                    return Task::none();
+                }
                 return notify::closed(id, Closed::Dismissed);
             }
             Message::Activate(notify::SHOT_CARD) => {
@@ -929,8 +943,10 @@ impl Shell {
                 else {
                     return Task::none();
                 };
-                self.forget(id);
-                self.history.retain(|n| n.id != id);
+                if !notification.resident {
+                    self.forget(id);
+                    self.history.retain(|n| n.id != id);
+                }
                 let close = if self.overlay == Some(Overlay::Panel) {
                     self.set_overlay(None)
                 } else {
@@ -941,10 +957,12 @@ impl Shell {
                     .map_or_else(Task::none, |window| {
                         niri::send(apolline_niri::Request::FocusWindow(window))
                     });
-                let told = if notification.default_action() {
-                    notify::invoke(id, "default".into())
-                } else {
-                    notify::closed(id, Closed::Dismissed)
+                // A resident card stays: it hears the click and nothing closes.
+                let told = match (notification.default_action(), notification.resident) {
+                    (true, true) => notify::act(id, "default".into()),
+                    (true, false) => notify::invoke(id, "default".into()),
+                    (false, true) => Task::none(),
+                    (false, false) => notify::closed(id, Closed::Dismissed),
                 };
                 return Task::batch([close, focus, told]);
             }
