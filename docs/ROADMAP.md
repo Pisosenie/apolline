@@ -120,7 +120,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - A click on the clock: the month, today's weather from Open-Meteo, events from ICS files and
   https/webcal links — done, no account sign-in. CalDAV is next.
 - Capture: screenshots, a color picker, screen recording and marks on a screenshot (arrows, boxes, pen,
-  marker, hidden parts) are done; "save the last 30 seconds" is next.
+  marker, text, numbered steps, hidden parts) are done; "save the last 30 seconds" is next.
 - A bar module of your own — done (`[[module]]`: command, every, click).
 
 ### 6. Getting it to people

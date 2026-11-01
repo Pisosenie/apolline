@@ -135,6 +135,7 @@ dependencies = [
 name = "apolline-shell"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "apolline-config",
  "apolline-niri",
  "apolline-theme",

@@ -18,13 +18,17 @@ pub enum Tool {
     Box,
     Marker,
     Hide,
+    Text,
+    Step,
 }
 
-const TOOLS: [(Tool, Icon); 5] = [
+const TOOLS: [(Tool, Icon); 7] = [
     (Tool::Pen, Icon::Pencil),
     (Tool::Arrow, Icon::MoveUpRight),
     (Tool::Box, Icon::Square),
     (Tool::Marker, Icon::Highlighter),
+    (Tool::Text, Icon::Type),
+    (Tool::Step, Icon::ListOrdered),
     (Tool::Hide, Icon::EyeOff),
 ];
 
@@ -41,11 +45,19 @@ pub struct Mark {
     tool: Tool,
     ink: Rgba,
     points: Vec<Point>,
+    // What a text mark says, or a step's number.
+    label: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub enum Event {
     Drawn(Mark),
+    // Typing starts at a point in an ink, takes letters, loses the last one, and is placed or dropped.
+    Write(Point, Rgba),
+    Typed(String),
+    Erase,
+    Place,
+    Drop,
     Tool(Tool),
     Ink(usize),
     Undo,
@@ -63,6 +75,7 @@ pub struct Marks {
     marks: Vec<Mark>,
     tool: Tool,
     ink: usize,
+    typing: Option<Mark>,
 }
 
 impl std::fmt::Debug for Marks {
@@ -115,32 +128,79 @@ impl Marks {
             marks: Vec::new(),
             tool: Tool::Arrow,
             ink: 0,
+            typing: None,
         })
     }
 
     pub fn update(&mut self, event: Event) {
         match event {
             Event::Drawn(mut mark) => {
+                self.settle();
                 if mark.tool == Tool::Hide
                     && let Some(Shape::Hide(rect, _)) = shapes(&mark, 1.0).first()
                 {
                     mark.ink = self.tone(*rect);
                 }
+                if mark.tool == Tool::Step {
+                    let steps = self.marks.iter().filter(|m| m.tool == Tool::Step).count();
+                    mark.label = Some((steps + 1).to_string());
+                }
                 if !shapes(&mark, self.base()).is_empty() {
                     self.marks.push(mark);
                 }
             }
-            Event::Tool(tool) => self.tool = tool,
+            Event::Write(at, ink) => {
+                self.settle();
+                self.typing = Some(Mark {
+                    tool: Tool::Text,
+                    ink,
+                    points: vec![at],
+                    label: Some(String::new()),
+                });
+            }
+            Event::Typed(text) => {
+                if let Some(label) = self.typing.as_mut().and_then(|m| m.label.as_mut())
+                    && label.chars().count() < 120
+                {
+                    label.push_str(&text);
+                }
+            }
+            Event::Erase => {
+                if let Some(label) = self.typing.as_mut().and_then(|m| m.label.as_mut()) {
+                    label.pop();
+                }
+            }
+            Event::Place => self.settle(),
+            Event::Drop => self.typing = None,
+            Event::Tool(tool) => {
+                self.settle();
+                self.tool = tool;
+            }
             Event::Ink(ink) => self.ink = ink.min(INKS.len() - 1),
             Event::Undo => {
-                self.marks.pop();
+                if self.typing.take().is_none() {
+                    self.marks.pop();
+                }
             }
-            Event::Copy | Event::Save | Event::Both => {}
+            Event::Copy | Event::Save | Event::Both => self.settle(),
         }
     }
 
+    // Text being typed becomes a mark of its own, unless nothing was typed.
+    fn settle(&mut self) {
+        if let Some(mark) = self.typing.take()
+            && mark.label.as_deref().is_some_and(|l| !l.trim().is_empty())
+        {
+            self.marks.push(mark);
+        }
+    }
+
+    pub fn typing(&self) -> bool {
+        self.typing.is_some()
+    }
+
     pub fn is_empty(&self) -> bool {
-        self.marks.is_empty()
+        self.marks.is_empty() && self.typing.is_none()
     }
 
     pub fn hides(&self) -> bool {
@@ -244,6 +304,8 @@ enum Shape {
     Fill(Vec<Point>, Rgba),
     Frame(Rectangle, f32, Rgba),
     Hide(Rectangle, Rgba),
+    Pill(Rectangle, f32, Rgba),
+    Glyphs(tiny_skia::Path, Rgba),
 }
 
 // Both the screen and the saved file draw from these, so what you see is what you get.
@@ -300,7 +362,115 @@ fn shapes(mark: &Mark, base: f32) -> Vec<Shape> {
             )]
         }
         Tool::Box | Tool::Hide => Vec::new(),
+        Tool::Text => {
+            let label = mark.label.as_deref().unwrap_or_default();
+            let size = 20.0 * base;
+            let Some((path, width, height)) = lettering(label, size, first) else {
+                return Vec::new();
+            };
+            let pad = 6.0 * base;
+            let back = Rectangle::new(
+                Point::new(first.x - pad, first.y - pad / 2.0),
+                Size::new(width + pad * 2.0, height + pad),
+            );
+            vec![
+                Shape::Pill(back, pad, Rgba::hex(0x0c0d10).alpha(0.62)),
+                Shape::Glyphs(path, mark.ink),
+            ]
+        }
+        Tool::Step => {
+            let label = mark.label.as_deref().unwrap_or("1");
+            let radius = 13.0 * base;
+            let size = 15.0 * base;
+            let mut shapes = vec![Shape::Dot(first, radius, mark.ink)];
+            if let Some((_, width, height)) = lettering(label, size, first) {
+                let corner = Point::new(first.x - width / 2.0, first.y - height / 2.0);
+                let on = if mark.ink.contrast(neutral::INK) >= mark.ink.contrast(neutral::TEXT) {
+                    neutral::INK
+                } else {
+                    neutral::TEXT
+                };
+                if let Some((path, _, _)) = lettering(label, size, corner) {
+                    shapes.push(Shape::Glyphs(path, on));
+                }
+            }
+            shapes
+        }
     }
+}
+
+// Text as outlines from the bundled font, so the screen and the file draw the same shapes.
+// Returns the outline with its width and line height; `at` is the top left corner.
+fn lettering(text: &str, size: f32, at: Point) -> Option<(tiny_skia::Path, f32, f32)> {
+    use ab_glyph::{Font, ScaleFont};
+    let font = ab_glyph::FontRef::try_from_slice(crate::fonts::SEMIBOLD).ok()?;
+    let scaled = font.as_scaled(ab_glyph::PxScale::from(size));
+    let (sx, sy) = (scaled.h_scale_factor(), scaled.v_scale_factor());
+    let baseline = at.y + scaled.ascent();
+    let mut path = tiny_skia::PathBuilder::new();
+    let mut pen = at.x;
+    let mut previous: Option<ab_glyph::GlyphId> = None;
+    for c in text.chars() {
+        let id = font.glyph_id(c);
+        if let Some(before) = previous {
+            pen += scaled.kern(before, id);
+        }
+        if let Some(outline) = font.outline(id) {
+            let point = |p: ab_glyph::Point| (pen + p.x * sx, baseline - p.y * sy);
+            let mut last: Option<(f32, f32)> = None;
+            for curve in outline.curves {
+                let (start, end) = match curve {
+                    ab_glyph::OutlineCurve::Line(a, b) => (point(a), point(b)),
+                    ab_glyph::OutlineCurve::Quad(a, _, c) => (point(a), point(c)),
+                    ab_glyph::OutlineCurve::Cubic(a, _, _, d) => (point(a), point(d)),
+                };
+                if last != Some(start) {
+                    if last.is_some() {
+                        path.close();
+                    }
+                    path.move_to(start.0, start.1);
+                }
+                match curve {
+                    ab_glyph::OutlineCurve::Line(_, _) => path.line_to(end.0, end.1),
+                    ab_glyph::OutlineCurve::Quad(_, b, _) => {
+                        let b = point(b);
+                        path.quad_to(b.0, b.1, end.0, end.1)
+                    }
+                    ab_glyph::OutlineCurve::Cubic(_, b, c, _) => {
+                        let (b, c) = (point(b), point(c));
+                        path.cubic_to(b.0, b.1, c.0, c.1, end.0, end.1)
+                    }
+                }
+                last = Some(end);
+            }
+            if last.is_some() {
+                path.close();
+            }
+        }
+        pen += scaled.h_advance(id);
+        previous = Some(id);
+    }
+    let width = pen - at.x;
+    let height = scaled.ascent() - scaled.descent();
+    Some((path.finish()?, width, height))
+}
+
+// A rectangle with round corners, for the dark backing behind text.
+fn rounded(r: &Rectangle, radius: f32) -> Option<tiny_skia::Path> {
+    let k = radius.min(r.width / 2.0).min(r.height / 2.0);
+    let (x0, y0, x1, y1) = (r.x, r.y, r.x + r.width, r.y + r.height);
+    let mut path = tiny_skia::PathBuilder::new();
+    path.move_to(x0 + k, y0);
+    path.line_to(x1 - k, y0);
+    path.quad_to(x1, y0, x1, y0 + k);
+    path.line_to(x1, y1 - k);
+    path.quad_to(x1, y1, x1 - k, y1);
+    path.line_to(x0 + k, y1);
+    path.quad_to(x0, y1, x0, y1 - k);
+    path.line_to(x0, y0 + k);
+    path.quad_to(x0, y0, x0 + k, y0);
+    path.close();
+    path.finish()
 }
 
 fn polyline(points: &[Point]) -> tiny_skia::PathBuilder {
@@ -345,6 +515,8 @@ fn outline(shape: &Shape) -> Option<(tiny_skia::Path, Rgba)> {
             *color,
         )),
         Shape::Hide(r, color) => Some((tiny_skia::PathBuilder::from_rect(rect(r)?), *color)),
+        Shape::Pill(r, radius, color) => Some((rounded(r, *radius)?, *color)),
+        Shape::Glyphs(path, color) => Some((path.clone(), *color)),
     }
 }
 
@@ -395,10 +567,29 @@ impl canvas::Program<Message> for Board<'_> {
                 if !inside {
                     return None;
                 }
+                let point = at(cursor)?;
+                match self.marks.tool {
+                    Tool::Text => {
+                        let write = Message::Mark(Event::Write(point, self.ink));
+                        return Some(canvas::Action::publish(write).and_capture());
+                    }
+                    Tool::Step => {
+                        let step = Mark {
+                            tool: Tool::Step,
+                            ink: self.ink,
+                            points: vec![point],
+                            label: None,
+                        };
+                        let drawn = Message::Mark(Event::Drawn(step));
+                        return Some(canvas::Action::publish(drawn).and_capture());
+                    }
+                    _ => {}
+                }
                 *drawing = Some(Mark {
                     tool: self.marks.tool,
                     ink: self.ink,
-                    points: vec![at(cursor)?],
+                    points: vec![point],
+                    label: None,
                 });
                 Some(canvas::Action::request_redraw().and_capture())
             }
@@ -432,9 +623,16 @@ impl canvas::Program<Message> for Board<'_> {
         let scale = fit.width / self.marks.width as f32;
         let on_screen = |p: &Point| Point::new(fit.x + p.x * scale, fit.y + p.y * scale);
         let on_screen = |p: tiny_skia::Point| on_screen(&Point::new(p.x, p.y));
-        let live = drawing
-            .as_ref()
-            .map_or_else(Vec::new, |mark| shapes(mark, self.marks.base()));
+        // What's being typed shows with a caret until it's placed.
+        let typing = self.marks.typing.as_ref().map(|mark| Mark {
+            label: mark.label.as_ref().map(|l| format!("{l}|")),
+            ..mark.clone()
+        });
+        let live: Vec<Shape> = drawing
+            .iter()
+            .chain(typing.iter())
+            .flat_map(|mark| shapes(mark, self.marks.base()))
+            .collect();
         for shape in self.marks.shapes().iter().chain(&live) {
             // The hidden part being drawn shows as a frame until it's let go.
             if let Shape::Hide(rect, _) = shape
@@ -588,7 +786,62 @@ mod tests {
             tool,
             ink: Rgba::hex(0xff0000),
             points: points.iter().map(|&(x, y)| Point::new(x, y)).collect(),
+            label: None,
         }
+    }
+
+    #[test]
+    fn words_and_numbers_become_outlines() {
+        let (path, width, height) = lettering("Hi", 20.0, Point::new(10.0, 10.0)).unwrap();
+        let bounds = path.bounds();
+        assert!(width > 10.0 && height > 15.0);
+        assert!(bounds.left() >= 10.0 && bounds.top() >= 10.0 && bounds.right() <= 10.0 + width);
+        let text = Mark {
+            label: Some("Click here".into()),
+            ..mark(Tool::Text, &[(5.0, 5.0)])
+        };
+        assert!(matches!(
+            shapes(&text, 1.0)[..],
+            [Shape::Pill(..), Shape::Glyphs(..)]
+        ));
+        assert!(
+            lettering("", 20.0, Point::ORIGIN).is_none(),
+            "nothing typed, nothing drawn"
+        );
+    }
+
+    #[test]
+    fn steps_count_up_and_typing_lands_as_a_mark() {
+        let (width, height) = (64u32, 48u32);
+        let mut marks = Marks {
+            file: PathBuf::from("/tmp/shot.png"),
+            width,
+            height,
+            picture: Handle::from_rgba(width, height, vec![255u8; (width * height * 4) as usize]),
+            marks: Vec::new(),
+            tool: Tool::Step,
+            ink: 0,
+            typing: None,
+        };
+        marks.update(Event::Drawn(mark(Tool::Step, &[(10.0, 10.0)])));
+        marks.update(Event::Drawn(mark(Tool::Step, &[(30.0, 10.0)])));
+        let labels: Vec<_> = marks.marks.iter().map(|m| m.label.clone()).collect();
+        assert_eq!(labels, [Some("1".into()), Some("2".into())]);
+        marks.update(Event::Write(Point::new(5.0, 30.0), Rgba::hex(0xffffff)));
+        marks.update(Event::Typed("Ok".into()));
+        marks.update(Event::Typed("!".into()));
+        marks.update(Event::Erase);
+        assert!(marks.typing());
+        marks.update(Event::Save);
+        assert!(!marks.typing());
+        assert_eq!(
+            marks.marks.last().and_then(|m| m.label.as_deref()),
+            Some("Ok")
+        );
+        marks.update(Event::Write(Point::new(5.0, 30.0), Rgba::hex(0xffffff)));
+        marks.update(Event::Place);
+        assert_eq!(marks.marks.len(), 3, "nothing typed leaves nothing");
+        assert!(marks.render().is_ok());
     }
 
     #[test]
@@ -620,6 +873,7 @@ mod tests {
             marks: Vec::new(),
             tool: Tool::Box,
             ink: 0,
+            typing: None,
         };
         marks.update(Event::Drawn(mark(Tool::Box, &[(4.0, 4.0), (30.0, 30.0)])));
         marks.update(Event::Drawn(mark(Tool::Hide, &[(40.0, 4.0), (60.0, 40.0)])));

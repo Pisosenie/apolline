@@ -621,10 +621,16 @@ impl Shell {
                     return Task::batch([reload, self.triggers()]);
                 }
             }
-            Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. }, _)
-                if self.overlay == Some(Overlay::Marks) =>
-            {
-                return self.marks_key(key, modifiers);
+            Message::Key(
+                keyboard::Event::KeyPressed {
+                    key,
+                    modifiers,
+                    text,
+                    ..
+                },
+                _,
+            ) if self.overlay == Some(Overlay::Marks) => {
+                return self.marks_key(key, modifiers, text.as_deref());
             }
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
                 return self.key(key, text.as_deref(), captured);
@@ -1548,8 +1554,26 @@ impl Shell {
         found
     }
 
-    fn marks_key(&mut self, key: Key, modifiers: keyboard::Modifiers) -> Task<Message> {
+    fn marks_key(
+        &mut self,
+        key: Key,
+        modifiers: keyboard::Modifiers,
+        text: Option<&str>,
+    ) -> Task<Message> {
         use crate::marks::{Event, Tool};
+        let typing = self.marks.as_ref().is_some_and(|m| m.typing());
+        if typing && !modifiers.command() {
+            let event = match key.as_ref() {
+                Key::Named(Named::Escape) => Event::Drop,
+                Key::Named(Named::Enter) => Event::Place,
+                Key::Named(Named::Backspace) => Event::Erase,
+                _ => match text.filter(|t| t.chars().all(|c| !c.is_control())) {
+                    Some(typed) => Event::Typed(typed.to_owned()),
+                    None => return Task::none(),
+                },
+            };
+            return self.mark(event);
+        }
         let event = match key.as_ref() {
             Key::Named(Named::Escape) => return self.set_overlay(None),
             Key::Named(Named::Enter) => Event::Both,
@@ -1561,6 +1585,8 @@ impl Shell {
             Key::Character("b") => Event::Tool(Tool::Box),
             Key::Character("m") => Event::Tool(Tool::Marker),
             Key::Character("h") => Event::Tool(Tool::Hide),
+            Key::Character("t") => Event::Tool(Tool::Text),
+            Key::Character("n") => Event::Tool(Tool::Step),
             _ => return Task::none(),
         };
         self.mark(event)

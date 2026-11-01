@@ -1,8 +1,10 @@
+pub const SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Geist-SemiBold.ttf");
+
 pub const ALL: [&[u8]; 6] = [
     include_bytes!("../../../assets/fonts/Geist-ExtraLight.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Regular.ttf"),
     include_bytes!("../../../assets/fonts/Geist-Medium.ttf"),
-    include_bytes!("../../../assets/fonts/Geist-SemiBold.ttf"),
+    SEMIBOLD,
     include_bytes!("../../../assets/fonts/GeistMono-Regular.ttf"),
     include_bytes!("../../../assets/fonts/GeistMono-Medium.ttf"),
 ];
