@@ -202,9 +202,9 @@ impl Page {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
             Page::Themes => &["desktop", "layout", "windows", "bar"],
-            Page::Appearance => &["desktop", "layout", "apps"],
+            Page::Appearance => &["desktop", "layout", "apps", "style"],
             Page::Windows => &["windows"],
-            Page::Displays => &[],
+            Page::Displays => &["night"],
             Page::Bar => &["bar"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
@@ -293,6 +293,10 @@ enum Message {
     Add,
     Remove(usize),
     Gaps(u16),
+    NightSchedule(bool),
+    NightDraft(String),
+    SetNight,
+    NightWarmth(u16),
     LauncherRadius(u16),
     LauncherGlass(u16),
     LauncherSize(u16),
@@ -404,6 +408,7 @@ struct Settings {
     app_draft: (&'static str, String),
     module_draft: String,
     weather_draft: Option<String>,
+    night_draft: Option<String>,
     live: crate::control::Shared,
     monitors: Vec<String>,
     monitor: Option<String>,
@@ -484,6 +489,7 @@ impl Settings {
             app_draft: ("", String::new()),
             module_draft: String::new(),
             weather_draft: None,
+            night_draft: None,
             live: crate::control::shared(),
             monitors: wallpaper::monitors(),
             monitor: None,
@@ -944,6 +950,29 @@ impl Settings {
             }
             Message::Gaps(v) => self.stage(|e| e.set("layout", "gaps", i64::from(v))),
             Message::Radius(v) => self.stage(|e| e.set("layout", "radius", i64::from(v))),
+            Message::NightSchedule(on) => {
+                self.night_draft = None;
+                self.edit(|e| {
+                    if on {
+                        e.set("night", "hours", "21:00-07:00");
+                    } else {
+                        e.unset("night", "hours");
+                    }
+                });
+            }
+            Message::NightDraft(draft) => self.night_draft = Some(draft),
+            Message::SetNight => {
+                if let Some(Trigger::Hours { from, until }) =
+                    self.night_draft.as_deref().and_then(Trigger::parse)
+                {
+                    let hours = Trigger::Hours { from, until }.text();
+                    self.edit(|e| e.set("night", "hours", hours.as_str()));
+                    self.night_draft = None;
+                }
+            }
+            Message::NightWarmth(kelvin) => {
+                self.stage(|e| e.set("night", "temperature", i64::from(kelvin)))
+            }
             Message::LauncherRadius(v) => {
                 self.stage(|e| e.set_in(&["style", "launcher"], "radius", i64::from(v)))
             }
@@ -1504,7 +1533,11 @@ impl Settings {
                 Some(editor.mode_section(self.selected))
             }
             (Ok(_), Page::Modes) => Some(String::new()),
-            (Ok(editor), Page::Displays) => Some(editor.lists("display")),
+            (Ok(editor), Page::Displays) => Some(format!(
+                "{}\n{}",
+                editor.lists("display"),
+                editor.sections(page.sections())
+            )),
             (Ok(editor), Page::Bar) => Some(format!(
                 "{}\n{}",
                 editor.sections(page.sections()),
@@ -4372,7 +4405,52 @@ impl Settings {
             let title = format!("{} {} · {}", output.make, output.model, output.name);
             page = page.push(group(title, rows));
         }
-        page.into()
+        page.push(self.night(palette)).into()
+    }
+
+    fn night(&self, palette: Palette) -> Element<'_, Message> {
+        let night = &self.config.night;
+        let mut rows = vec![setting(
+            "On a schedule",
+            "Warmer screens for these hours; the tile in quick settings overrides it until the next change",
+            switch(night.hours.is_some(), Message::NightSchedule, palette),
+        )];
+        if let Some((from, until)) = night.hours {
+            let saved = Trigger::Hours { from, until }.text();
+            let draft = self.night_draft.clone().unwrap_or_else(|| saved.clone());
+            let valid = matches!(Trigger::parse(&draft), Some(Trigger::Hours { .. }));
+            rows.push(setting_owned(
+                "Hours",
+                Some("From and until, like 21:00-07:00".to_owned()),
+                row![
+                    text_input("21:00-07:00", &draft)
+                        .on_input(Message::NightDraft)
+                        .on_submit(Message::SetNight)
+                        .padding([8, 12])
+                        .size(13)
+                        .width(140)
+                        .style(style::field(palette)),
+                    button(text("Save").size(13))
+                        .padding([8, 14])
+                        .style(style::secondary)
+                        .on_press_maybe((valid && draft != saved).then_some(Message::SetNight)),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center),
+            ));
+            rows.push(setting(
+                "Warmth",
+                "Lower is warmer; 6500 K is daylight",
+                value_slider(
+                    2500..=6000,
+                    night.temperature.clamp(2500, 6000) as u16,
+                    Message::NightWarmth,
+                    "K",
+                    palette,
+                ),
+            ));
+        }
+        group("Night light", rows)
     }
 
     fn set_trigger(&mut self, index: usize, trigger: Trigger, on: bool) {
@@ -5424,6 +5502,38 @@ fn mode_overrides(mode: &ModeSettings) -> Vec<String> {
 mod tests {
     use super::*;
     use apolline_config::{Mouse, Touchpad};
+
+    #[test]
+    fn night_light_gets_its_hours_and_warmth() {
+        let dir = std::env::temp_dir().join(format!("apolline-night-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[layout]\ngaps = 8\n").unwrap();
+        let (mut settings, _) = Settings::open(path.clone(), None);
+
+        let _ = settings.update(Message::NightSchedule(true));
+        assert_eq!(settings.config.night.hours, Some((21 * 60, 7 * 60)));
+        let _ = settings.update(Message::NightDraft("22:30-6:00".into()));
+        let _ = settings.update(Message::SetNight);
+        assert_eq!(settings.config.night.hours, Some((22 * 60 + 30, 6 * 60)));
+        let _ = settings.update(Message::NightDraft("late".into()));
+        let _ = settings.update(Message::SetNight);
+        assert_eq!(
+            settings.config.night.hours,
+            Some((22 * 60 + 30, 6 * 60)),
+            "nonsense is kept out"
+        );
+        let _ = settings.update(Message::NightWarmth(3500));
+        let _ = settings.update(Message::Commit);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("[night]\nhours = \"22:30-06:00\"\ntemperature = 3500"),
+            "{text}"
+        );
+        let _ = settings.update(Message::NightSchedule(false));
+        assert_eq!(settings.config.night.hours, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn a_monitor_can_have_its_own_wallpaper_and_give_it_back() {

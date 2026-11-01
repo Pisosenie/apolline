@@ -173,7 +173,7 @@ The shell also locks on `loginctl lock-session`, right before the laptop sleeps,
 
 ## Night light
 
-`[night] hours = "21:00-07:00"` warms the screens to `temperature = 4000` kelvin for those hours through wlr-gamma-control, and the Night light tile in quick settings turns it on or off until the next change of schedule.
+`[night] hours = "21:00-07:00"` warms the screens to `temperature = 4000` kelvin for those hours through wlr-gamma-control, and the Night light tile in quick settings turns it on or off until the next change of schedule. Settings → Displays sets the hours and the warmth.
 
 ## Calendar and weather
 
