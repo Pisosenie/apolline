@@ -1,0 +1,25 @@
+[theme]
+name = "Mocha"
+author = "Apolline"
+
+[desktop]
+wallpaper = "night.jpg"
+accent = "palette"
+palette = "catppuccin-mocha"
+
+[layout]
+gaps = 10
+radius = 12
+borders = true
+shadows = true
+
+[windows]
+motion = "smooth"
+
+[bar]
+position = "top"
+floating = true
+opacity = 0.85
+
+[style.bar]
+radius = 12

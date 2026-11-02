@@ -115,7 +115,7 @@ tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
 
 ## Themes
 
-A theme is one small file: wallpaper, accent, gaps, corners, borders, shadows, window opacity, animation speed and the bar's place and look. Settings → Themes shows them as a gallery: five come with Apolline (Fog, Ember, Night, Minimal, Glass), *Save my look* turns your current setup into one, and *Add someone's theme* takes a file somebody sent you. They live in `~/.config/apolline/themes`, so sharing a look is sending a file.
+A theme is one small file: wallpaper, accent, palette, gaps, corners, borders, shadows, window opacity, animation speed, the bar's place, shape and look, and the size, corners and glass of the launcher, quick settings and popups. Settings → Themes shows them as a gallery: ten come with Apolline (Fog, Ember, Night; Tonal, with colors from the wallpaper and the bar as islands; Mocha and Latte in Catppuccin; Hardline, square and flat in Gruvbox; Paper, light and plain; Minimal; Glass), *Save my look* turns your current setup into one, and *Add someone's theme* takes a file somebody sent you. They live in `~/.config/apolline/themes`, so sharing a look is sending a file.
 
 ```sh
 apolline theme            # list them, the applied one marked
