@@ -54,6 +54,7 @@ mod status;
 mod strip;
 mod style;
 mod switcher;
+mod templates;
 mod themes;
 mod tray;
 mod tray_menu;

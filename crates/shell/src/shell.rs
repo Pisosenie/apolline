@@ -216,7 +216,13 @@ pub struct Shell {
     keymap: Vec<Entry>,
     keys_query: String,
     polkit: Option<polkit::Dialog>,
-    painted: Option<Option<apolline_theme::Rgba>>,
+    painted: Option<Option<(apolline_theme::Rgba, apolline_theme::Scheme)>>,
+    // What the templates were last filled with.
+    templated: Option<(
+        apolline_theme::Rgba,
+        apolline_theme::Scheme,
+        Vec<apolline_config::Template>,
+    )>,
     month: i32,
     day: Option<chrono::NaiveDate>,
     stats: crate::stats::Stats,
@@ -322,6 +328,7 @@ impl Shell {
             keys_query: String::new(),
             polkit: None,
             painted: None,
+            templated: None,
             month: 0,
             day: None,
             stats: crate::stats::Stats::default(),
@@ -439,16 +446,31 @@ impl Shell {
             self.handed.push((key, value.cloned()));
         }
         let palette = self.config.palette(self.mode);
+        let scheme = self.config.scheme(self.mode);
         if !self.config.apps.colors {
             if self.painted != Some(None) {
                 paint::remove();
                 self.painted = Some(None);
             }
-        } else if self.painted != Some(Some(palette.accent)) {
-            for note in paint::apply(palette) {
+        } else if self.painted != Some(Some((palette.accent, scheme))) {
+            for note in paint::apply(palette, &scheme) {
                 eprintln!("apolline: {note}");
             }
-            self.painted = Some(Some(palette.accent));
+            self.painted = Some(Some((palette.accent, scheme)));
+        }
+        let wanted = (palette.accent, scheme, self.config.templates.clone());
+        if self.templated.as_ref() != Some(&wanted) {
+            let (ran, problems) = crate::templates::write(&self.config.templates, &scheme, palette);
+            for problem in problems {
+                eprintln!("apolline: template: {problem}");
+            }
+            for command in ran {
+                let _ = std::process::Command::new("sh")
+                    .args(["-c", &command])
+                    .stdin(std::process::Stdio::null())
+                    .spawn();
+            }
+            self.templated = Some(wanted);
         }
     }
 

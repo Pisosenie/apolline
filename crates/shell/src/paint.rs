@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use apolline_theme::{Palette, Rgba};
+use apolline_theme::{Palette, Rgba, Scheme};
 
 use crate::gsettings;
 
@@ -9,12 +9,19 @@ const CSS: &str = "apolline.css";
 const IMPORT: &str = "@import url(\"apolline.css\");";
 const KDE: &str = "Apolline.colors";
 
-pub fn apply(palette: Palette) -> Vec<String> {
+pub fn apply(palette: Palette, scheme: &Scheme) -> Vec<String> {
     let (Some(config), Some(data)) = (config_home(), data_home()) else {
         return Vec::new();
     };
-    let notes = write(&config, &data, palette);
-    gsettings::set("color-scheme", "prefer-dark");
+    let notes = write(&config, &data, palette, scheme);
+    gsettings::set(
+        "color-scheme",
+        if scheme.light {
+            "prefer-light"
+        } else {
+            "prefer-dark"
+        },
+    );
     gsettings::set("accent-color", gnome_accent(palette.accent));
     notes
 }
@@ -27,7 +34,7 @@ pub fn remove() {
     gsettings::restore("accent-color");
 }
 
-fn write(config: &Path, data: &Path, palette: Palette) -> Vec<String> {
+fn write(config: &Path, data: &Path, palette: Palette, scheme: &Scheme) -> Vec<String> {
     let mut notes = Vec::new();
     for version in ["gtk-3.0", "gtk-4.0"] {
         let dir = config.join(version);
@@ -35,8 +42,8 @@ fn write(config: &Path, data: &Path, palette: Palette) -> Vec<String> {
             notes.push(format!("{} is a link, so it was left alone", dir.display()));
             continue;
         }
-        if let Err(err) =
-            fs::create_dir_all(&dir).and_then(|()| fs::write(dir.join(CSS), gtk_css(palette)))
+        if let Err(err) = fs::create_dir_all(&dir)
+            .and_then(|()| fs::write(dir.join(CSS), gtk_css(palette, scheme)))
         {
             notes.push(format!("{}: {err}", dir.display()));
             continue;
@@ -49,13 +56,13 @@ fn write(config: &Path, data: &Path, palette: Palette) -> Vec<String> {
     if qt.is_dir() {
         let colors = qt.join("colors");
         let _ = fs::create_dir_all(&colors)
-            .and_then(|()| fs::write(colors.join("apolline.conf"), qt_colors(palette)));
+            .and_then(|()| fs::write(colors.join("apolline.conf"), qt_colors(palette, scheme)));
     }
     // KDE apps and qt6ct both list schemes from here; picking it stays your call.
     if config.join("kdeglobals").is_file() || qt.is_dir() {
         let schemes = data.join("color-schemes");
         if let Err(err) = fs::create_dir_all(&schemes)
-            .and_then(|()| fs::write(schemes.join(KDE), kde_colors(palette)))
+            .and_then(|()| fs::write(schemes.join(KDE), kde_colors(palette, scheme)))
         {
             notes.push(format!("{}: {err}", schemes.display()));
         }
@@ -201,87 +208,146 @@ fn import(gtk: &Path) -> Option<String> {
         .map(|err| format!("{}: {err}", gtk.display()))
 }
 
-fn gtk_css(palette: Palette) -> String {
+// Solid steps of the scheme for apps that can't take see-through colors: the base, raised a bit,
+// raised more, and the text dimmed.
+struct Tones {
+    window: Rgba,
+    view: Rgba,
+    raised: Rgba,
+    higher: Rgba,
+    header: Rgba,
+    text: Rgba,
+    faint: Rgba,
+}
+
+fn tones(scheme: &Scheme) -> Tones {
+    let over = |a: f32, below: Rgba| scheme.overlay.alpha(a).over(below);
+    let window = scheme.window;
+    Tones {
+        window,
+        view: if scheme.light {
+            over(0.0, window)
+        } else {
+            scheme.ink.alpha(0.5).over(window)
+        },
+        raised: over(0.06, window),
+        higher: over(0.11, window),
+        header: over(0.03, window),
+        text: scheme.text,
+        faint: scheme.text.alpha(0.55).over(window),
+    }
+}
+
+fn gtk_css(palette: Palette, scheme: &Scheme) -> String {
     let accent = palette.accent.to_hex();
     let on = palette.on_accent.to_hex();
+    let t = tones(scheme);
+    let [window, view, raised, header, text] =
+        [t.window, t.view, t.raised, t.header, t.text].map(Rgba::to_hex);
     format!(
-        "/* Written by Apolline from your accent. Turn off \"Color apps\" in its settings to remove it. */
+        "/* Written by Apolline from your palette. Turn off \"Color apps\" in its settings to remove it. */
 @define-color accent_color {accent};
 @define-color accent_bg_color {accent};
 @define-color accent_fg_color {on};
 @define-color theme_selected_bg_color {accent};
 @define-color theme_selected_fg_color {on};
+@define-color window_bg_color {window};
+@define-color window_fg_color {text};
+@define-color view_bg_color {view};
+@define-color view_fg_color {text};
+@define-color headerbar_bg_color {header};
+@define-color headerbar_fg_color {text};
+@define-color sidebar_bg_color {header};
+@define-color sidebar_fg_color {text};
+@define-color card_bg_color {raised};
+@define-color card_fg_color {text};
+@define-color dialog_bg_color {raised};
+@define-color dialog_fg_color {text};
+@define-color popover_bg_color {raised};
+@define-color popover_fg_color {text};
+@define-color theme_bg_color {window};
+@define-color theme_fg_color {text};
+@define-color theme_base_color {view};
+@define-color theme_text_color {text};
 "
     )
 }
 
-fn kde_colors(palette: Palette) -> String {
+fn kde_colors(palette: Palette, scheme: &Scheme) -> String {
     let rgb = |c: Rgba| format!("{},{},{}", c.r, c.g, c.b);
-    let text = Rgba::hex(0xf4f3f0);
-    let faint = Rgba::hex(0x8a8c90);
+    let t = tones(scheme);
     let accent = rgb(palette.accent);
     let set = |name: &str, back: Rgba, alternate: Rgba, fore: Rgba| {
         format!(
             "[Colors:{name}]\nBackgroundAlternate={}\nBackgroundNormal={}\nDecorationFocus={accent}\nDecorationHover={accent}\nForegroundActive={accent}\nForegroundInactive={}\nForegroundLink={accent}\nForegroundNegative=255,122,107\nForegroundNeutral=242,179,92\nForegroundNormal={}\nForegroundPositive=125,207,145\nForegroundVisited={}\n\n",
             rgb(alternate),
             rgb(back),
-            rgb(faint),
+            rgb(t.faint),
             rgb(fore),
             rgb(palette.accent.shift_hue(40.0)),
         )
     };
-    let dark = |back: u32, alternate: u32| (Rgba::hex(back), Rgba::hex(alternate));
     let mut text_sets: Vec<String> = [
-        ("Button", dark(0x2a2c31, 0x33363c)),
-        ("Complementary", dark(0x141619, 0x1b1d21)),
-        ("Header", dark(0x1b1d21, 0x23252a)),
-        ("Tooltip", dark(0x2a2c31, 0x33363c)),
-        ("View", dark(0x17191d, 0x1e2024)),
-        ("Window", dark(0x1e2024, 0x23252a)),
+        ("Button", t.raised, t.higher),
+        ("Complementary", t.view, t.window),
+        ("Header", t.header, t.raised),
+        ("Tooltip", t.raised, t.higher),
+        ("View", t.view, t.window),
+        ("Window", t.window, t.header),
     ]
     .into_iter()
-    .map(|(name, (back, alternate))| set(name, back, alternate, text))
+    .map(|(name, back, alternate)| set(name, back, alternate, t.text))
     .collect();
     text_sets.push(set(
         "Selection",
         palette.accent,
-        palette.accent_soft,
+        palette.accent_soft.over(t.window),
         palette.on_accent,
     ));
     format!(
-        "[General]\nColorScheme=Apolline\nName=Apolline\n\n{}[WM]\nactiveBackground=27,29,33\nactiveBlend={accent}\nactiveForeground={}\ninactiveBackground=23,25,29\ninactiveBlend={}\ninactiveForeground={}\n",
+        "[General]\nColorScheme=Apolline\nName=Apolline\n\n{}[WM]\nactiveBackground={}\nactiveBlend={accent}\nactiveForeground={}\ninactiveBackground={}\ninactiveBlend={}\ninactiveForeground={}\n",
         text_sets.concat(),
-        rgb(text),
-        rgb(faint),
-        rgb(faint),
+        rgb(t.header),
+        rgb(t.text),
+        rgb(t.window),
+        rgb(t.faint),
+        rgb(t.faint),
     )
 }
 
-fn qt_colors(palette: Palette) -> String {
+fn qt_colors(palette: Palette, scheme: &Scheme) -> String {
     let argb = |c: Rgba| format!("#ff{}", c.to_hex().trim_start_matches('#'));
-    let text = Rgba::hex(0xf4f3f0);
+    let t = tones(scheme);
+    let shadow = if scheme.light {
+        Rgba::hex(0x9a9a9a)
+    } else {
+        Rgba::hex(0x000000)
+    };
+    // In qt6ct's order: text, button, light, midlight, dark, mid, button text, bright text,
+    // button text again, base, window, shadow, highlight, highlighted text, link, visited link,
+    // alternate base, default, tooltip base, tooltip text, placeholder.
     let roles = [
-        text,
-        Rgba::hex(0x2a2c31),
-        Rgba::hex(0x3a3d44),
-        Rgba::hex(0x33363c),
-        Rgba::hex(0x141619),
-        Rgba::hex(0x23252a),
-        text,
-        Rgba::hex(0xffffff),
-        text,
-        Rgba::hex(0x17191d),
-        Rgba::hex(0x1e2024),
-        Rgba::hex(0x000000),
+        t.text,
+        t.raised,
+        t.higher,
+        t.raised,
+        t.view,
+        t.header,
+        t.text,
+        scheme.overlay,
+        t.text,
+        t.view,
+        t.window,
+        shadow,
         palette.accent,
         palette.on_accent,
         palette.accent,
         palette.accent.shift_hue(40.0),
-        Rgba::hex(0x1b1d21),
-        Rgba::hex(0x000000),
-        Rgba::hex(0x2a2c31),
-        text,
-        Rgba::hex(0x8a8c90),
+        t.header,
+        shadow,
+        t.raised,
+        t.text,
+        t.faint,
     ];
     let active: Vec<String> = roles.iter().map(|c| argb(*c)).collect();
     let faded: Vec<String> = roles
@@ -289,7 +355,7 @@ fn qt_colors(palette: Palette) -> String {
         .enumerate()
         .map(|(i, c)| {
             if matches!(i, 0 | 6 | 8) {
-                argb(Rgba::hex(0x8a8c90))
+                argb(t.faint)
             } else {
                 argb(*c)
             }
@@ -351,12 +417,11 @@ mod tests {
         fs::write(&gtk, "window { border: none; }\n").unwrap();
         fs::write(dir.join("kdeglobals"), "[General]\n").unwrap();
         let share = dir.join("share");
-        write(&dir, &share, Palette::new(ACCENTS[3]));
-        write(&dir, &share, Palette::new(ACCENTS[3]));
+        write(&dir, &share, Palette::new(ACCENTS[3]), &Scheme::DARK);
+        write(&dir, &share, Palette::new(ACCENTS[3]), &Scheme::DARK);
         let kde = fs::read_to_string(share.join("color-schemes").join(KDE)).unwrap();
-        assert!(kde.contains(
-            "[Colors:Selection]\nBackgroundAlternate=192,132,252\nBackgroundNormal=192,132,252\n"
-        ));
+        assert!(kde.contains("[Colors:Selection]\n"));
+        assert!(kde.contains("BackgroundNormal=192,132,252\n"));
         assert_eq!(kde.matches("[Colors:").count(), 7);
         let text = fs::read_to_string(&gtk).unwrap();
         assert_eq!(text, format!("{IMPORT}\nwindow {{ border: none; }}\n"));
@@ -389,7 +454,12 @@ mod tests {
         fs::create_dir_all(dir.join("dotfiles/gtk-4.0")).unwrap();
         std::os::unix::fs::symlink(dir.join("dotfiles/gtk-4.0"), dir.join("gtk-4.0")).unwrap();
 
-        let notes = write(&dir, &dir.join("share"), Palette::new(ACCENTS[0]));
+        let notes = write(
+            &dir,
+            &dir.join("share"),
+            Palette::new(ACCENTS[0]),
+            &Scheme::DARK,
+        );
         assert_eq!(fs::read(dir.join("gtk-3.0/gtk.css")).unwrap(), latin);
         assert!(!dir.join("dotfiles/gtk-4.0/apolline.css").exists());
         assert_eq!(notes.len(), 2, "{notes:?}");

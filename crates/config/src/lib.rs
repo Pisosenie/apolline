@@ -35,6 +35,7 @@ pub struct Config {
     pub rules: Vec<Rule>,
     pub displays: Vec<Display>,
     pub modules: Vec<Module>,
+    pub templates: Vec<Template>,
     pub pinned: Vec<String>,
     pub weather: Option<String>,
     // Where the clock's calendar gets its events.
@@ -245,6 +246,16 @@ pub struct Module {
     pub command: String,
     pub every: Option<u32>,
     pub click: Option<String>,
+}
+
+// A file of yours with {{accent}}, {{background}} and the like, filled in from the palette and
+// written where an app reads its colors, whenever they change.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Template {
+    pub from: String,
+    pub to: String,
+    // A command to run after it's written, so the app picks it up.
+    pub after: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -790,6 +801,7 @@ impl Default for Config {
             rules: Vec::new(),
             displays: Vec::new(),
             modules: Vec::new(),
+            templates: Vec::new(),
             pinned: Vec::new(),
             weather: None,
             calendars: Vec::new(),
@@ -926,6 +938,20 @@ pub fn default_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn templates_need_somewhere_to_come_from_and_go() {
+        let (config, problems) = parse(
+            "[[template]]\nfrom = \"~/t/btop.theme\"\nto = \"~/.config/btop/themes/apolline.theme\"\nafter = \"pkill -USR2 btop\"\n\n[[template]]\nfrom = \"~/t/x\"\n",
+        );
+        assert_eq!(config.templates.len(), 1);
+        assert_eq!(
+            config.templates[0].after.as_deref(),
+            Some("pkill -USR2 btop")
+        );
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].message.contains("from and to"));
+    }
 
     #[test]
     fn a_palette_names_the_colors_and_can_lend_its_accent() {

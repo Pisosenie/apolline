@@ -153,6 +153,19 @@ Themes can also carry the eye candy: `gradient = true` in `[layout]` lets the fo
 
 `[desktop] palette` picks the colors everything is drawn with: `dark` (as it comes), `light`, `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-latte`, `gruvbox`, `gruvbox-light`, `nord`, `tokyo-night`, `rose-pine`, `rose-pine-dawn`, `everforest`, `kanagawa`, `dracula`, `paper`, or `wallpaper` and `wallpaper-light` for neutrals tinted with the wallpaper's color. `accent = "palette"` takes the accent the palette is known for. Settings → Appearance shows them all as small screens to click; the bar, the overlays, the cards and the settings window change at once, and an accent too pale or too dark for the palette is shifted until it reads.
 
+With "Color apps" on (`[apps] colors = true`), GTK 3 and 4 apps get the whole palette, not only the accent (window, views, header bars, cards, popovers, light or dark), and so do KDE apps and qt6ct through an `Apolline` color scheme.
+
+Anything else takes the palette through a template: a file of yours with `{{accent}}`, `{{background}}`, `{{window}}`, `{{surface}}`, `{{panel}}`, `{{text}}`, `{{muted}}`, `{{faint}}`, `{{border}}`, `{{on_accent}}`, `{{good}}`, `{{warn}}`, `{{danger}}` and `{{mode}}` (dark or light) in it. `{{accent.hex}}` drops the `#`, and `{{accent.rgb}}` gives `r, g, b`. Apolline fills it in and writes it where the app reads its colors whenever the palette, the accent or the mode changes, and then runs `after` so the app takes it in:
+
+```toml
+[[template]]
+from = "~/.config/apolline/templates/btop.theme"
+to = "~/.config/btop/themes/apolline.theme"
+after = "pkill -USR2 btop"
+```
+
+`assets/templates` has `colors.css`, `colors.json` and `btop.theme` to start from. A file is rewritten only when what it says changes, through a copy next to it, so an app never reads half of one.
+
 Applying a theme rewrites only these keys in your config and leaves the rest alone. With `accent = "auto"` and your own wallpaper, the accent is the picture's most present vivid color, softened to sit next to the built-in accents and lightened until it reads on the bar's glass; window borders in niri follow it.
 
 ## Apps in your colors

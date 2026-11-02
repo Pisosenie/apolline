@@ -62,6 +62,7 @@ package() {
   install -Dm644 assets/apolline-settings.desktop "$pkgdir/usr/share/applications/apolline-settings.desktop"
   install -Dm644 assets/apolline.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/apolline.svg"
   install -Dm644 assets/config.toml "$pkgdir/usr/share/doc/$_name/config.toml"
+  install -Dm644 -t "$pkgdir/usr/share/doc/$_name/templates" assets/templates/*
   install -Dm644 README.md "$pkgdir/usr/share/doc/$_name/README.md"
   install -Dm644 LICENSE-MIT "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
   install -Dm644 LICENSE-APACHE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"

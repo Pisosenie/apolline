@@ -17,7 +17,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 20] = [
+const SECTIONS: [&str; 21] = [
     "general",
     "theme",
     "desktop",
@@ -37,6 +37,7 @@ const SECTIONS: [&str; 20] = [
     "rule",
     "display",
     "module",
+    "template",
     "mode",
 ];
 
@@ -286,6 +287,7 @@ impl Reader<'_> {
                 "rule" => self.rules(key, value, config),
                 "display" => self.displays(key, value, config),
                 "module" => self.modules(key, value, config),
+                "template" => self.templates(key, value, config),
                 "mode" => self.modes(key, value, config),
                 _ => self.unknown(key, "section", &SECTIONS),
             }
@@ -797,6 +799,50 @@ impl Reader<'_> {
                 );
             } else {
                 config.modules.push(module);
+            }
+        }
+    }
+
+    fn templates(&mut self, key: &Key, value: &Value, config: &mut Config) {
+        let DeValue::Array(items) = value.get_ref() else {
+            self.wrong::<()>(key, value, "a list of [[template]] sections");
+            return;
+        };
+        for item in items {
+            let DeValue::Table(table) = item.get_ref() else {
+                continue;
+            };
+            let mut template = crate::Template {
+                from: String::new(),
+                to: String::new(),
+                after: None,
+            };
+            for (key, value) in table.iter() {
+                let text = |reader: &mut Self| {
+                    reader
+                        .string(key, value)
+                        .map(|v| v.trim().to_owned())
+                        .filter(|v| !v.is_empty())
+                };
+                match key.get_ref().as_ref() {
+                    "from" => template.from = text(self).unwrap_or_default(),
+                    "to" => template.to = text(self).unwrap_or_default(),
+                    "after" => template.after = text(self),
+                    _ => self.unknown(key, "option", &["from", "to", "after"]),
+                }
+            }
+            if template.from.is_empty() || template.to.is_empty() {
+                self.diagnostics.push(
+                    Diagnostic::new(self.line(item.span()), "a template needs from and to")
+                        .hint("from = \"~/.config/apolline/templates/btop.theme\", to = \"~/.config/btop/themes/apolline.theme\""),
+                );
+            } else if template.from == template.to {
+                self.diagnostics.push(Diagnostic::new(
+                    self.line(item.span()),
+                    "a template can't be written over itself",
+                ));
+            } else {
+                config.templates.push(template);
             }
         }
     }
