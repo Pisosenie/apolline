@@ -30,6 +30,7 @@ opacity = 0.55             # how solid the glass is, 0 to 1
 # tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
 
 [notifications]
+position = "top-right"     # top-left, top, top-right, bottom-left, bottom or bottom-right
 do_not_disturb = false     # hold everything but urgent, in every mode
 seconds = 5                # how long a popup stays
 

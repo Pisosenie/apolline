@@ -1782,7 +1782,7 @@ impl Shell {
     pub fn osd_view(&self) -> Option<Element<'_, Message>> {
         self.osd
             .as_ref()
-            .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode)))
+            .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode), self.config.style.osd))
     }
 
     fn idle(&mut self, stage: Stage) -> Task<Message> {
@@ -2386,13 +2386,30 @@ impl Shell {
         }
     }
 
+    // At the bottom of the screen the newest card is the one nearest the edge.
     pub fn popups(&self) -> Element<'_, Message> {
+        let mut cards = self.shown_cards();
+        if self.config.alerts.position.bottom() {
+            cards.reverse();
+        }
         popup::stack(
-            self.shown_cards(),
+            cards,
             &self.apps,
             self.config.palette(self.mode),
             self.replying.as_ref(),
+            self.config.style.cards,
         )
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn cards_place(&self) -> (apolline_config::Corner, f32) {
+        let size = self.config.style.cards.size.unwrap_or(1.0);
+        (self.config.alerts.position, size)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn osd_size(&self) -> f32 {
+        self.config.style.osd.size.unwrap_or(1.0)
     }
 
     fn look(&self) -> Fragment<'_> {

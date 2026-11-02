@@ -12,7 +12,7 @@ pub const HEIGHT: u32 = 52;
 pub const SURFACE: (u32, u32) = (WIDTH + 48, HEIGHT + 48);
 pub const SHOWN_FOR: std::time::Duration = std::time::Duration::from_millis(1600);
 
-pub fn view(osd: &Osd, palette: Palette) -> Element<'_, Message> {
+pub fn view(osd: &Osd, palette: Palette, look: apolline_config::Surface) -> Element<'_, Message> {
     let (glyph, level, label) = match osd {
         Osd::Volume(volume) => (
             Icon::volume(volume.level, volume.muted),
@@ -79,9 +79,11 @@ pub fn view(osd: &Osd, palette: Palette) -> Element<'_, Message> {
         .height(HEIGHT as f32)
         .padding([0, 18])
         .align_y(Alignment::Center)
-        .style(|theme| {
-            let mut style = style::surface(theme);
-            style.border.radius = 16.0.into();
+        .style(move |theme| {
+            let mut style = style::surface_as(look)(theme);
+            if look.radius.is_none() {
+                style.border.radius = 16.0.into();
+            }
             style
         });
     container(pill)

@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use apolline_config::{
-    Accent, Appear, Blur, Calendar, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
-    Notifications, Piece, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, TrayItem, Trigger,
-    Width, Workspaces, auto_accent,
+    Accent, Appear, Blur, Calendar, Center, Config, Corner, Diagnostic, Edge, Editor, ModeSettings,
+    Motion, Notifications, Piece, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, TrayItem,
+    Trigger, Width, Workspaces, auto_accent,
 };
 use apolline_theme::{ACCENTS, Palette, Rgba, neutral};
 use iced::keyboard;
@@ -310,13 +310,9 @@ enum Message {
     NightDraft(String),
     SetNight,
     NightWarmth(u16),
-    LauncherRadius(u16),
-    LauncherGlass(u16),
-    LauncherSize(u16),
+    Style(Part, Knob, u16),
     LauncherGrid(bool),
-    PanelRadius(u16),
-    PanelGlass(u16),
-    PanelSize(u16),
+    CardsCorner(Corner),
     Radius(u16),
     BorderStyle(u8),
     Shadows(bool),
@@ -1092,26 +1088,16 @@ impl Settings {
             Message::NightWarmth(kelvin) => {
                 self.stage(|e| e.set("night", "temperature", i64::from(kelvin)))
             }
-            Message::LauncherRadius(v) => {
-                self.stage(|e| e.set_in(&["style", "launcher"], "radius", i64::from(v)))
-            }
-            Message::LauncherGlass(v) => {
-                self.stage(|e| e.set_in(&["style", "launcher"], "opacity", hundredths(v)))
-            }
-            Message::LauncherSize(v) => {
-                self.stage(|e| e.set_in(&["style", "launcher"], "size", hundredths(v)))
-            }
+            Message::Style(look, knob, v) => self.stage(|e| match knob {
+                Knob::Corners => e.set_in(&["style", look.key()], "radius", i64::from(v)),
+                Knob::Glass => e.set_in(&["style", look.key()], "opacity", hundredths(v)),
+                Knob::Size => e.set_in(&["style", look.key()], "size", hundredths(v)),
+            }),
             Message::LauncherGrid(on) => {
                 self.edit(|e| e.set_in(&["style", "launcher"], "grid", on))
             }
-            Message::PanelRadius(v) => {
-                self.stage(|e| e.set_in(&["style", "panel"], "radius", i64::from(v)))
-            }
-            Message::PanelGlass(v) => {
-                self.stage(|e| e.set_in(&["style", "panel"], "opacity", hundredths(v)))
-            }
-            Message::PanelSize(v) => {
-                self.stage(|e| e.set_in(&["style", "panel"], "size", hundredths(v)))
+            Message::CardsCorner(corner) => {
+                self.edit(|e| e.set("notifications", "position", corner.key()))
             }
             Message::BorderStyle(style) => self.edit(|e| {
                 e.set("layout", "borders", style > 0);
@@ -3089,91 +3075,48 @@ impl Settings {
 
     fn surfaces(&self, palette: Palette) -> Element<'_, Message> {
         let style = &self.config.style;
-        let corners = |look: apolline_config::Surface| look.radius.unwrap_or(20);
-        let glass =
-            |look: apolline_config::Surface| (look.opacity.unwrap_or(0.95) * 100.0).round() as u16;
-        let size =
-            |look: apolline_config::Surface| (look.size.unwrap_or(1.0) * 100.0).round() as u16;
-        group(
-            "Launcher and quick settings",
-            vec![
-                setting(
-                    "Launcher layout",
-                    "A list with details, or a grid of big icons moved through with the arrows",
-                    segmented(
-                        [(false, "List", None), (true, "Grid", None)],
-                        style.grid,
-                        Message::LauncherGrid,
-                    ),
-                ),
-                setting(
-                    "Launcher size",
-                    "Text, icons and spacing together",
+        let mut rows = vec![setting(
+            "Launcher layout",
+            "A list with details, or a grid of big icons moved through with the arrows",
+            segmented(
+                [(false, "List", None), (true, "Grid", None)],
+                style.grid,
+                Message::LauncherGrid,
+            ),
+        )];
+        for look in Part::ALL {
+            let surface = look.of(style);
+            let (corners, glass) = look.defaults();
+            rows.push(setting(
+                look.name(),
+                "Size, corners and how solid it is over what's behind",
+                column![
                     value_slider(
                         80..=150,
-                        size(style.launcher),
-                        Message::LauncherSize,
+                        (surface.size.unwrap_or(1.0) * 100.0).round() as u16,
+                        move |v| Message::Style(look, Knob::Size, v),
                         "%",
                         palette,
                     ),
-                ),
-                setting(
-                    "Launcher corners",
-                    "",
                     value_slider(
                         0..=40,
-                        corners(style.launcher),
-                        Message::LauncherRadius,
+                        surface.radius.unwrap_or(corners),
+                        move |v| Message::Style(look, Knob::Corners, v),
                         "px",
                         palette,
                     ),
-                ),
-                setting(
-                    "Launcher glass",
-                    "How solid it is over what's behind",
                     value_slider(
                         30..=100,
-                        glass(style.launcher),
-                        Message::LauncherGlass,
+                        (surface.opacity.unwrap_or(glass) * 100.0).round() as u16,
+                        move |v| Message::Style(look, Knob::Glass, v),
                         "%",
                         palette,
                     ),
-                ),
-                setting(
-                    "Quick settings size",
-                    "",
-                    value_slider(
-                        80..=150,
-                        size(style.panel),
-                        Message::PanelSize,
-                        "%",
-                        palette,
-                    ),
-                ),
-                setting(
-                    "Quick settings corners",
-                    "",
-                    value_slider(
-                        0..=40,
-                        corners(style.panel),
-                        Message::PanelRadius,
-                        "px",
-                        palette,
-                    ),
-                ),
-                setting(
-                    "Quick settings glass",
-                    "",
-                    value_slider(
-                        30..=100,
-                        glass(style.panel),
-                        Message::PanelGlass,
-                        "%",
-                        palette,
-                    ),
-                ),
-            ],
-        )
+                ]
+                .spacing(6),
+            ));
+        }
+        group("Launcher, quick settings and popups", rows)
     }
 
     fn windows(&self) -> Element<'_, Message> {
@@ -4030,7 +3973,7 @@ impl Settings {
         let alerts = &self.config.alerts;
         let palette = self.palette();
         let test_state: Element<'_, Message> = match &self.tested {
-            Some(Ok(())) => text("Sent — look at the top right")
+            Some(Ok(())) => text(format!("Sent — look {}", where_cards(alerts.position)))
                 .size(12)
                 .color(style::color(style::GOOD))
                 .into(),
@@ -4067,6 +4010,11 @@ impl Settings {
                         "Do not disturb",
                         "Holds everything but urgent ones, in every mode",
                         switch(alerts.do_not_disturb, Message::DoNotDisturb, palette),
+                    ),
+                    setting(
+                        "Where they show up",
+                        "Newest nearest the edge",
+                        corner_picker(alerts.position, palette),
                     ),
                     setting(
                         "Popups stay for",
@@ -5645,7 +5593,7 @@ fn switch<'a>(
 fn value_slider<'a>(
     range: std::ops::RangeInclusive<u16>,
     value: u16,
-    message: fn(u16) -> Message,
+    message: impl Fn(u16) -> Message + 'a,
     unit: &'a str,
     palette: Palette,
 ) -> Element<'a, Message> {
@@ -5986,6 +5934,124 @@ fn tray_label(name: &str) -> String {
         name => return name.to_owned(),
     }
     .to_owned()
+}
+
+// The surfaces with a style of their own, by their [style.…] name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    Launcher,
+    Panel,
+    Cards,
+    Osd,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Knob {
+    Size,
+    Corners,
+    Glass,
+}
+
+impl Part {
+    const ALL: [Part; 4] = [Part::Launcher, Part::Panel, Part::Cards, Part::Osd];
+
+    fn key(self) -> &'static str {
+        match self {
+            Part::Launcher => "launcher",
+            Part::Panel => "panel",
+            Part::Cards => "notifications",
+            Part::Osd => "osd",
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Part::Launcher => "Launcher",
+            Part::Panel => "Quick settings",
+            Part::Cards => "Notifications",
+            Part::Osd => "Volume and brightness",
+        }
+    }
+
+    fn of(self, style: &apolline_config::Styles) -> apolline_config::Surface {
+        match self {
+            Part::Launcher => style.launcher,
+            Part::Panel => style.panel,
+            Part::Cards => style.cards,
+            Part::Osd => style.osd,
+        }
+    }
+
+    // Corners and glass as each one comes.
+    fn defaults(self) -> (u16, f32) {
+        match self {
+            Part::Launcher | Part::Panel => (20, 0.95),
+            Part::Cards => (16, 1.0),
+            Part::Osd => (16, 0.95),
+        }
+    }
+}
+
+fn where_cards(corner: Corner) -> &'static str {
+    match corner {
+        Corner::TopLeft => "at the top left",
+        Corner::Top => "at the top",
+        Corner::TopRight => "at the top right",
+        Corner::BottomLeft => "at the bottom left",
+        Corner::Bottom => "at the bottom",
+        Corner::BottomRight => "at the bottom right",
+    }
+}
+
+// A small screen with a spot in each corner and the middle of each edge for the cards.
+fn corner_picker<'a>(chosen: Corner, palette: Palette) -> Element<'a, Message> {
+    let spot = move |corner: Corner| -> Element<'a, Message> {
+        let on = corner == chosen;
+        button(space().width(22).height(10))
+            .padding(0)
+            .style(move |_: &Theme, status| button::Style {
+                background: Some(Background::Color(style::color(if on {
+                    palette.accent
+                } else if status == button::Status::Hovered {
+                    neutral::TEXT.alpha(0.35)
+                } else {
+                    neutral::TEXT.alpha(0.14)
+                }))),
+                border: Border::default().rounded(4),
+                ..button::Style::default()
+            })
+            .on_press(Message::CardsCorner(corner))
+            .into()
+    };
+    let edge = |a, b, c| {
+        row![
+            spot(a),
+            space::horizontal(),
+            spot(b),
+            space::horizontal(),
+            spot(c)
+        ]
+    };
+    container(
+        column![
+            edge(Corner::TopLeft, Corner::Top, Corner::TopRight),
+            space::vertical(),
+            edge(Corner::BottomLeft, Corner::Bottom, Corner::BottomRight),
+        ]
+        .padding(8),
+    )
+    .width(128)
+    .height(78)
+    .style(|_| container::Style {
+        background: Some(Background::Color(style::color(style::SUNKEN))),
+        border: Border {
+            color: style::color(neutral::HAIRLINE),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..container::Style::default()
+    })
+    .into()
 }
 
 #[cfg(test)]

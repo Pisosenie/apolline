@@ -67,12 +67,13 @@ pub fn stack<'a>(
     apps: &'a [App],
     palette: Palette,
     replying: Option<&'a (u32, String)>,
+    look: apolline_config::Surface,
 ) -> Element<'a, Message> {
     keyed_column(cards.into_iter().map(|n| {
         let typed = replying
             .filter(|(id, _)| *id == n.id)
             .map(|(_, typed)| typed.as_str());
-        (n.id, card(n, apps, palette, typed))
+        (n.id, card(n, apps, palette, typed, look))
     }))
     .spacing(GAP as f32)
     .width(WIDTH as f32)
@@ -117,6 +118,7 @@ fn card<'a>(
     apps: &'a [App],
     palette: Palette,
     typed: Option<&'a str>,
+    look: apolline_config::Surface,
 ) -> Element<'a, Message> {
     let muted = style::color(neutral::MUTED);
     let edge = if notification.urgency == Urgency::Critical {
@@ -215,12 +217,14 @@ fn card<'a>(
     .padding(0)
     .width(Fill)
     .style(move |_: &Theme, _| button::Style {
-        background: Some(Background::Color(style::color(neutral::PANEL))),
+        background: Some(Background::Color(style::color(
+            neutral::PANEL.alpha(look.opacity.unwrap_or(1.0)),
+        ))),
         text_color: style::color(neutral::TEXT),
         border: Border {
             color: style::color(edge),
             width: 1.0,
-            radius: metrics::RADIUS_PANEL.into(),
+            radius: look.radius.map_or(metrics::RADIUS_PANEL, f32::from).into(),
         },
         ..button::Style::default()
     })

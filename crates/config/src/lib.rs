@@ -183,7 +183,46 @@ pub struct Surface {
 pub struct Styles {
     pub launcher: Surface,
     pub panel: Surface,
+    pub cards: Surface,
+    pub osd: Surface,
     pub grid: bool,
+}
+
+// Where notification cards come up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Corner {
+    #[default]
+    TopRight,
+    Top,
+    TopLeft,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+}
+
+impl Corner {
+    pub const ALL: [(&'static str, Corner); 6] = [
+        ("top-left", Corner::TopLeft),
+        ("top", Corner::Top),
+        ("top-right", Corner::TopRight),
+        ("bottom-left", Corner::BottomLeft),
+        ("bottom", Corner::Bottom),
+        ("bottom-right", Corner::BottomRight),
+    ];
+
+    pub fn key(self) -> &'static str {
+        Self::ALL
+            .iter()
+            .find(|(_, corner)| *corner == self)
+            .map_or("top-right", |(key, _)| key)
+    }
+
+    pub fn bottom(self) -> bool {
+        matches!(
+            self,
+            Corner::BottomRight | Corner::Bottom | Corner::BottomLeft
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -448,6 +487,7 @@ impl Default for Shortcuts {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alerts {
+    pub position: Corner,
     pub do_not_disturb: bool,
     pub seconds: u16,
     pub mute: Vec<String>,
@@ -679,6 +719,7 @@ impl Default for Config {
             touchpad: None,
             mouse: None,
             alerts: Alerts {
+                position: Corner::TopRight,
                 do_not_disturb: false,
                 seconds: 5,
                 mute: Vec::new(),
@@ -855,6 +896,20 @@ pub fn default_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cards_and_popups_are_placed_and_styled() {
+        let (config, problems) = parse(
+            "[notifications]\nposition = \"bottom-left\"\n\n[style.notifications]\nradius = 4\nopacity = 0.8\n\n[style.osd]\nsize = 1.2\n",
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(config.alerts.position, Corner::BottomLeft);
+        assert_eq!(config.style.cards.radius, Some(4));
+        assert_eq!(config.style.cards.opacity, Some(0.8));
+        assert_eq!(config.style.osd.size, Some(1.2));
+        let (_, problems) = parse("[notifications]\nposition = \"left\"\n");
+        assert_eq!(problems.len(), 1);
+    }
 
     fn parse(src: &str) -> (Config, Vec<Diagnostic>) {
         Config::parse(src)

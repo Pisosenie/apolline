@@ -11,7 +11,7 @@ use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 
 use crate::fonts;
 use crate::shell::{Message, Overlay, Shell};
-use apolline_config::Edge;
+use apolline_config::{Corner, Edge};
 
 use crate::popup::{Felt, Hold, Nudge};
 use crate::{osd, popup};
@@ -59,6 +59,8 @@ struct Layers {
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool),
     popups: Option<(window::Id, u32)>,
+    // Where the cards' window was opened, and at what size; either changing opens it again.
+    popups_place: (Corner, f32),
     popups_hold: Hold,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
@@ -72,6 +74,7 @@ impl Layers {
             screens: BTreeMap::new(),
             look: (Edge::Top, true),
             popups: None,
+            popups_place: (Corner::TopRight, 1.0),
             popups_hold: Hold::default(),
             overlay: None,
             osd: None,
@@ -107,10 +110,11 @@ impl Layers {
     fn fit_osd(&mut self) -> Task<Message> {
         match (self.osd, self.shell.osd_view().is_some()) {
             (None, true) => {
+                let grow = |n: u32| (n as f32 * self.shell.osd_size()).round() as u32;
                 let (id, open) = open(NewLayerShellSettings {
                     layer: Layer::Overlay,
                     anchor: Anchor::Bottom,
-                    size: Some(osd::SURFACE),
+                    size: Some((grow(osd::SURFACE.0), grow(osd::SURFACE.1))),
                     margin: Some((0, 0, 56, 0)),
                     keyboard_interactivity: KeyboardInteractivity::None,
                     namespace: Some("apolline-osd".into()),
@@ -239,21 +243,18 @@ impl Layers {
 
     fn size_popups(&mut self) -> Task<Message> {
         let height = self.shell.popup_height();
+        let place = self.shell.cards_place();
+        let scale = place.1;
+        let size = |height: u32| {
+            let grow = |n: u32| (n as f32 * scale).round() as u32;
+            (grow(popup::WIDTH), grow(height))
+        };
+        if let Some((id, _)) = self.popups.filter(|_| place != self.popups_place) {
+            self.popups = None;
+            return Task::batch([window::close(id), self.size_popups_at(place, height, size)]);
+        }
         match self.popups {
-            None if height > 0 => {
-                let (id, open) = open(NewLayerShellSettings {
-                    layer: Layer::Overlay,
-                    anchor: Anchor::Top | Anchor::Right,
-                    size: Some((popup::WIDTH, height)),
-                    margin: Some((POPUP_MARGIN, POPUP_MARGIN, 0, 0)),
-                    keyboard_interactivity: KeyboardInteractivity::None,
-                    namespace: Some("apolline-notifications".into()),
-                    ..Default::default()
-                });
-                self.popups = Some((id, height));
-                self.popups_hold = Hold::default();
-                open
-            }
+            None if height > 0 => self.size_popups_at(place, height, size),
             Some((id, _)) if height == 0 => {
                 self.popups = None;
                 window::close(id)
@@ -262,11 +263,44 @@ impl Layers {
                 self.popups = Some((id, height));
                 Task::done(Message::SizeChange {
                     id,
-                    size: (popup::WIDTH, height),
+                    size: size(height),
                 })
             }
             _ => Task::none(),
         }
+    }
+
+    fn size_popups_at(
+        &mut self,
+        place: (Corner, f32),
+        height: u32,
+        size: impl Fn(u32) -> (u32, u32),
+    ) -> Task<Message> {
+        if height == 0 {
+            return Task::none();
+        }
+        let m = POPUP_MARGIN;
+        let (anchor, margin) = match place.0 {
+            Corner::TopRight => (Anchor::Top | Anchor::Right, (m, m, 0, 0)),
+            Corner::Top => (Anchor::Top, (m, 0, 0, 0)),
+            Corner::TopLeft => (Anchor::Top | Anchor::Left, (m, 0, 0, m)),
+            Corner::BottomRight => (Anchor::Bottom | Anchor::Right, (0, m, m, 0)),
+            Corner::Bottom => (Anchor::Bottom, (0, 0, m, 0)),
+            Corner::BottomLeft => (Anchor::Bottom | Anchor::Left, (0, 0, m, m)),
+        };
+        let (id, open) = open(NewLayerShellSettings {
+            layer: Layer::Overlay,
+            anchor,
+            size: Some(size(height)),
+            margin: Some(margin),
+            keyboard_interactivity: KeyboardInteractivity::None,
+            namespace: Some("apolline-notifications".into()),
+            ..Default::default()
+        });
+        self.popups = Some((id, height));
+        self.popups_place = place;
+        self.popups_hold = Hold::default();
+        open
     }
 
     fn view(&self, id: window::Id) -> Element<'_, Message> {
@@ -293,6 +327,8 @@ impl Layers {
     fn scale(&self, id: window::Id) -> f32 {
         match self.overlay {
             Some((overlay, kind)) if overlay == id => self.shell.size_of(kind),
+            _ if self.popups.is_some_and(|(popups, _)| popups == id) => self.popups_place.1,
+            _ if self.osd == Some(id) => self.shell.osd_size(),
             _ => 1.0,
         }
     }

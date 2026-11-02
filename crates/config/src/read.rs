@@ -5,9 +5,9 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Appear, Blur, Calendar, Center, Config, Desktop, Diagnostic, Display, Edge,
-    Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Piece, Rule,
-    Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem, Trigger, Width, Windows,
+    Accent, Alerts, Appear, Blur, Calendar, Center, Config, Corner, Desktop, Diagnostic, Display,
+    Edge, Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Piece,
+    Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem, Trigger, Width, Windows,
     Workspaces, slug,
 };
 
@@ -181,8 +181,14 @@ impl Reader<'_> {
                             let surface = match key.get_ref().as_ref() {
                                 "launcher" => &mut config.style.launcher,
                                 "panel" => &mut config.style.panel,
+                                "notifications" => &mut config.style.cards,
+                                "osd" => &mut config.style.osd,
                                 _ => {
-                                    self.unknown(key, "surface", &["launcher", "panel"]);
+                                    self.unknown(
+                                        key,
+                                        "surface",
+                                        &["launcher", "panel", "notifications", "osd"],
+                                    );
                                     continue;
                                 }
                             };
@@ -639,6 +645,11 @@ impl Reader<'_> {
     fn alerts(&mut self, table: &DeTable, alerts: &mut Alerts) {
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
+                "position" => {
+                    if let Some(v) = self.choice(key, value, &Corner::ALL) {
+                        alerts.position = v
+                    }
+                }
                 "do_not_disturb" => {
                     if let Some(v) = self.boolean(key, value) {
                         alerts.do_not_disturb = v
@@ -662,7 +673,7 @@ impl Reader<'_> {
                 _ => self.unknown(
                     key,
                     "option",
-                    &["do_not_disturb", "seconds", "mute", "always"],
+                    &["position", "do_not_disturb", "seconds", "mute", "always"],
                 ),
             }
         }
