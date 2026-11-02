@@ -54,6 +54,7 @@ icons! {
     Coffee = "coffee",
     Download = "download",
     File = "file",
+    Fingerprint = "fingerprint",
     Folder = "folder-open",
     Code = "file-code",
     Copy = "copy",

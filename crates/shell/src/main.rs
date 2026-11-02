@@ -12,6 +12,7 @@ mod control;
 mod controls;
 mod events;
 mod files;
+mod fingerprint;
 mod fonts;
 mod fragment;
 mod greet;

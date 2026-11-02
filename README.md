@@ -34,7 +34,7 @@ cargo run -p apolline-shell -- check           # validate ~/.config/apolline/con
 cargo run -p apolline-shell -- --mode play --screenshot shot.png
 tools/headless.sh shot.png --mode play         # Linux: the real session under a headless sway, saved with grim
 tools/fake-controls.sh ~/fakebin               # stand-in wpctl and brightnessctl for quick settings
-tools/fake-radios.sh                           # a fake NetworkManager and BlueZ on a bus of their own
+tools/fake-bus.sh                              # fake NetworkManager, BlueZ and fprintd on a bus of their own
 ```
 
 ## With niri

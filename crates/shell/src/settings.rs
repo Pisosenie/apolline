@@ -338,6 +338,7 @@ enum Message {
     ResetShortcut(Shortcut),
     LockBeforeSleep(bool),
     LockMedia(bool),
+    LockFingerprint(bool),
     LockNow,
     IdleLock(u16),
     IdleScreen(u16),
@@ -1128,6 +1129,7 @@ impl Settings {
             }
             Message::LockBeforeSleep(on) => self.edit(|e| e.set("lock", "before_sleep", on)),
             Message::LockMedia(on) => self.edit(|e| e.set("lock", "show_media", on)),
+            Message::LockFingerprint(on) => self.edit(|e| e.set("lock", "fingerprint", on)),
             Message::IdleLock(v) => self.stage(|e| e.set("idle", "lock_after", i64::from(v))),
             Message::IdleScreen(v) => {
                 self.stage(|e| e.set("idle", "screen_off_after", i64::from(v)))
@@ -3783,9 +3785,16 @@ impl Settings {
             ),
             group(
                 "Password",
-                vec![note(
-                    "Checked by PAM, the same way you log in: /etc/pam.d/apolline when it's installed, login otherwise.",
-                )]
+                vec![
+                    setting(
+                        "Fingerprint",
+                        "A finger on the reader unlocks it instead of the password. Leave it off if your login asks for a second factor.",
+                        switch(lock.fingerprint, Message::LockFingerprint, palette),
+                    ),
+                    note(
+                        "Checked by PAM, the same way you log in: /etc/pam.d/apolline when it's installed, login otherwise.",
+                    ),
+                ]
             ),
         ]
         .spacing(22)

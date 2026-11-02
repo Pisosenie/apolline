@@ -390,6 +390,7 @@ pub struct Idle {
 pub struct Lock {
     pub before_sleep: bool,
     pub show_media: bool,
+    pub fingerprint: bool,
 }
 
 impl Shortcuts {
@@ -667,6 +668,7 @@ impl Default for Config {
             lock: Lock {
                 before_sleep: true,
                 show_media: true,
+                fingerprint: false,
             },
             idle: Idle {
                 lock_after: 5,

@@ -1,4 +1,4 @@
-"""NetworkManager with one Wi-Fi card and a few networks around; tools/fake-radios.sh starts it.
+"""NetworkManager with one Wi-Fi card and a few networks around; tools/fake-bus.sh starts it.
 
 It starts on "Polina", which is saved. Every locked network takes the password "polina";
 a wrong one fails a second later the way NetworkManager does, for want of secrets. "Office" is

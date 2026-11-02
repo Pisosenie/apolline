@@ -1,4 +1,4 @@
-"""BlueZ with one adapter and a few devices; tools/fake-radios.sh starts it.
+"""BlueZ with one adapter and a few devices; tools/fake-bus.sh starts it.
 
 The headphones are paired and connected, the mouse is paired but switched off. Looking for
 devices finds three more after a second, and pairing asks the shell's agent the way real ones

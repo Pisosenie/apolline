@@ -106,7 +106,10 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 ### 4. Finding things and getting in
 - The launcher answers more — done: emoji by name, unit and currency conversion, files, and a dmenu
   mode (`apolline pick` reads lines from stdin) for your own scripts.
-- Fingerprint next to the password on the lock screen and in the polkit dialog, both at once.
+- Fingerprint next to the password on the lock screen, both at once — done, over fprintd's D-Bus API
+  (tried against a fake reader, `tools/fake-bus.sh`). Off by default: a finger stands in for the
+  password, so second factors in PAM don't apply to it. The polkit dialog can only ask through polkit's
+  own helper, so there it is pam_fprintd in the polkit-1 PAM stack.
 - The login screen (`apolline greet`, done in its first form) remembers the last person and session and
   lists people through getent; next are the keyboard layout and no flash on the way into the session.
   It still needs a run on real hardware.
@@ -118,7 +121,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - Wi-Fi and Bluetooth over D-Bus instead of command-line tools — done: nearby networks with a password
   field (WPA2, WPA3, a typo asks again), pairing with a code, a PIN or a code to type, forgetting old
   ones, headphone battery. They follow NetworkManager's and BlueZ's signals instead of asking every few
-  seconds. Tried against fakes (`tools/fake-radios.sh`); a run with real radios is still to come.
+  seconds. Tried against fakes (`tools/fake-bus.sh`); a run with real radios is still to come.
 - A click on the clock: the month, today's weather from Open-Meteo, events from ICS files and
   https/webcal links — done, no account sign-in. CalDAV is next.
 - Capture: screenshots, a color picker, screen recording and marks on a screenshot (arrows, boxes, pen,

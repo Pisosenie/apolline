@@ -14,6 +14,7 @@ use iced::{
 };
 
 use crate::control::{self, Shared};
+use crate::fingerprint::Finger;
 use crate::icon::{Icon, icon};
 use crate::idle::{self, Stage};
 use crate::media::{self, Action, Track};
@@ -88,6 +89,7 @@ pub enum Message {
     Player(Action),
     Niri(apolline_niri::Event),
     Network(Option<String>),
+    Finger(Finger),
     Idle(Stage, bool),
     Shot(window::Screenshot),
     Noop,
@@ -117,6 +119,7 @@ struct Lock {
     track: Option<Track>,
     niri: apolline_niri::State,
     network: Option<String>,
+    finger: Option<Finger>,
     waiting: usize,
     weather: Option<(u8, String)>,
     next: Option<String>,
@@ -164,6 +167,7 @@ impl Lock {
             track: sample.then(|| Track::sample("Night Drive", "Low Tide")),
             niri: apolline_niri::State::default(),
             network: sample.then(|| "Polina".to_owned()),
+            finger: (sample && config.lock.fingerprint).then_some(Finger::Ready(false)),
             waiting: if sample { 2 } else { shared.waiting },
             weather: if sample {
                 Some((2, "17° Partly cloudy · Lisbon".to_owned()))
@@ -280,6 +284,8 @@ impl Lock {
             }
             Message::Niri(event) => self.niri.apply(event),
             Message::Network(network) => self.network = network,
+            Message::Finger(Finger::Matched) if !self.preview => return unlock(),
+            Message::Finger(finger) => self.finger = Some(finger),
             Message::Idle(Stage::ScreenOff, true) if !self.preview => {
                 return Task::future(async {
                     let _ = tokio::process::Command::new("niri")
@@ -330,6 +336,8 @@ impl Lock {
                 vec![(Stage::ScreenOff, 30)]
             })
             .map(|(stage, idle)| Message::Idle(stage, idle)),
+            crate::fingerprint::subscription(!self.preview && self.config.lock.fingerprint)
+                .map(Message::Finger),
         ])
     }
 
@@ -583,11 +591,26 @@ impl Lock {
     }
 
     fn hint(&self) -> Element<'_, Message> {
+        let finger = match &self.finger {
+            Some(Finger::Ready(false)) => "Or touch the fingerprint reader",
+            Some(Finger::Ready(true)) => "Or swipe a finger on the reader",
+            Some(Finger::Again) => "Not recognized, try again",
+            Some(Finger::Matched) => "Unlocking…",
+            Some(Finger::Gone(why)) => why,
+            None => "",
+        };
         match &self.state {
             State::Wrong(reason) => text(reason.as_str())
                 .size(13)
                 .color(style::color(style::DANGER))
                 .into(),
+            _ if !finger.is_empty() => row![
+                icon(Icon::Fingerprint, 14.0, style::FAINT),
+                text(finger).size(13).color(style::color(style::FAINT)),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
             _ => Space::new().height(16).into(),
         }
     }

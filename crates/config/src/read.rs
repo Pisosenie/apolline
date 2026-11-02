@@ -553,7 +553,16 @@ impl Reader<'_> {
                         lock.show_media = v
                     }
                 }
-                _ => self.unknown(key, "option", &["before_sleep", "show_media"]),
+                "fingerprint" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.fingerprint = v
+                    }
+                }
+                _ => self.unknown(
+                    key,
+                    "option",
+                    &["before_sleep", "show_media", "fingerprint"],
+                ),
             }
         }
     }
