@@ -1206,13 +1206,7 @@ impl Settings {
                     self.edit(|e| e.set_list("bar", "tray", &tray));
                 }
             }
-            Message::BarEdge(edge) => self.edit(|e| {
-                e.set(
-                    "bar",
-                    "position",
-                    if edge == Edge::Top { "top" } else { "bottom" },
-                )
-            }),
+            Message::BarEdge(edge) => self.edit(|e| e.set("bar", "position", edge.key())),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
             Message::BarShape(shape) => self.edit(|e| match shape {
                 apolline_config::Shape::Bar => e.unset("bar", "shape"),
@@ -2677,10 +2671,26 @@ impl Settings {
             });
         let gap = f32::from(theme.layout.gaps) * 0.5;
         let windows = row![window, other].spacing(gap).padding(gap.max(2.0));
-        let screen = if theme.bar.position == Edge::Top {
-            column![container(bar).padding(inset), windows]
-        } else {
-            column![windows, container(bar).padding(inset)]
+        let screen: Element<'_, Message> = match theme.bar.position {
+            Edge::Top => column![container(bar).padding(inset), windows].into(),
+            Edge::Bottom => column![windows, container(bar).padding(inset)].into(),
+            // A side bar, as a thin strip of its glass beside the windows.
+            Edge::Left | Edge::Right => {
+                let strip = container(space().width(8).height(Fill))
+                    .padding(inset)
+                    .style(move |_| container::Style {
+                        background: Some(Background::Color(style::color(
+                            neutral::ink().alpha(theme.bar.opacity),
+                        ))),
+                        border: Border::default().rounded(4),
+                        ..container::Style::default()
+                    });
+                if theme.bar.position == Edge::Left {
+                    row![strip, windows].into()
+                } else {
+                    row![windows, strip].into()
+                }
+            }
         };
         let on = applied == Some(theme.name.as_str());
         let mut caption = row![
@@ -3777,7 +3787,12 @@ impl Settings {
         let look = &self.config.bar;
         let palette = self.palette();
         let status = &self.sample;
-        let preview = self.preview(&self.config.desktop.wallpaper, 96.0, {
+        let tall = if look.position.vertical() {
+            300.0
+        } else {
+            96.0
+        };
+        let preview = self.preview(&self.config.desktop.wallpaper, tall, {
             let bar = bar::view(bar::Bar {
                 mode: None,
                 has_modes: !self.config.modes.is_empty(),
@@ -3817,7 +3832,13 @@ impl Settings {
             let inset = if look.floating { 10.0 } else { 0.0 };
             container(bar)
                 .padding(inset)
+                .width(Fill)
                 .height(Fill)
+                .align_x(if look.position == Edge::Right {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                })
                 .align_y(if look.position == Edge::Bottom {
                     Alignment::End
                 } else {
@@ -3835,7 +3856,12 @@ impl Settings {
                         "Edge",
                         "",
                         segmented(
-                            [(Edge::Top, "Top", None), (Edge::Bottom, "Bottom", None)],
+                            [
+                                (Edge::Top, "Top", None),
+                                (Edge::Bottom, "Bottom", None),
+                                (Edge::Left, "Left", None),
+                                (Edge::Right, "Right", None),
+                            ],
                             look.position,
                             Message::BarEdge,
                         ),

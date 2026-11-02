@@ -1,7 +1,7 @@
 use apolline_theme::{Palette, neutral};
 use chrono::{DateTime, Datelike, Local, Months, NaiveDate};
 use iced::widget::{Row, button, column, container, mouse_area, opaque, row, space, text};
-use iced::{Alignment, Element, Fill, Length, Padding};
+use iced::{Alignment, Element, Fill, Length};
 
 use crate::events::Agenda;
 use crate::icon::{Icon, icon};
@@ -36,7 +36,7 @@ pub fn view<'a>(
     agenda: &'a Agenda,
     weather: Option<&'a Weather>,
     palette: Palette,
-    at_bottom: bool,
+    edge: apolline_config::Edge,
     gap: f32,
     calendars: usize,
 ) -> Element<'a, Message> {
@@ -164,22 +164,13 @@ pub fn view<'a>(
         .padding(18)
         .style(style::surface);
 
-    mouse_area(
-        container(opaque(card))
-            .width(Fill)
-            .height(Fill)
-            .align_x(Alignment::Center)
-            .align_y(if at_bottom {
-                Alignment::End
-            } else {
-                Alignment::Start
-            })
-            .padding(if at_bottom {
-                Padding::new(0.0).bottom(gap)
-            } else {
-                Padding::new(0.0).top(gap)
-            }),
-    )
+    mouse_area(style::beside_bar(
+        opaque(card),
+        edge,
+        Alignment::Center,
+        gap,
+        0.0,
+    ))
     .on_press(Message::Overlay(None))
     .into()
 }

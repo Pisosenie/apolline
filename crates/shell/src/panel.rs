@@ -60,7 +60,7 @@ impl Power {
 }
 
 pub struct Panel<'a> {
-    pub at_bottom: bool,
+    pub edge: apolline_config::Edge,
     // How far it keeps clear of the bar.
     pub gap: f32,
     pub modes: &'a [ModeSettings],
@@ -127,7 +127,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             Detail::Quiet => quiet_list(&panel),
             Detail::Vpn => vpn_list(&panel),
         });
-        return frame(body, panel.at_bottom, panel.gap, panel.look);
+        return frame(body, panel.edge, panel.gap, panel.look);
     }
 
     let wifi = radio_tile(
@@ -272,7 +272,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     }
     body = body.push(history(panel.history, panel.opened, panel.apps, palette));
 
-    frame(body, panel.at_bottom, panel.gap, panel.look)
+    frame(body, panel.edge, panel.gap, panel.look)
 }
 
 fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
@@ -928,29 +928,20 @@ fn devices_row<'a>(
 
 fn frame<'a>(
     body: iced::widget::Column<'a, Message>,
-    at_bottom: bool,
+    edge: apolline_config::Edge,
     gap: f32,
     look: apolline_config::Surface,
 ) -> Element<'a, Message> {
     let card = container(body.width(WIDTH))
         .padding(16)
         .style(style::surface_as(look));
-    mouse_area(
-        container(opaque(card))
-            .width(Fill)
-            .height(Fill)
-            .align_x(Alignment::End)
-            .align_y(if at_bottom {
-                Alignment::End
-            } else {
-                Alignment::Start
-            })
-            .padding(if at_bottom {
-                Padding::new(metrics::BAR_INSET).bottom(gap)
-            } else {
-                Padding::new(metrics::BAR_INSET).top(gap)
-            }),
-    )
+    mouse_area(style::beside_bar(
+        opaque(card),
+        edge,
+        Alignment::End,
+        gap,
+        metrics::BAR_INSET,
+    ))
     .on_press(Message::Overlay(None))
     .into()
 }

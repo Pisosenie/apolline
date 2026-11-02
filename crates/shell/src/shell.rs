@@ -1870,8 +1870,8 @@ impl Shell {
         })
     }
 
-    pub fn bar_at_bottom(&self) -> bool {
-        self.config.bar.position == Edge::Bottom
+    pub fn bar_edge(&self) -> Edge {
+        self.config.bar.position
     }
 
     pub fn osd_view(&self) -> Option<Element<'_, Message>> {
@@ -2441,7 +2441,7 @@ impl Shell {
                     item,
                     entries,
                     palette,
-                    self.config.bar.position == Edge::Bottom,
+                    self.config.bar.position,
                     style::under_bar(&self.config.bar, &self.config.style, 1.0),
                 ),
                 None => space().into(),
@@ -2453,7 +2453,7 @@ impl Shell {
                 &self.agenda,
                 self.weather.as_ref(),
                 palette,
-                self.config.bar.position == Edge::Bottom,
+                self.config.bar.position,
                 style::under_bar(&self.config.bar, &self.config.style, 1.0),
                 self.config.calendars.len(),
             ),
@@ -2462,7 +2462,7 @@ impl Shell {
                 None => space().into(),
             },
             Some(Overlay::Panel) => panel::view(Panel {
-                at_bottom: self.config.bar.position == Edge::Bottom,
+                edge: self.config.bar.position,
                 gap: style::under_bar(
                     &self.config.bar,
                     &self.config.style,
@@ -2647,6 +2647,8 @@ impl Shell {
         let padding = match self.config.bar.position {
             Edge::Top => Padding::new(56.0).top(bar),
             Edge::Bottom => Padding::new(56.0).bottom(bar),
+            Edge::Left => Padding::new(56.0).left(bar),
+            Edge::Right => Padding::new(56.0).right(bar),
         };
         container(clock)
             .width(Fill)
@@ -2781,6 +2783,8 @@ impl Shell {
         match look.position {
             Edge::Top => Padding::new(inset).bottom(0),
             Edge::Bottom => Padding::new(inset).top(0),
+            Edge::Left => Padding::new(inset).right(0),
+            Edge::Right => Padding::new(inset).left(0),
         }
     }
 }

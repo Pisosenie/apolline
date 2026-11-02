@@ -382,8 +382,7 @@ impl Reader<'_> {
                     }
                 }
                 "position" => {
-                    let edges = [("top", Edge::Top), ("bottom", Edge::Bottom)];
-                    if let Some(v) = self.choice(key, value, &edges) {
+                    if let Some(v) = self.choice(key, value, &Edge::ALL) {
                         bar.position = v
                     }
                 }

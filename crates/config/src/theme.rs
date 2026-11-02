@@ -1,7 +1,5 @@
 use crate::edit::accent_text;
-use crate::{
-    Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Lock, Motion, Styles, Surface,
-};
+use crate::{Accent, Appear, Bar, Blur, Config, Editor, Layout, Lock, Motion, Styles, Surface};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
@@ -189,11 +187,7 @@ impl Theme {
             editor.unset("layout", "gradient");
         }
         editor.set("layout", "shadows", self.layout.shadows);
-        let edge = match self.bar.position {
-            Edge::Top => "top",
-            Edge::Bottom => "bottom",
-        };
-        editor.set("bar", "position", edge);
+        editor.set("bar", "position", self.bar.position.key());
         editor.set("bar", "floating", self.bar.floating);
         match self.bar.shape {
             crate::Shape::Bar => editor.unset("bar", "shape"),

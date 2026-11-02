@@ -91,9 +91,16 @@ impl Preview {
             .width(Fill)
             .align_x(Alignment::End)
             .padding(Padding::new(12.0).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0));
+        let edge = self.shell.bar_edge();
         let bar = container(container(self.shell.bar(None)).padding(self.shell.bar_margin()))
+            .width(Fill)
             .height(Fill)
-            .align_y(if self.shell.bar_at_bottom() {
+            .align_x(if edge == apolline_config::Edge::Right {
+                Alignment::End
+            } else {
+                Alignment::Start
+            })
+            .align_y(if edge == apolline_config::Edge::Bottom {
                 Alignment::End
             } else {
                 Alignment::Start

@@ -1,6 +1,6 @@
 use apolline_theme::{Palette, metrics, neutral};
 use iced::widget::{Column, button, column, container, mouse_area, opaque, row, space, text};
-use iced::{Alignment, Element, Fill, Padding};
+use iced::{Alignment, Element, Fill};
 
 use crate::icon::{Icon, icon};
 use crate::shell::Message;
@@ -14,7 +14,7 @@ pub fn view<'a>(
     item: &'a Item,
     entries: &'a [MenuEntry],
     palette: Palette,
-    at_bottom: bool,
+    edge: apolline_config::Edge,
     gap: f32,
 ) -> Element<'a, Message> {
     let mut list = Column::new().spacing(2);
@@ -64,22 +64,13 @@ pub fn view<'a>(
     let card = container(column![list].width(WIDTH))
         .padding(6)
         .style(style::surface);
-    mouse_area(
-        container(opaque(card))
-            .width(Fill)
-            .height(Fill)
-            .align_x(Alignment::End)
-            .align_y(if at_bottom {
-                Alignment::End
-            } else {
-                Alignment::Start
-            })
-            .padding(if at_bottom {
-                Padding::new(metrics::BAR_INSET).bottom(gap)
-            } else {
-                Padding::new(metrics::BAR_INSET).top(gap)
-            }),
-    )
+    mouse_area(style::beside_bar(
+        opaque(card),
+        edge,
+        Alignment::End,
+        gap,
+        metrics::BAR_INSET,
+    ))
     .on_press(Message::Overlay(None))
     .into()
 }

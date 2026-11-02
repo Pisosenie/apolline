@@ -373,15 +373,24 @@ fn open_screen(
     output: &Output,
     (edge, floating, size): (Edge, bool, u16),
 ) -> (Screen, Task<Message>) {
-    let height = (metrics::BAR_HEIGHT * f32::from(size) / 100.0).round() as u32;
+    let scale = f32::from(size) / 100.0;
+    // How thick the bar is across its edge: tall along the top, wide down a side.
+    let thick = if edge.vertical() {
+        (crate::style::RAIL * scale).round() as u32
+    } else {
+        (metrics::BAR_HEIGHT * scale).round() as u32
+    };
     let inset = if floating {
         metrics::BAR_INSET as i32
     } else {
         0
     };
+    // Top, right, bottom, left; nothing on the screen edge it sits against.
     let margin = match edge {
         Edge::Top => (inset, inset, 0, inset),
         Edge::Bottom => (0, inset, inset, inset),
+        Edge::Left => (inset, 0, inset, inset),
+        Edge::Right => (inset, inset, inset, 0),
     };
     let output_option = match output {
         Some(name) => OutputOption::OutputName(name.clone()),
@@ -399,12 +408,17 @@ fn open_screen(
     let (bar, open_bar) = open(NewLayerShellSettings {
         layer: Layer::Top,
         anchor: match edge {
-            Edge::Top => Anchor::Top,
-            Edge::Bottom => Anchor::Bottom,
-        } | Anchor::Left
-            | Anchor::Right,
-        size: Some((0, height)),
-        exclusive_zone: Some(height as i32),
+            Edge::Top => Anchor::Top | Anchor::Left | Anchor::Right,
+            Edge::Bottom => Anchor::Bottom | Anchor::Left | Anchor::Right,
+            Edge::Left => Anchor::Left | Anchor::Top | Anchor::Bottom,
+            Edge::Right => Anchor::Right | Anchor::Top | Anchor::Bottom,
+        },
+        size: Some(if edge.vertical() {
+            (thick, 0)
+        } else {
+            (0, thick)
+        }),
+        exclusive_zone: Some(thick as i32),
         margin: Some(margin),
         keyboard_interactivity: KeyboardInteractivity::None,
         output_option,

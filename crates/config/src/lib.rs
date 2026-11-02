@@ -398,6 +398,29 @@ impl Stats {
 pub enum Edge {
     Top,
     Bottom,
+    Left,
+    Right,
+}
+
+impl Edge {
+    pub const ALL: [(&'static str, Edge); 4] = [
+        ("top", Edge::Top),
+        ("bottom", Edge::Bottom),
+        ("left", Edge::Left),
+        ("right", Edge::Right),
+    ];
+
+    pub fn key(self) -> &'static str {
+        Self::ALL
+            .iter()
+            .find(|(_, edge)| *edge == self)
+            .map_or("top", |(key, _)| key)
+    }
+
+    // Down the side of the screen, so the bar is a column.
+    pub fn vertical(self) -> bool {
+        matches!(self, Edge::Left | Edge::Right)
+    }
 }
 
 // One strip of glass, or a pill for each side and the middle with the wallpaper between them.

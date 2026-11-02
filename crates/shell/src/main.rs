@@ -44,6 +44,7 @@ mod popup;
 mod power;
 mod preview;
 mod profile;
+mod rail;
 mod rates;
 mod secrets;
 mod settings;

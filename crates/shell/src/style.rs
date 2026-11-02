@@ -180,6 +180,50 @@ pub fn bar_size(style: &apolline_config::Styles) -> (f32, f32) {
     (metrics::BAR_HEIGHT * scale, radius)
 }
 
+// Where an overlay goes by the bar on `edge`: `along` is its place along that edge (the end for
+// quick settings, the middle for the calendar), `gap` how far it keeps from the edge.
+pub fn beside_bar<'a, M: 'a>(
+    card: impl Into<iced::Element<'a, M>>,
+    edge: apolline_config::Edge,
+    along: iced::Alignment,
+    gap: f32,
+    inset: f32,
+) -> container::Container<'a, M> {
+    use apolline_config::Edge;
+    use iced::Alignment::{End, Start};
+    let (x, y, padding) = match edge {
+        Edge::Top => (along, Start, iced::Padding::new(inset).top(gap)),
+        Edge::Bottom => (along, End, iced::Padding::new(inset).bottom(gap)),
+        Edge::Left => (
+            Start,
+            along_down(along),
+            iced::Padding::new(inset).left(gap),
+        ),
+        Edge::Right => (End, along_down(along), iced::Padding::new(inset).right(gap)),
+    };
+    container(card)
+        .width(iced::Fill)
+        .height(iced::Fill)
+        .align_x(x)
+        .align_y(y)
+        .padding(padding)
+}
+
+// Down a side bar, the end of the top edge is its top.
+fn along_down(along: iced::Alignment) -> iced::Alignment {
+    match along {
+        iced::Alignment::End => iced::Alignment::Start,
+        other => other,
+    }
+}
+
+// How wide a bar down the side is, before its size.
+pub const RAIL: f32 = 44.0;
+
+pub fn rail_width(style: &apolline_config::Styles) -> f32 {
+    RAIL * style.bar.size.unwrap_or(1.0)
+}
+
 // How far an overlay at `scale` keeps clear of the bar, in its own units.
 pub fn under_bar(bar: &apolline_config::Bar, style: &apolline_config::Styles, scale: f32) -> f32 {
     let inset = if bar.floating {
@@ -187,7 +231,12 @@ pub fn under_bar(bar: &apolline_config::Bar, style: &apolline_config::Styles, sc
     } else {
         0.0
     };
-    (inset + bar_size(style).0 + 8.0) / scale
+    let thick = if bar.position.vertical() {
+        rail_width(style)
+    } else {
+        bar_size(style).0
+    };
+    (inset + thick + 8.0) / scale
 }
 
 pub fn surface_as(look: apolline_config::Surface) -> impl Fn(&Theme) -> container::Style {
