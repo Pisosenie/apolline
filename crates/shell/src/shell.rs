@@ -100,6 +100,7 @@ pub enum Message {
     ProfileSet(String, Result<(), String>),
     OpenLink(String),
     HistoryGroup(String),
+    Quiet(panel::Quiet),
     ReplyOpen(u32),
     ReplyTyped(String),
     ReplySend,
@@ -215,6 +216,8 @@ pub struct Shell {
     warned: Option<u8>,
     // Apps whose past notifications are opened up in quick settings.
     opened: Vec<String>,
+    // When do not disturb, set for a while, turns itself off.
+    quiet_until: Option<DateTime<Local>>,
     // Calendar reminders already shown, by when and what, so each comes once.
     reminded: Vec<(chrono::NaiveDateTime, std::sync::Arc<str>)>,
     net_note: Option<String>,
@@ -308,6 +311,7 @@ impl Shell {
             warned: None,
             reminded: Vec::new(),
             opened: Vec::new(),
+            quiet_until: None,
             joining: None,
             net_note: None,
             net_busy: false,
@@ -554,6 +558,10 @@ impl Shell {
                 let scheduled = self.night_scheduled();
                 if scheduled != self.night.0 {
                     self.night = (scheduled, None);
+                }
+                // Do not disturb set for a while ends on its own.
+                if self.quiet_until.is_some_and(|until| until <= self.now) {
+                    return Task::batch([self.update(Message::DoNotDisturb(false)), self.expire()]);
                 }
                 let triggers = self.triggers();
                 let rotate = self.rotate();
@@ -1105,6 +1113,27 @@ impl Shell {
                 };
                 return Task::batch([close, focus, told]);
             }
+            Message::Quiet(choice) => {
+                let now = Local::now();
+                self.detail = None;
+                self.quiet_until = match choice {
+                    panel::Quiet::For(minutes) => {
+                        Some(now + chrono::TimeDelta::minutes(i64::from(minutes)))
+                    }
+                    panel::Quiet::Morning => {
+                        let eight = chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap_or_default();
+                        let day = if now.time() < eight {
+                            now.date_naive()
+                        } else {
+                            now.date_naive() + chrono::TimeDelta::days(1)
+                        };
+                        chrono::TimeZone::from_local_datetime(&Local, &day.and_time(eight))
+                            .earliest()
+                    }
+                    panel::Quiet::Always | panel::Quiet::Off => None,
+                };
+                return self.update(Message::DoNotDisturb(choice != panel::Quiet::Off));
+            }
             Message::HistoryGroup(app) => {
                 if self.opened.contains(&app) {
                     self.opened.retain(|o| *o != app);
@@ -1257,6 +1286,9 @@ impl Shell {
             }
             Message::Player(action) => return self.player(action),
             Message::DoNotDisturb(on) => {
+                if !on {
+                    self.quiet_until = None;
+                }
                 self.plain.alerts.do_not_disturb = on;
                 self.config.alerts.do_not_disturb = on;
                 if !self.demo {
@@ -2221,6 +2253,7 @@ impl Shell {
                 look: self.config.style.panel,
                 night: self.night.1.unwrap_or(self.night.0),
                 profiles: self.profiles.as_ref(),
+                quiet_until: self.quiet_until,
                 history: &self.history,
                 opened: &self.opened,
                 apps: &self.apps,

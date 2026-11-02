@@ -74,6 +74,8 @@ pub struct Panel<'a> {
     pub look: apolline_config::Surface,
     pub night: bool,
     pub profiles: Option<&'a crate::profile::Profiles>,
+    // When do not disturb turns itself off, if it was set for a while.
+    pub quiet_until: Option<chrono::DateTime<chrono::Local>>,
     pub history: &'a [Notification],
     // Apps whose notifications show all, not only the newest.
     pub opened: &'a [String],
@@ -92,6 +94,16 @@ pub struct Panel<'a> {
 pub enum Detail {
     Wifi,
     Bluetooth,
+    Quiet,
+}
+
+// How long do not disturb lasts, picked in quick settings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Quiet {
+    For(u32),
+    Morning,
+    Always,
+    Off,
 }
 
 pub const PASSWORD: &str = "wifi-password";
@@ -108,6 +120,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         body = body.push(match detail {
             Detail::Wifi => wifi_list(&panel),
             Detail::Bluetooth => gadget_list(&panel),
+            Detail::Quiet => quiet_list(&panel),
         });
         return frame(body, panel.at_bottom, panel.look);
     }
@@ -135,16 +148,16 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             Icon::Bell
         },
         "Do not disturb",
-        if panel.do_not_disturb {
-            "Only urgent"
-        } else {
-            "Off"
-        }
-        .to_owned(),
+        match (panel.do_not_disturb, panel.quiet_until) {
+            (true, Some(until)) => format!("Until {}", until.format("%H:%M")),
+            (true, None) => "Only urgent".to_owned(),
+            (false, _) => "Off".to_owned(),
+        },
         panel.do_not_disturb,
         palette,
         Some(Message::DoNotDisturb(!panel.do_not_disturb)),
     );
+    let quiet = more(quiet, Detail::Quiet, panel.do_not_disturb, palette);
     let awake = tile(
         Icon::Coffee,
         "Keep awake",
@@ -340,6 +353,78 @@ fn power_tile<'a>(
         palette,
         profiles.next().map(Message::PickProfile),
     )
+}
+
+// A tile with a way into more of it on its right edge.
+fn more<'a>(
+    main: Element<'a, Message>,
+    detail: Detail,
+    on: bool,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let ink = if on { palette.on_accent } else { neutral::TEXT };
+    let more = button(icon(Icon::ChevronRight, 16.0, ink))
+        .padding(8)
+        .style(style::ghost(10.0))
+        .on_press(Message::Detail(Some(detail)));
+    iced::widget::stack![
+        main,
+        container(more)
+            .width(Fill)
+            .height(Fill)
+            .align_x(Alignment::End)
+            .align_y(Alignment::Center)
+            .padding(Padding::new(0.0).right(6.0)),
+    ]
+    .into()
+}
+
+fn quiet_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
+    let palette = panel.palette;
+    let mut list = column![detail_header("Do not disturb", false)].spacing(4);
+    list = list.push(
+        container(
+            text("Only urgent notifications come through, like calls and alarms.")
+                .size(12)
+                .color(style::color(style::FAINT)),
+        )
+        .padding([0, 10]),
+    );
+    for (choice, label) in [
+        (Quiet::For(60), "For an hour"),
+        (Quiet::For(180), "For three hours"),
+        (Quiet::Morning, "Until tomorrow morning"),
+        (Quiet::Always, "Until I turn it off"),
+        (Quiet::Off, "Off"),
+    ] {
+        let picked = match choice {
+            Quiet::Always => panel.do_not_disturb && panel.quiet_until.is_none(),
+            Quiet::Off => !panel.do_not_disturb,
+            _ => false,
+        };
+        let mut line = row![text(label).size(13).width(Fill)].align_y(Alignment::Center);
+        if picked {
+            line = line.push(icon(Icon::Check, 14.0, palette.accent));
+        }
+        list = list.push(
+            button(line)
+                .width(Fill)
+                .padding([9, 10])
+                .style(style::ghost(8.0))
+                .on_press(Message::Quiet(choice)),
+        );
+    }
+    if let (true, Some(until)) = (panel.do_not_disturb, panel.quiet_until) {
+        list = list.push(
+            container(
+                text(format!("On until {}", until.format("%H:%M")))
+                    .size(12)
+                    .color(style::color(palette.accent)),
+            )
+            .padding([4, 10]),
+        );
+    }
+    list.into()
 }
 
 fn radio_tile<'a>(
