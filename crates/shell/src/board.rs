@@ -182,7 +182,7 @@ pub fn view<'a, M: Clone + 'a>(
             let filled = lane.zone.is_some();
             layers.push(
                 pin(
-                    container(text(name).size(11).color(style::color(style::FAINT)))
+                    container(text(name).size(11).color(style::color(style::faint())))
                         .padding([0.0, PAD + if filled { 6.0 } else { 0.0 }])
                         .width(lane.rect.width)
                         .height(PAD * 2.0 + CHIP)
@@ -198,7 +198,7 @@ pub fn view<'a, M: Clone + 'a>(
                         .width(lane.rect.width)
                         .height(lane.rect.height)
                         .style(|_| container::Style {
-                            background: Some(Background::Color(style::color(style::FILL))),
+                            background: Some(Background::Color(style::color(style::fill_color()))),
                             border: Border::default().rounded(12),
                             ..container::Style::default()
                         }))
@@ -273,9 +273,9 @@ fn piece<'a, M: Clone + 'a>(
     held: Option<Palette>,
 ) -> Element<'a, M> {
     let ink = if on || held.is_some() {
-        neutral::TEXT
+        neutral::text()
     } else {
-        neutral::MUTED
+        neutral::muted()
     };
     let chip = container(text(name.to_owned()).size(TEXT).color(style::color(ink)))
         .center_x(width)
@@ -283,8 +283,8 @@ fn piece<'a, M: Clone + 'a>(
         .style(move |_| {
             let (fill, edge) = match held {
                 Some(palette) => (palette.accent_soft, palette.accent),
-                None if on => (neutral::TEXT.alpha(0.1), neutral::TEXT.alpha(0.18)),
-                None => (neutral::TEXT.alpha(0.0), neutral::TEXT.alpha(0.18)),
+                None if on => (neutral::text().alpha(0.1), neutral::text().alpha(0.18)),
+                None => (neutral::text().alpha(0.0), neutral::text().alpha(0.18)),
             };
             container::Style {
                 background: Some(Background::Color(style::color(fill))),

@@ -1719,7 +1719,7 @@ impl Settings {
                 text(page.title()).size(26).font(style::semibold()),
                 text(page.subtitle())
                     .size(14)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             ]
             .spacing(4)
             .width(Fill)
@@ -1727,7 +1727,11 @@ impl Settings {
         .align_y(Alignment::Start);
         if self.editor.is_ok() && !matches!(page, Page::About | Page::Welcome) {
             let history = |glyph, label, enabled: bool, message| {
-                let tint = if enabled { neutral::TEXT } else { style::FAINT };
+                let tint = if enabled {
+                    neutral::text()
+                } else {
+                    style::faint()
+                };
                 button(
                     row![
                         icon(glyph, 14.0, tint),
@@ -1783,13 +1787,19 @@ impl Settings {
         if !compact {
             brand = brand.push(column![
                 text("Apolline").size(15).font(style::semibold()),
-                text("Settings").size(12).color(style::color(style::FAINT)),
+                text("Settings")
+                    .size(12)
+                    .color(style::color(style::faint())),
             ]);
         }
 
         let nav = Column::with_children(Page::ALL.map(|page| {
             let on = self.page == page;
-            let tint = if on { palette.accent } else { style::SOFT_TEXT };
+            let tint = if on {
+                palette.accent
+            } else {
+                style::soft_text()
+            };
             let mut label = row![icon(page.icon(), 16.0, tint)]
                 .spacing(12)
                 .align_y(Alignment::Center);
@@ -1806,10 +1816,14 @@ impl Settings {
                 .style(move |theme, status| {
                     let mut style = style::ghost(10.0)(theme, status);
                     if on {
-                        style.background = Some(Background::Color(style::color(style::FILL)));
+                        style.background =
+                            Some(Background::Color(style::color(style::fill_color())));
                     }
-                    style.text_color =
-                        style::color(if on { neutral::TEXT } else { style::SOFT_TEXT });
+                    style.text_color = style::color(if on {
+                        neutral::text()
+                    } else {
+                        style::soft_text()
+                    });
                     style
                 })
                 .on_press(Message::Page(page))
@@ -1829,7 +1843,7 @@ impl Settings {
                 icon(Icon::Done, 14.0, style::GOOD),
                 text("Config is clean")
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             ]
         } else {
             row![
@@ -1855,7 +1869,7 @@ impl Settings {
             .style(|_| container::Style {
                 background: Some(Background::Color(style::color(SIDEBAR))),
                 border: Border {
-                    color: style::color(neutral::HAIRLINE),
+                    color: style::color(neutral::hairline()),
                     width: 1.0,
                     radius: 0.0.into(),
                 },
@@ -1878,7 +1892,7 @@ impl Settings {
             let tint = if on {
                 self.config.palette(Some(i)).accent
             } else {
-                style::FAINT
+                style::faint()
             };
             tabs = tabs.push(
                 button(
@@ -1897,7 +1911,7 @@ impl Settings {
         tabs = tabs.push(
             button(
                 row![
-                    icon(Icon::Plus, 14.0, style::SOFT_TEXT),
+                    icon(Icon::Plus, 14.0, style::soft_text()),
                     text("Add").size(13)
                 ]
                 .spacing(6)
@@ -1968,7 +1982,7 @@ impl Settings {
                     if on {
                         palette.on_accent
                     } else {
-                        style::SOFT_TEXT
+                        style::soft_text()
                     },
                 ))
                 .center(34),
@@ -1990,10 +2004,10 @@ impl Settings {
         for (app, command) in mode.open.iter().enumerate() {
             apps = apps.push(
                 row![
-                    icon(Icon::AppWindow, 15.0, style::FAINT),
+                    icon(Icon::AppWindow, 15.0, style::faint()),
                     text(command.as_str()).font(style::mono()).size(13),
                     space::horizontal(),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::Remove(app)),
@@ -2006,7 +2020,7 @@ impl Settings {
             apps = apps.push(
                 text("Nothing opens yet")
                     .size(13)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         apps = apps.push(
@@ -2057,7 +2071,7 @@ impl Settings {
                 let tint = if taken.is_some() {
                     style::WARN
                 } else {
-                    style::FAINT
+                    style::faint()
                 };
                 words = words.push(text(about).size(12).color(style::color(tint)));
             }
@@ -2065,7 +2079,7 @@ impl Settings {
                 row![
                     container(keycaps(combo)).width(Length::Fixed(200.0)),
                     words.width(Fill),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::RemoveModeKey(k)),
@@ -2128,7 +2142,7 @@ impl Settings {
         let manage = row![
             button(
                 row![
-                    icon(Icon::ArrowUp, 14.0, style::SOFT_TEXT),
+                    icon(Icon::ArrowUp, 14.0, style::soft_text()),
                     text("Earlier").size(13)
                 ]
                 .spacing(6)
@@ -2139,7 +2153,7 @@ impl Settings {
             .on_press_maybe((index > 0).then_some(Message::MoveMode(-1))),
             button(
                 row![
-                    icon(Icon::ArrowDown, 14.0, style::SOFT_TEXT),
+                    icon(Icon::ArrowDown, 14.0, style::soft_text()),
                     text("Later").size(13)
                 ]
                 .spacing(6)
@@ -2279,7 +2293,7 @@ impl Settings {
                     text(if name.is_empty() { "Empty" } else { name })
                         .size(15)
                         .font(style::semibold()),
-                    text(about).size(12).color(style::color(style::FAINT)),
+                    text(about).size(12).color(style::color(style::faint())),
                 ]
                 .spacing(8),
             )
@@ -2288,7 +2302,7 @@ impl Settings {
             .style(|theme, status| {
                 let mut style = style::secondary(theme, status);
                 style.border = Border {
-                    color: style::color(neutral::HAIRLINE),
+                    color: style::color(neutral::hairline()),
                     width: 1.0,
                     radius: style::RADIUS_TILE.into(),
                 };
@@ -2323,7 +2337,7 @@ impl Settings {
             "Pick a starting point. Everything in it can be changed afterwards."
         };
         let mut page = column![
-            text(intro).size(14).color(style::color(style::SOFT_TEXT)),
+            text(intro).size(14).color(style::color(style::soft_text())),
             grid
         ]
         .spacing(18);
@@ -2352,7 +2366,7 @@ impl Settings {
                     color: style::color(if on {
                         palette.accent
                     } else {
-                        neutral::HAIRLINE
+                        neutral::hairline()
                     }),
                     width: if on { 2.0 } else { 1.0 },
                     radius: 12.0.into(),
@@ -2408,7 +2422,7 @@ impl Settings {
                 None => container(space())
                     .width(Fill)
                     .height(88)
-                    .style(|_| container::background(style::color(style::SUNKEN)))
+                    .style(|_| container::background(style::color(style::sunken_color())))
                     .into(),
             };
             tiles.push(
@@ -2469,9 +2483,9 @@ impl Settings {
                 |(index, folder)| {
                     container(
                         row![
-                            icon(Icon::Folder, 13.0, style::FAINT),
+                            icon(Icon::Folder, 13.0, style::faint()),
                             text(folder.as_str()).size(12),
-                            button(icon(Icon::X, 12.0, style::FAINT))
+                            button(icon(Icon::X, 12.0, style::faint()))
                                 .padding(2)
                                 .style(style::ghost(6.0))
                                 .on_press(Message::RemoveFolder(index)),
@@ -2493,10 +2507,10 @@ impl Settings {
         {
             column = column.push(
                 row![
-                    icon(Icon::Image, 14.0, style::FAINT),
+                    icon(Icon::Image, 14.0, style::faint()),
                     text(format!("Using your file {name}"))
                         .size(12)
-                        .color(style::color(style::FAINT)),
+                        .color(style::color(style::faint())),
                 ]
                 .spacing(8),
             );
@@ -2524,17 +2538,17 @@ impl Settings {
             None => container(space())
                 .width(Fill)
                 .height(132)
-                .style(|_| container::background(style::color(neutral::INK)))
+                .style(|_| container::background(style::color(neutral::ink())))
                 .into(),
         };
         let bar = container(
             row![
                 container(Space::new().width(14).height(4)).style(style::pill(look.accent)),
                 container(Space::new().width(4).height(4))
-                    .style(style::pill(neutral::TEXT.alpha(0.6))),
+                    .style(style::pill(neutral::text().alpha(0.6))),
                 space::horizontal(),
                 container(Space::new().width(22).height(4))
-                    .style(style::pill(neutral::TEXT.alpha(0.7))),
+                    .style(style::pill(neutral::text().alpha(0.7))),
             ]
             .spacing(4)
             .align_y(Alignment::Center),
@@ -2606,7 +2620,7 @@ impl Settings {
                     author.clone()
                 })
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
             );
         }
         caption = caption.push(space::horizontal());
@@ -2633,12 +2647,12 @@ impl Settings {
         .padding(8)
         .style(move |_: &iced::Theme, status| button::Style {
             background: Some(Background::Color(style::color(match status {
-                button::Status::Hovered | button::Status::Pressed => style::FILL,
-                _ => style::SUNKEN,
+                button::Status::Hovered | button::Status::Pressed => style::fill_color(),
+                _ => style::sunken_color(),
             }))),
-            text_color: style::color(neutral::TEXT),
+            text_color: style::color(neutral::text()),
             border: Border {
-                color: style::color(if on { look.accent } else { neutral::HAIRLINE }),
+                color: style::color(if on { look.accent } else { neutral::hairline() }),
                 width: if on { 2.0 } else { 1.0 },
                 radius: style::RADIUS_TILE.into(),
             },
@@ -2688,7 +2702,7 @@ impl Settings {
             words = words.push(
                 text(format!("{} is on: {} for now", mode.name, and(&refs)))
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         let mut line = row![icon(Icon::Layers, 15.0, palette.accent), words]
@@ -2786,7 +2800,7 @@ impl Settings {
                                 .width(220)
                                 .style(style::field(palette)),
                             button(
-                                row![icon(Icon::Download, 14.0, neutral::TEXT), text("Add").size(13)]
+                                row![icon(Icon::Download, 14.0, neutral::text()), text("Add").size(13)]
                                     .spacing(6)
                                     .align_y(Alignment::Center)
                             )
@@ -2803,7 +2817,7 @@ impl Settings {
                         "Themes folder",
                         "Share a look by sending its file",
                         button(
-                            row![icon(Icon::Folder, 14.0, neutral::TEXT), text("Open").size(13)]
+                            row![icon(Icon::Folder, 14.0, neutral::text()), text("Open").size(13)]
                                 .spacing(6)
                                 .align_y(Alignment::Center)
                         )
@@ -3233,13 +3247,13 @@ impl Settings {
                     facts.push(format!("{}% opaque", percent(opacity)));
                 }
                 row![
-                    icon(Icon::AppWindow, 15.0, style::FAINT),
+                    icon(Icon::AppWindow, 15.0, style::faint()),
                     text(rule.app.as_str()).size(13).font(style::mono()),
                     text(facts.join(" · "))
                         .size(12)
-                        .color(style::color(style::FAINT))
+                        .color(style::color(style::faint()))
                         .width(Fill),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::RemoveRule(index)),
@@ -3271,7 +3285,7 @@ impl Settings {
                 row![
                     text("Floating")
                         .size(12)
-                        .color(style::color(style::SOFT_TEXT)),
+                        .color(style::color(style::soft_text())),
                     switch(
                         self.rule.floating == Some(true),
                         Message::RuleFloating,
@@ -3470,8 +3484,8 @@ impl Settings {
                         .width(Fill),
                     text(about.join(" · "))
                         .size(11)
-                        .color(style::color(style::FAINT)),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .color(style::color(style::faint())),
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::RemoveModule(index)),
@@ -3519,7 +3533,7 @@ impl Settings {
                 row![
                     crate::windows::picture(&self.apps, id, 20.0, palette).map(|_| Message::Noop),
                     text(name).size(13).width(Fill),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::UnpinApp(index)),
@@ -3873,7 +3887,9 @@ impl Settings {
                     container(text("D").size(10).color(style::color(palette.on_accent)))
                         .center(18)
                         .style(style::pill(palette.accent)),
-                    text("Password").size(10).color(style::color(style::FAINT)),
+                    text("Password")
+                        .size(10)
+                        .color(style::color(style::faint())),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),
@@ -4059,7 +4075,7 @@ impl Settings {
                             test_state,
                             button(
                                 row![
-                                    icon(Icon::Send, 14.0, neutral::TEXT),
+                                    icon(Icon::Send, 14.0, neutral::text()),
                                     text("Send a test").size(13)
                                 ]
                                 .spacing(8)
@@ -4100,11 +4116,11 @@ impl Settings {
                 row![
                     column![
                         text(events::name(source)).size(13),
-                        text(heard).size(11).color(style::color(style::FAINT)),
+                        text(heard).size(11).color(style::color(style::faint())),
                     ]
                     .spacing(3)
                     .width(Fill),
-                    button(icon(Icon::X, 14.0, style::FAINT))
+                    button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
                         .on_press(Message::RemoveCalendar(index)),
@@ -4163,7 +4179,7 @@ impl Settings {
             text("CalDAV").size(14).font(style::medium()),
             text("Nextcloud, Fastmail, Radicale and the like, by the calendar's own address")
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
             field(
                 "https://cloud.example.org/remote.php/dav/calendars/me/personal/",
                 &form.url
@@ -4209,7 +4225,7 @@ impl Settings {
                 container(
                     row![
                         text(app.as_str()).size(12),
-                        button(icon(Icon::X, 12.0, style::FAINT))
+                        button(icon(Icon::X, 12.0, style::faint()))
                             .padding(2)
                             .style(style::ghost(6.0))
                             .on_press(Message::AppListRemove(key, index)),
@@ -4256,7 +4272,7 @@ impl Settings {
                             .font(style::semibold())
                             .color(style::color(palette.accent)),
                         text(name).size(13),
-                        button(icon(Icon::X, 12.0, style::FAINT))
+                        button(icon(Icon::X, 12.0, style::faint()))
                             .padding(3)
                             .style(style::ghost(6.0))
                             .on_press(Message::RemoveLayout(index)),
@@ -4265,7 +4281,7 @@ impl Settings {
                     .align_y(Alignment::Center),
                 )
                 .padding(iced::Padding::new(4.0).left(12.0).right(6.0))
-                .style(style::pill(style::FILL)),
+                .style(style::pill(style::fill_color())),
             );
         }
         let options: Vec<Layout> = LAYOUTS
@@ -4284,7 +4300,7 @@ impl Settings {
             column![
                 text("Using the layouts from your niri config")
                     .size(13)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
                 picker
             ]
             .spacing(12)
@@ -4441,7 +4457,7 @@ impl Settings {
             );
             if combo != defaults.get(shortcut) && !recording {
                 controls = controls.push(
-                    button(icon(Icon::Restart, 14.0, style::FAINT))
+                    button(icon(Icon::Restart, 14.0, style::faint()))
                         .padding(8)
                         .style(style::ghost(8.0))
                         .on_press(Message::ResetShortcut(shortcut)),
@@ -4471,7 +4487,7 @@ impl Settings {
                         .width(Length::FillPortion(3))
                         .size(12)
                         .font(style::mono())
-                        .color(style::color(style::SOFT_TEXT)),
+                        .color(style::color(style::soft_text())),
                 ]
                 .spacing(16)
                 .align_y(Alignment::Center)
@@ -4948,7 +4964,7 @@ impl Settings {
                 container(
                     row![
                         text(label).size(12),
-                        button(icon(Icon::X, 12.0, style::FAINT))
+                        button(icon(Icon::X, 12.0, style::faint()))
                             .padding(2)
                             .style(style::ghost(6.0))
                             .on_press(Message::DropTrigger(at)),
@@ -4979,7 +4995,7 @@ impl Settings {
                     text("Color apps too").size(14),
                     text("GTK and Qt apps get the accent and the dark style, and follow your modes")
                         .size(12)
-                        .color(style::color(style::FAINT)),
+                        .color(style::color(style::faint())),
                 ]
                     .spacing(3)
                     .width(Fill),
@@ -4994,13 +5010,13 @@ impl Settings {
         } else {
             "Would write, and remove when you turn it off:"
         };
-        about = about.push(text(heading).size(11).color(style::color(style::FAINT)));
+        about = about.push(text(heading).size(11).color(style::color(style::faint())));
         for file in crate::paint::files() {
             about = about.push(
                 text(file)
                     .size(11)
                     .font(style::mono())
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         padded(about)
@@ -5032,7 +5048,7 @@ impl Settings {
             connect = connect.push(
                 text(line.as_str())
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
 
@@ -5051,7 +5067,7 @@ impl Settings {
                 icon(
                     if have { Icon::Check } else { Icon::Plus },
                     13.0,
-                    neutral::TEXT
+                    neutral::text()
                 ),
                 text(name).size(13),
             ]
@@ -5091,7 +5107,7 @@ impl Settings {
                         .padding([4, 10])
                         .width(150)
                         .style(style::pill(Rgba::hex(0xffffff).alpha(0.08))),
-                    text(what).size(13).color(style::color(style::SOFT_TEXT)),
+                    text(what).size(13).color(style::color(style::soft_text())),
                 ]
                 .spacing(14)
                 .align_y(Alignment::Center)
@@ -5173,7 +5189,7 @@ impl Settings {
                     env!("CARGO_PKG_VERSION")
                 ))
                 .size(13)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
             ]
             .spacing(2),
         ]
@@ -5225,7 +5241,7 @@ impl Settings {
                 Some(self.path.display().to_string()),
                 button(
                     row![
-                        icon(Icon::External, 14.0, neutral::TEXT),
+                        icon(Icon::External, 14.0, neutral::text()),
                         text("Open").size(13)
                     ]
                     .spacing(8)
@@ -5285,7 +5301,7 @@ impl Settings {
                 .width(Fill)
                 .height(height)
                 .style(|_| container::Style {
-                    background: Some(Background::Color(style::color(neutral::INK))),
+                    background: Some(Background::Color(style::color(neutral::ink()))),
                     border: Border {
                         radius: 14.0.into(),
                         ..Border::default()
@@ -5298,7 +5314,7 @@ impl Settings {
             .padding(1)
             .style(|_| container::Style {
                 border: Border {
-                    color: style::color(neutral::HAIRLINE),
+                    color: style::color(neutral::hairline()),
                     width: 1.0,
                     radius: 15.0.into(),
                 },
@@ -5317,7 +5333,7 @@ impl Settings {
         };
         let mut panel = column![
             row![
-                icon(Icon::Code, 15.0, style::FAINT),
+                icon(Icon::Code, 15.0, style::faint()),
                 text("config.toml").size(13).font(style::medium()),
                 space::horizontal(),
                 text("live").size(11).color(style::color(style::GOOD)),
@@ -5327,7 +5343,7 @@ impl Settings {
             highlight(&code, palette),
             text("Saved as you change it. Your own comments in the file stay.")
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         ]
         .spacing(14);
         if let Some(error) = &self.error {
@@ -5345,7 +5361,7 @@ impl Settings {
                     Rgba::hex(0x000000).alpha(0.3),
                 ))),
                 border: Border {
-                    color: style::color(neutral::HAIRLINE),
+                    color: style::color(neutral::hairline()),
                     width: 1.0,
                     radius: style::RADIUS_TILE.into(),
                 },
@@ -5389,7 +5405,7 @@ fn accent_picker<'a>(
         swatches = swatches.push(
             button(
                 container(if chosen {
-                    Element::from(icon(Icon::Check, 14.0, neutral::INK))
+                    Element::from(icon(Icon::Check, 14.0, neutral::ink()))
                 } else {
                     space().into()
                 })
@@ -5399,7 +5415,7 @@ fn accent_picker<'a>(
             .style(move |_: &Theme, status| button::Style {
                 background: Some(Background::Color(style::color(color))),
                 border: Border {
-                    color: style::color(neutral::TEXT),
+                    color: style::color(neutral::text()),
                     width: if chosen || status == button::Status::Hovered {
                         2.0
                     } else {
@@ -5423,7 +5439,7 @@ fn accent_picker<'a>(
             .push(text(badge).size(12).color(style::color(tint))),
         text("The color is taken from the picture and lightened until it reads on glass.")
             .size(12)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
     ]
     .spacing(10)
     .into()
@@ -5454,7 +5470,7 @@ fn group<'a>(title: impl AsRef<str>, rows: Vec<Element<'a, Message>>) -> Element
             body = body.push(
                 container(Space::new().height(1))
                     .width(Fill)
-                    .style(|_| container::background(style::color(neutral::HAIRLINE))),
+                    .style(|_| container::background(style::color(neutral::hairline()))),
             );
         }
     }
@@ -5462,7 +5478,7 @@ fn group<'a>(title: impl AsRef<str>, rows: Vec<Element<'a, Message>>) -> Element
         text(title.as_ref().to_uppercase())
             .size(11)
             .font(style::semibold())
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         container(body).width(Fill).style(style::card),
     ]
     .spacing(10)
@@ -5492,7 +5508,7 @@ fn setting_owned<'a>(
 ) -> Element<'a, Message> {
     let mut words = column![text(title).size(14).font(style::medium())].spacing(3);
     if let Some(about) = about {
-        words = words.push(text(about).size(12).color(style::color(style::FAINT)));
+        words = words.push(text(about).size(12).color(style::color(style::faint())));
     }
     row![words.width(Fill), control.into()]
         .spacing(20)
@@ -5508,10 +5524,10 @@ fn setting_with_icon<'a>(
     control: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     row![
-        container(icon(glyph, 15.0, neutral::TEXT))
+        container(icon(glyph, 15.0, neutral::text()))
             .center(30)
             .style(|_| container::Style {
-                background: Some(Background::Color(style::color(style::FILL))),
+                background: Some(Background::Color(style::color(style::fill_color()))),
                 border: Border {
                     radius: 8.0.into(),
                     ..Border::default()
@@ -5527,8 +5543,8 @@ fn setting_with_icon<'a>(
 
 fn fact<'a>(glyph: Icon, line: &'a str) -> Element<'a, Message> {
     row![
-        icon(glyph, 15.0, style::SOFT_TEXT),
-        text(line).size(13).color(style::color(style::SOFT_TEXT))
+        icon(glyph, 15.0, style::soft_text()),
+        text(line).size(13).color(style::color(style::soft_text()))
     ]
     .spacing(12)
     .align_y(Alignment::Center)
@@ -5538,10 +5554,10 @@ fn fact<'a>(glyph: Icon, line: &'a str) -> Element<'a, Message> {
 
 fn note<'a>(line: &str) -> Element<'a, Message> {
     row![
-        icon(Icon::Info, 14.0, style::FAINT),
+        icon(Icon::Info, 14.0, style::faint()),
         text(line.to_owned())
             .size(12)
-            .color(style::color(style::FAINT))
+            .color(style::color(style::faint()))
     ]
     .spacing(10)
     .align_y(Alignment::Center)
@@ -5575,7 +5591,11 @@ fn segmented<'a, T: Copy + PartialEq + 'a, const N: usize>(
             content = content.push(icon(
                 glyph,
                 14.0,
-                if on_now { neutral::TEXT } else { style::FAINT },
+                if on_now {
+                    neutral::text()
+                } else {
+                    style::faint()
+                },
             ));
         }
         content = content.push(text(label).size(13));
@@ -5636,7 +5656,7 @@ fn value_slider<'a>(
         text(format!("{value} {unit}"))
             .size(12)
             .font(style::mono())
-            .color(style::color(style::SOFT_TEXT))
+            .color(style::color(style::soft_text()))
             .width(Length::Fixed(64.0))
             .align_x(Alignment::End),
     ]
@@ -5658,7 +5678,7 @@ fn minutes<'a>(value: u16, message: fn(u16) -> Message, palette: Palette) -> Ele
         text(label)
             .size(12)
             .font(style::mono())
-            .color(style::color(style::SOFT_TEXT))
+            .color(style::color(style::soft_text()))
             .width(Length::Fixed(64.0))
             .align_x(Alignment::End),
     ]
@@ -5673,13 +5693,13 @@ fn speed_slider<'a>(
     palette: Palette,
 ) -> Element<'a, Message> {
     row![
-        text("Slow").size(12).color(style::color(style::FAINT)),
+        text("Slow").size(12).color(style::color(style::faint())),
         slider(-1.0..=1.0, value, message)
             .step(0.05_f32)
             .on_release(Message::Commit)
             .width(200)
             .style(style::rail(palette, 4.0)),
-        text("Fast").size(12).color(style::color(style::FAINT)),
+        text("Fast").size(12).color(style::color(style::faint())),
     ]
     .spacing(10)
     .align_y(Alignment::Center)
@@ -5691,9 +5711,9 @@ fn keycaps<'a>(combo: &str) -> Element<'a, Message> {
         container(text(cap).size(12).font(style::mono()))
             .padding([3, 8])
             .style(|_| container::Style {
-                background: Some(Background::Color(style::color(style::FILL))),
+                background: Some(Background::Color(style::color(style::fill_color()))),
                 border: Border {
-                    color: style::color(neutral::HAIRLINE),
+                    color: style::color(neutral::hairline()),
                     width: 1.0,
                     radius: 6.0.into(),
                 },
@@ -5712,7 +5732,7 @@ fn keycaps<'a>(combo: &str) -> Element<'a, Message> {
 }
 
 fn highlight<'a>(code: &str, palette: Palette) -> Element<'a, Message> {
-    let faint = style::color(style::FAINT);
+    let faint = style::color(style::faint());
     let lines = code.lines().map(|line| {
         let mut spans: Vec<Span<'static, ()>> = Vec::new();
         let trimmed = line.trim_start();
@@ -5727,7 +5747,7 @@ fn highlight<'a>(code: &str, palette: Palette) -> Element<'a, Message> {
             } else {
                 style::WARN
             };
-            spans.push(span(key.to_owned()).color(style::color(neutral::TEXT)));
+            spans.push(span(key.to_owned()).color(style::color(neutral::text())));
             spans.push(span("=").color(faint));
             spans.push(span(value.to_owned()).color(style::color(tint)));
             if !comment.is_empty() {
@@ -5805,7 +5825,7 @@ fn welcome_step<'a>(
                 .style(style::pill(palette.accent)),
             column![
                 text(title).size(16).font(style::semibold()),
-                text(about).size(13).color(style::color(style::FAINT)),
+                text(about).size(13).color(style::color(style::faint())),
                 body,
             ]
             .spacing(10)
@@ -5820,7 +5840,7 @@ fn welcome_step<'a>(
 }
 
 fn readable(palette: Palette) -> bool {
-    let panel = neutral::PANEL.over(Rgba::hex(0x808080));
+    let panel = neutral::panel().over(Rgba::hex(0x808080));
     palette.on_accent.contrast(palette.accent) >= 4.5 && palette.accent.contrast(panel) >= 4.5
 }
 
@@ -5831,7 +5851,7 @@ fn broken(err: &str) -> Element<'_, Message> {
             .font(style::semibold()),
         text("Settings never rewrites a file it can't read, so nothing is lost.")
             .size(14)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         container(
             text(err)
                 .font(style::mono())
@@ -6049,9 +6069,9 @@ fn corner_picker<'a>(chosen: Corner, palette: Palette) -> Element<'a, Message> {
                 background: Some(Background::Color(style::color(if on {
                     palette.accent
                 } else if status == button::Status::Hovered {
-                    neutral::TEXT.alpha(0.35)
+                    neutral::text().alpha(0.35)
                 } else {
-                    neutral::TEXT.alpha(0.14)
+                    neutral::text().alpha(0.14)
                 }))),
                 border: Border::default().rounded(4),
                 ..button::Style::default()
@@ -6079,9 +6099,9 @@ fn corner_picker<'a>(chosen: Corner, palette: Palette) -> Element<'a, Message> {
     .width(128)
     .height(78)
     .style(|_| container::Style {
-        background: Some(Background::Color(style::color(style::SUNKEN))),
+        background: Some(Background::Color(style::color(style::sunken_color()))),
         border: Border {
-            color: style::color(neutral::HAIRLINE),
+            color: style::color(neutral::hairline()),
             width: 1.0,
             radius: 8.0.into(),
         },

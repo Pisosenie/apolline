@@ -436,7 +436,7 @@ impl Launcher {
         let games = entries.iter().filter(|e| e.game).count();
 
         let search = row![
-            icon(Icon::Search, 20.0, style::FAINT),
+            icon(Icon::Search, 20.0, style::faint()),
             text_input("Search apps, games and actions", &self.query)
                 .id(SEARCH)
                 .on_input(Message::Query)
@@ -465,10 +465,10 @@ impl Launcher {
         let list: Element<'_, Message> = if entries.is_empty() {
             container(
                 column![
-                    icon(Icon::Search, 28.0, style::FAINT),
+                    icon(Icon::Search, 28.0, style::faint()),
                     text(format!("Nothing called “{}”", self.query.trim()))
                         .size(14)
-                        .color(style::color(style::SOFT_TEXT)),
+                        .color(style::color(style::soft_text())),
                 ]
                 .spacing(10)
                 .align_x(Alignment::Center),
@@ -524,7 +524,7 @@ impl Launcher {
         };
 
         let footer = row![
-            text(caption).size(12).color(style::color(style::FAINT)),
+            text(caption).size(12).color(style::color(style::faint())),
             space::horizontal(),
             hint("/", "files"),
             hint(":", "emoji"),
@@ -547,7 +547,7 @@ impl Launcher {
                 container(search).padding([18, 20]),
                 container(space().height(1))
                     .width(Fill)
-                    .style(|_| container::background(style::color(neutral::HAIRLINE))),
+                    .style(|_| container::background(style::color(neutral::hairline()))),
                 container(list).padding([8, 8]),
                 container(footer).padding([10, 18]),
             ]
@@ -582,7 +582,7 @@ impl Launcher {
                 .center(44)
                 .into(),
             Pic::Glyph(glyph) => container(text(glyph).size(30)).center(44).into(),
-            Pic::Icon(glyph) => container(icon(glyph, 22.0, neutral::TEXT))
+            Pic::Icon(glyph) => container(icon(glyph, 22.0, neutral::text()))
                 .center(44)
                 .into(),
         };
@@ -599,7 +599,7 @@ impl Launcher {
         .style(move |theme, status| {
             let mut style = style::ghost(12.0)(theme, status);
             if selected {
-                style.background = Some(iced::Background::Color(style::color(style::FILL)));
+                style.background = Some(iced::Background::Color(style::color(style::fill_color())));
             }
             style
         })
@@ -620,10 +620,10 @@ impl Launcher {
                 .into(),
             Pic::App(None, name) => letter(name.unwrap_or(&entry.title), palette),
             Pic::Glyph(glyph) => container(text(glyph).size(22)).center(32).into(),
-            Pic::Icon(glyph) => container(icon(glyph, 17.0, neutral::TEXT))
+            Pic::Icon(glyph) => container(icon(glyph, 17.0, neutral::text()))
                 .center(32)
                 .style(move |_| {
-                    let mut style = style::pill(style::FILL)(&iced::Theme::Dark);
+                    let mut style = style::pill(style::fill_color())(&iced::Theme::Dark);
                     style.border.radius = 9.0.into();
                     style
                 })
@@ -635,7 +635,7 @@ impl Launcher {
             words = words.push(
                 text(entry.about.clone())
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         let mut line = row![picture, words, space::horizontal()]
@@ -649,7 +649,7 @@ impl Launcher {
             );
         }
         if selected {
-            line = line.push(icon(Icon::ChevronRight, 16.0, style::FAINT));
+            line = line.push(icon(Icon::ChevronRight, 16.0, style::faint()));
         }
         button(container(line).height(ROW - 4.0).align_y(Alignment::Center))
             .width(Fill)
@@ -657,7 +657,8 @@ impl Launcher {
             .style(move |theme, status| {
                 let mut style = style::ghost(12.0)(theme, status);
                 if selected {
-                    style.background = Some(iced::Background::Color(style::color(style::HOVER)));
+                    style.background =
+                        Some(iced::Background::Color(style::color(style::hover_color())));
                 }
                 style
             })
@@ -748,13 +749,13 @@ fn hint<'a>(key: &'a str, label: &'a str) -> Element<'a, Message> {
             .padding([1, 6])
             .style(|_| container::Style {
                 border: iced::Border {
-                    color: style::color(neutral::RAISED),
+                    color: style::color(neutral::raised()),
                     width: 1.0,
                     radius: 5.0.into(),
                 },
                 ..container::Style::default()
             }),
-        text(label).size(12).color(style::color(style::FAINT)),
+        text(label).size(12).color(style::color(style::faint())),
     ]
     .spacing(6)
     .align_y(Alignment::Center)

@@ -197,7 +197,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             icon(
                 Icon::volume(volume.level, volume.muted),
                 18.0,
-                neutral::TEXT,
+                neutral::text(),
             ),
             Some(Message::Change(Change::Mute(!volume.muted))),
             level,
@@ -208,7 +208,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     if let Some(mic) = panel.controls.mic {
         let glyph = if mic.muted { Icon::MicOff } else { Icon::Mic };
         sliders = sliders.push(slider_row(
-            icon(glyph, 18.0, neutral::TEXT),
+            icon(glyph, 18.0, neutral::text()),
             Some(Message::Change(Change::MicMute(!mic.muted))),
             if mic.muted { 0.0 } else { mic.level },
             palette,
@@ -233,7 +233,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     }
     if let Some(brightness) = panel.controls.brightness {
         sliders = sliders.push(slider_row(
-            icon(Icon::Sun, 18.0, neutral::TEXT),
+            icon(Icon::Sun, 18.0, neutral::text()),
             None,
             f32::from(brightness) / 100.0,
             palette,
@@ -260,7 +260,7 @@ fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
             let tint = if battery.charging {
                 panel.palette.accent
             } else {
-                neutral::TEXT
+                neutral::text()
             };
             let mut line = row![
                 icon(Icon::battery(battery.percent, battery.charging), 18.0, tint),
@@ -277,20 +277,21 @@ fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
                 (false, None) => None,
             };
             if let Some(said) = said {
-                line = line.push(text(said).size(12).color(style::color(style::FAINT)));
+                line = line.push(text(said).size(12).color(style::color(style::faint())));
             }
             line.into()
         }
         None => text("Apolline").size(14).font(style::medium()).into(),
     };
     let round = |glyph: Icon, message: Message, on: bool| {
-        button(container(icon(glyph, 16.0, neutral::TEXT)).center(34))
+        button(container(icon(glyph, 16.0, neutral::text())).center(34))
             .padding(0)
             .style(move |theme, status| {
                 let mut style = style::secondary(theme, status);
                 style.border.radius = style::PILL.into();
                 if on {
-                    style.background = Some(iced::Background::Color(style::color(style::HOVER)));
+                    style.background =
+                        Some(iced::Background::Color(style::color(style::hover_color())));
                 }
                 style
             })
@@ -321,9 +322,9 @@ fn power_menu<'a>(armed: Option<Power>) -> Element<'a, Message> {
         let is_armed = armed == Some(power);
         let label = if is_armed { "Sure?" } else { power.label() };
         let tint = if is_armed {
-            neutral::INK
+            neutral::ink()
         } else {
-            neutral::TEXT
+            neutral::text()
         };
         button(
             column![icon(power.icon(), 16.0, tint), text(label).size(11)]
@@ -374,7 +375,11 @@ fn more<'a>(
     on: bool,
     palette: Palette,
 ) -> Element<'a, Message> {
-    let ink = if on { palette.on_accent } else { neutral::TEXT };
+    let ink = if on {
+        palette.on_accent
+    } else {
+        neutral::text()
+    };
     let more = button(icon(Icon::ChevronRight, 16.0, ink))
         .padding(8)
         .style(style::ghost(10.0))
@@ -398,7 +403,7 @@ fn quiet_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         container(
             text("Only urgent notifications come through, like calls and alarms.")
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         )
         .padding([0, 10]),
     );
@@ -500,11 +505,15 @@ fn tile<'a>(
     palette: Palette,
     message: Option<Message>,
 ) -> Element<'a, Message> {
-    let ink = if on { palette.on_accent } else { neutral::TEXT };
+    let ink = if on {
+        palette.on_accent
+    } else {
+        neutral::text()
+    };
     let faint = if on {
         palette.on_accent.alpha(0.72)
     } else {
-        style::FAINT
+        style::faint()
     };
     let content = row![
         icon(glyph, 18.0, ink),
@@ -548,7 +557,7 @@ fn slider_row<'a>(
         text(format!("{:.0}", value * 100.0))
             .size(12)
             .font(style::mono())
-            .color(style::color(style::FAINT))
+            .color(style::color(style::faint()))
             .width(Length::Fixed(28.0))
             .align_x(Alignment::End),
     ]
@@ -564,7 +573,11 @@ fn modes<'a>(
 ) -> Element<'a, Message> {
     let chip = |label: &'a str, glyph: Icon, target: Option<usize>| {
         let on = target == current;
-        let ink = if on { palette.on_accent } else { neutral::TEXT };
+        let ink = if on {
+            palette.on_accent
+        } else {
+            neutral::text()
+        };
         button(
             row![
                 icon(glyph, 15.0, ink),
@@ -593,7 +606,7 @@ fn modes<'a>(
         text("MODE")
             .size(10)
             .font(style::semibold())
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         Row::with_children(chips)
             .spacing(6)
             .wrap()
@@ -605,7 +618,7 @@ fn modes<'a>(
 
 fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
     let control = |glyph: Icon, action: Action| {
-        button(container(icon(glyph, 16.0, neutral::TEXT)).center(32))
+        button(container(icon(glyph, 16.0, neutral::text())).center(32))
             .padding(0)
             .style(style::ghost(style::PILL))
             .on_press(Message::Player(action))
@@ -640,7 +653,7 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
         words = words.push(
             text(crate::media::shorten(artist, 30))
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         );
     }
     container(
@@ -683,13 +696,13 @@ fn history<'a>(
         text("NOTIFICATIONS")
             .size(10)
             .font(style::semibold())
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         space::horizontal(),
     ]
     .align_y(Alignment::Center);
     if !items.is_empty() {
         header = header.push(
-            button(text("Clear").size(11).color(style::color(style::FAINT)))
+            button(text("Clear").size(11).color(style::color(style::faint())))
                 .padding([2, 8])
                 .style(style::ghost(6.0))
                 .on_press(Message::ClearAll),
@@ -698,7 +711,7 @@ fn history<'a>(
     let list: Element<'a, Message> = if items.is_empty() {
         text("Nothing new")
             .size(12)
-            .color(style::color(style::FAINT))
+            .color(style::color(style::faint()))
             .into()
     } else {
         // One app's newest on top of the rest of its own, which open with a click.
@@ -750,11 +763,11 @@ fn entry<'a>(
         row![
             text(shorten(&notification.app, 28))
                 .size(11)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
             space::horizontal(),
             text(popup::ago(notification.received.elapsed()))
                 .size(11)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         ],
         text(shorten(&notification.summary, 40))
             .size(13)
@@ -766,7 +779,7 @@ fn entry<'a>(
         words = words.push(
             text(shorten(&notification.body, 48))
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         );
     }
     let words = button(
@@ -780,7 +793,7 @@ fn entry<'a>(
     container(
         row![
             words,
-            button(icon(Icon::X, 12.0, style::FAINT))
+            button(icon(Icon::X, 12.0, style::faint()))
                 .padding(5)
                 .style(style::ghost(6.0))
                 .on_press(Message::Forget(notification.id)),
@@ -810,11 +823,14 @@ fn devices_row<'a>(
     }))
     .spacing(4)
     .wrap();
-    row![container(icon(glyph, 16.0, style::FAINT)).width(26), chips,]
-        .spacing(10)
-        .align_y(Alignment::Center)
-        .padding([2, 0])
-        .into()
+    row![
+        container(icon(glyph, 16.0, style::faint())).width(26),
+        chips,
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .padding([2, 0])
+    .into()
 }
 
 fn frame<'a>(
@@ -848,14 +864,14 @@ fn frame<'a>(
 
 fn detail_header<'a>(title: &'static str, busy: bool) -> Element<'a, Message> {
     row![
-        button(icon(Icon::ChevronLeft, 16.0, neutral::TEXT))
+        button(icon(Icon::ChevronLeft, 16.0, neutral::text()))
             .padding(6)
             .style(style::ghost(8.0))
             .on_press(Message::Detail(None)),
         text(title).size(15).font(style::semibold()).width(Fill),
         text(if busy { "Working…" } else { "" })
             .size(12)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -869,7 +885,7 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         list = list.push(
             text("Looking for networks…")
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         );
     }
     for network in panel.networks.iter().take(9) {
@@ -882,13 +898,13 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         let lit = if network.active {
             palette.accent
         } else {
-            neutral::TEXT
+            neutral::text()
         };
         let bars = row((1..=4).map(|bar| {
             let tint = if bar <= level {
                 lit
             } else {
-                neutral::TEXT.alpha(0.18)
+                neutral::text().alpha(0.18)
             };
             container(space())
                 .width(3)
@@ -909,7 +925,7 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         if network.stranger {
             line = line.push(icon(Icon::Warning, 13.0, style::WARN));
         } else if network.secure() {
-            line = line.push(icon(Icon::Lock, 13.0, style::FAINT));
+            line = line.push(icon(Icon::Lock, 13.0, style::faint()));
         }
         if network.active {
             line = line.push(icon(Icon::Check, 14.0, palette.accent));
@@ -968,7 +984,7 @@ fn forgettable<'a>(
     };
     row![
         row_button,
-        button(icon(Icon::Trash, 14.0, style::FAINT))
+        button(icon(Icon::Trash, 14.0, style::faint()))
             .padding(8)
             .style(style::ghost(8.0))
             .on_press_maybe((!busy).then_some(forget)),
@@ -1004,7 +1020,7 @@ fn gadget_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         list = list.push(ask_card(ask, device, panel.pin, palette));
     }
     let label = |words: &'static str| {
-        container(text(words).size(11).color(style::color(style::FAINT))).padding([6, 10])
+        container(text(words).size(11).color(style::color(style::faint()))).padding([6, 10])
     };
     let (mine, nearby): (Vec<_>, Vec<_>) = panel.gadgets.iter().partition(|d| d.paired);
     if !mine.is_empty() {
@@ -1026,12 +1042,12 @@ fn gadget_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
                 if device.connected {
                     palette.accent
                 } else {
-                    neutral::MUTED
+                    neutral::muted()
                 }
             ),
             column![
                 text(shorten(&device.name, 30)).size(13),
-                text(state).size(11).color(style::color(style::FAINT)),
+                text(state).size(11).color(style::color(style::faint())),
             ]
             .width(Fill),
             text(if device.connected {
@@ -1061,14 +1077,14 @@ fn gadget_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
             container(
                 text("Looking… put the device in pairing mode")
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             )
             .padding([4, 10]),
         );
     }
     for device in nearby.into_iter().take(8) {
         let line = row![
-            icon(gadget_icon(&device.kind), 15.0, neutral::MUTED),
+            icon(gadget_icon(&device.kind), 15.0, neutral::muted()),
             text(shorten(&device.name, 30)).size(13).width(Fill),
             text("Pair").size(12).color(style::color(palette.accent)),
         ]
@@ -1101,7 +1117,7 @@ fn ask_card<'a>(
         text(code)
             .size(26)
             .font(style::mono())
-            .color(style::color(neutral::TEXT))
+            .color(style::color(neutral::text()))
     };
     let buttons = |yes: &'static str, ready: bool| {
         row![
@@ -1122,7 +1138,7 @@ fn ask_card<'a>(
             text(format!("Pair with {device}?")).size(13),
             text("It should show the same code")
                 .size(12)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
             code(number),
             buttons("Pair", true),
         ],
@@ -1154,7 +1170,7 @@ fn ask_card<'a>(
                 "Six digits on its screen"
             })
             .size(12)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
             iced::widget::text_input("PIN", pin)
                 .id(PIN)
                 .on_input(Message::PinTyped)

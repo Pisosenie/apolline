@@ -85,7 +85,7 @@ impl Picker {
             (n, p) => format!("{n} items · {p} pinned"),
         };
         let header = row![
-            icon(Icon::Search, 18.0, style::FAINT),
+            icon(Icon::Search, 18.0, style::faint()),
             text_input("Search clipboard", &self.query)
                 .id(SEARCH)
                 .on_input(Message::ClipQuery)
@@ -93,7 +93,7 @@ impl Picker {
                 .size(16)
                 .padding(0)
                 .style(style::bare_field(palette)),
-            text(count).size(12).color(style::color(style::FAINT)),
+            text(count).size(12).color(style::color(style::faint())),
         ]
         .spacing(14)
         .align_y(Alignment::Center);
@@ -101,14 +101,14 @@ impl Picker {
         let body: Element<'a, Message> = if visible.is_empty() {
             container(
                 column![
-                    icon(Icon::Clipboard, 28.0, style::FAINT),
+                    icon(Icon::Clipboard, 28.0, style::faint()),
                     text(if clips.is_empty() {
                         "Copy something and it shows up here".to_owned()
                     } else {
                         format!("Nothing matches “{}”", self.query.trim())
                     })
                     .size(14)
-                    .color(style::color(style::SOFT_TEXT)),
+                    .color(style::color(style::soft_text())),
                 ]
                 .spacing(10)
                 .align_x(Alignment::Center),
@@ -136,7 +136,7 @@ impl Picker {
                 .width(330)
                 .padding(8),
                 container(Space::new().width(1).height(Fill))
-                    .style(|_| container::background(style::color(neutral::HAIRLINE))),
+                    .style(|_| container::background(style::color(neutral::hairline()))),
                 match selected {
                     Some((index, clip)) => preview(index, clip, palette),
                     None => Space::new().into(),
@@ -158,7 +158,7 @@ impl Picker {
                 "Kept in memory only, gone when you log out; pinned ones stay"
             })
             .size(11)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         ]
         .spacing(14)
         .align_y(Alignment::Center);
@@ -191,7 +191,7 @@ impl Picker {
 fn divider<'a>() -> Element<'a, Message> {
     container(Space::new().height(1))
         .width(Fill)
-        .style(|_| container::background(style::color(neutral::HAIRLINE)))
+        .style(|_| container::background(style::color(neutral::hairline())))
         .into()
 }
 
@@ -214,20 +214,23 @@ fn glyph<'a>(clip: &Clip) -> Element<'a, Message> {
             text("T")
                 .size(12)
                 .font(style::mono())
-                .color(style::color(style::SOFT_TEXT))
+                .color(style::color(style::soft_text()))
                 .into(),
-            style::FILL,
+            style::fill_color(),
         ),
-        Kind::Link => boxed(icon(Icon::Link, 13.0, style::SOFT_TEXT).into(), style::FILL),
+        Kind::Link => boxed(
+            icon(Icon::Link, 13.0, style::soft_text()).into(),
+            style::fill_color(),
+        ),
         Kind::Image => boxed(
-            icon(Icon::Image, 13.0, style::SOFT_TEXT).into(),
-            style::FILL,
+            icon(Icon::Image, 13.0, style::soft_text()).into(),
+            style::fill_color(),
         ),
         Kind::Color => {
             let color = clip
                 .text()
                 .and_then(|t| Rgba::parse(t.trim()))
-                .unwrap_or(neutral::INK);
+                .unwrap_or(neutral::ink());
             boxed(Space::new().into(), color)
         }
     }
@@ -244,12 +247,12 @@ fn entry(clip: &Clip, index: usize, selected: bool) -> Element<'_, Message> {
     .spacing(12)
     .align_y(Alignment::Center);
     if clip.pinned {
-        line = line.push(icon(Icon::Pin, 12.0, style::FAINT));
+        line = line.push(icon(Icon::Pin, 12.0, style::faint()));
     }
     line = line.push(
         text(ago(clip.when.elapsed()))
             .size(11)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
     );
     button(container(line).height(ROW - 4.0).align_y(Alignment::Center))
         .width(Fill)
@@ -257,7 +260,7 @@ fn entry(clip: &Clip, index: usize, selected: bool) -> Element<'_, Message> {
         .style(move |theme, status| {
             let mut style = style::ghost(10.0)(theme, status);
             if selected {
-                style.background = Some(Background::Color(style::color(style::HOVER)));
+                style.background = Some(Background::Color(style::color(style::hover_color())));
             }
             style
         })
@@ -275,13 +278,13 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
     let pin_tint = if clip.pinned {
         palette.accent
     } else {
-        style::FAINT
+        style::faint()
     };
     let top = row![
         text(kind)
             .size(10)
             .font(style::semibold())
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
         space::horizontal(),
         button(
             row![
@@ -296,7 +299,7 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
         .padding([4, 10])
         .style(style::ghost(8.0))
         .on_press(Message::ClipPin(index)),
-        button(icon(Icon::X, 13.0, style::FAINT))
+        button(icon(Icon::X, 13.0, style::faint()))
             .padding(6)
             .style(style::ghost(8.0))
             .on_press(Message::ClipRemove(index)),
@@ -306,7 +309,7 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
 
     let (content, meta): (Element<'_, Message>, String) = match (clip.kind(), clip.text()) {
         (Kind::Color, Some(value)) => {
-            let color = Rgba::parse(value.trim()).unwrap_or(neutral::INK);
+            let color = Rgba::parse(value.trim()).unwrap_or(neutral::ink());
             let swatch = container(Space::new())
                 .width(Fill)
                 .height(96)
@@ -326,7 +329,7 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
                     text(rgb.clone())
                         .size(13)
                         .font(style::mono())
-                        .color(style::color(style::SOFT_TEXT)),
+                        .color(style::color(style::soft_text())),
                 ]
                 .spacing(10)
                 .into(),
@@ -372,7 +375,7 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
     column![
         top,
         container(content).height(Fill).width(Fill),
-        text(meta).size(11).color(style::color(style::FAINT)),
+        text(meta).size(11).color(style::color(style::faint())),
     ]
     .spacing(12)
     .padding(18)
@@ -386,13 +389,13 @@ fn hint<'a>(key: &'a str, label: &'a str) -> Element<'a, Message> {
             .padding([1, 6])
             .style(|_| container::Style {
                 border: Border {
-                    color: style::color(neutral::RAISED),
+                    color: style::color(neutral::raised()),
                     width: 1.0,
                     radius: 5.0.into(),
                 },
                 ..container::Style::default()
             }),
-        text(label).size(12).color(style::color(style::FAINT)),
+        text(label).size(12).color(style::color(style::faint())),
     ]
     .spacing(6)
     .align_y(Alignment::Center)

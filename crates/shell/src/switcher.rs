@@ -68,7 +68,7 @@ pub fn view<'a>(
     config: &'a Config,
     thumbs: &'a HashMap<String, image::Handle>,
 ) -> Element<'a, Message> {
-    let muted = style::color(neutral::MUTED);
+    let muted = style::color(neutral::muted());
     let count = config.modes.len() + 1;
     let width = match count {
         0..=3 => 380.0,
@@ -87,7 +87,7 @@ pub fn view<'a>(
             .padding([2, 8])
             .style(|_| container::Style {
                 border: Border {
-                    color: style::color(neutral::RAISED),
+                    color: style::color(neutral::raised()),
                     width: 1.0,
                     radius: 6.0.into(),
                 },
@@ -115,7 +115,7 @@ pub fn view<'a>(
                 .color(muted),
             space::horizontal(),
             button(
-                row![icon(Icon::Sparkles, 14.0, neutral::INK), text("Make a mode").size(13)]
+                row![icon(Icon::Sparkles, 14.0, neutral::ink()), text("Make a mode").size(13)]
                     .spacing(8)
                     .align_y(Alignment::Center)
             )
@@ -187,7 +187,7 @@ fn card<'a>(
         None => container(space())
             .width(Fill)
             .height(Fill)
-            .style(|_| container::background(style::color(neutral::INK)))
+            .style(|_| container::background(style::color(neutral::ink())))
             .into(),
     };
     let scrim = container(space())
@@ -230,7 +230,7 @@ fn card<'a>(
     )
     .padding([3, 9])
     .style(|_| container::Style {
-        background: Some(Background::Color(style::color(neutral::GLASS))),
+        background: Some(Background::Color(style::color(neutral::glass()))),
         border: Border {
             radius: 6.0.into(),
             ..Border::default()
@@ -246,7 +246,7 @@ fn card<'a>(
         space::vertical(),
         container(
             row![
-                icon(glyph, 22.0, neutral::TEXT),
+                icon(glyph, 22.0, neutral::text()),
                 text(name).size(26).font(semibold())
             ]
             .spacing(12)
@@ -257,7 +257,7 @@ fn card<'a>(
     let ring = if on {
         palette.accent
     } else {
-        neutral::HAIRLINE
+        neutral::hairline()
     };
     let framed = container(stack![picture, scrim, overlay].height(height))
         .padding(3)
@@ -278,7 +278,7 @@ fn card<'a>(
                 .style(style::dot(palette.accent)),
             text(line)
                 .size(13)
-                .color(style::color(neutral::TEXT.alpha(0.86))),
+                .color(style::color(neutral::text().alpha(0.86))),
         ]
         .spacing(10)
         .align_y(Alignment::Center)
@@ -292,7 +292,7 @@ fn card<'a>(
         .padding(0)
         .style(|_: &Theme, _| button::Style {
             background: None,
-            text_color: style::color(neutral::TEXT),
+            text_color: style::color(neutral::text()),
             ..button::Style::default()
         })
         .on_press(Message::Mode(mode))

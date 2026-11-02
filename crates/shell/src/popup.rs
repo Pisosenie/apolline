@@ -120,11 +120,11 @@ fn card<'a>(
     typed: Option<&'a str>,
     look: apolline_config::Surface,
 ) -> Element<'a, Message> {
-    let muted = style::color(neutral::MUTED);
+    let muted = style::color(neutral::muted());
     let edge = if notification.urgency == Urgency::Critical {
         palette.accent
     } else {
-        neutral::HAIRLINE
+        neutral::hairline()
     };
 
     let content = column![
@@ -134,7 +134,7 @@ fn card<'a>(
             text(ago(notification.received.elapsed()))
                 .size(11)
                 .color(muted),
-            button(icon(Icon::X, 11.0, neutral::MUTED))
+            button(icon(Icon::X, 11.0, neutral::muted()))
                 .padding(2)
                 .style(style::ghost(6.0))
                 .on_press(Message::Dismiss(notification.id)),
@@ -176,7 +176,7 @@ fn card<'a>(
             progress_bar(0.0..=100.0, f32::from(value))
                 .girth(4)
                 .style(move |_| progress_bar::Style {
-                    background: Background::Color(style::color(neutral::HAIRLINE)),
+                    background: Background::Color(style::color(neutral::hairline())),
                     bar: Background::Color(style::color(palette.accent)),
                     border: Border::default().rounded(2),
                 }),
@@ -218,9 +218,9 @@ fn card<'a>(
     .width(Fill)
     .style(move |_: &Theme, _| button::Style {
         background: Some(Background::Color(style::color(
-            neutral::PANEL.alpha(look.opacity.unwrap_or(1.0)),
+            neutral::panel().alpha(look.opacity.unwrap_or(1.0)),
         ))),
-        text_color: style::color(neutral::TEXT),
+        text_color: style::color(neutral::text()),
         border: Border {
             color: style::color(edge),
             width: 1.0,

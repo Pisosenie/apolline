@@ -43,7 +43,7 @@ pub fn view<'a>(
     let today = now.date_naive();
     let first = month(today, offset);
     let arrow = |glyph: Icon, by: i32| {
-        button(icon(glyph, 15.0, neutral::TEXT))
+        button(icon(glyph, 15.0, neutral::text()))
             .padding(7)
             .style(style::ghost(8.0))
             .on_press(Message::CalendarMonth(offset + by))
@@ -69,7 +69,7 @@ pub fn view<'a>(
         .push(arrow(Icon::ChevronRight, 1));
 
     let names = Row::with_children(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(|name| {
-        container(text(name).size(11).color(style::color(style::FAINT)))
+        container(text(name).size(11).color(style::color(style::faint())))
             .center_x(CELL)
             .into()
     }));
@@ -84,15 +84,15 @@ pub fn view<'a>(
                     .font(style::semibold())
                     .color(style::color(palette.on_accent))
             } else if inside {
-                label.color(style::color(neutral::TEXT))
+                label.color(style::color(neutral::text()))
             } else {
-                label.color(style::color(neutral::TEXT.alpha(0.3)))
+                label.color(style::color(neutral::text().alpha(0.3)))
             };
             let busy = agenda.busy(*day);
             let dot = container(space().width(4).height(4)).style(style::pill(match busy {
                 true if is_today => palette.on_accent,
                 true => palette.accent,
-                false => neutral::TEXT.alpha(0.0),
+                false => neutral::text().alpha(0.0),
             }));
             let cell = container(column![label, dot].spacing(1).align_x(Alignment::Center))
                 .center(CELL - 4.0);
@@ -128,7 +128,7 @@ pub fn view<'a>(
         container(space())
             .width(Fill)
             .height(1)
-            .style(|_| { iced::widget::container::background(style::color(neutral::HAIRLINE)) }),
+            .style(|_| { iced::widget::container::background(style::color(neutral::hairline())) }),
         title,
         grid,
     ];
@@ -145,8 +145,8 @@ pub fn view<'a>(
     .map(|(_, glyph, label)| {
         button(
             row![
-                icon(glyph, 14.0, neutral::MUTED),
-                text(label).size(12).color(style::color(neutral::MUTED)),
+                icon(glyph, 14.0, neutral::muted()),
+                text(label).size(12).color(style::color(neutral::muted())),
             ]
             .spacing(7)
             .align_y(Alignment::Center),
@@ -202,7 +202,7 @@ fn day_list<'a>(
         text(heading.to_uppercase())
             .size(10)
             .font(style::semibold())
-            .color(style::color(style::FAINT))
+            .color(style::color(style::faint()))
     ]
     .spacing(8);
     let items = agenda.on(day);
@@ -211,7 +211,7 @@ fn day_list<'a>(
             .push(
                 text("Nothing planned")
                     .size(12)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             )
             .into();
     }
@@ -225,7 +225,7 @@ fn day_list<'a>(
             (None, None) => "All day".to_owned(),
         };
         let mut what = column![
-            text(when).size(11).color(style::color(style::FAINT)),
+            text(when).size(11).color(style::color(style::faint())),
             text(shorten(&item.summary, 34)).size(13),
         ]
         .spacing(1);
@@ -233,7 +233,7 @@ fn day_list<'a>(
             what = what.push(
                 text(shorten(place, 36))
                     .size(11)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         let mut line = row![
@@ -256,7 +256,7 @@ fn day_list<'a>(
         list = list.push(
             text(format!("+{} more", items.len() - LISTED))
                 .size(11)
-                .color(style::color(style::FAINT)),
+                .color(style::color(style::faint())),
         );
     }
     list.into()
@@ -272,10 +272,10 @@ fn forecast(weather: &Weather, palette: Palette) -> Element<'_, Message> {
         column![
             text(words).size(13),
             row![
-                icon(Icon::MapPin, 11.0, style::FAINT),
+                icon(Icon::MapPin, 11.0, style::faint()),
                 text(weather.place.as_str())
                     .size(11)
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             ]
             .spacing(4)
             .align_y(Alignment::Center),
@@ -289,8 +289,8 @@ fn forecast(weather: &Weather, palette: Palette) -> Element<'_, Message> {
         column![
             text(day.date.format("%a").to_string())
                 .size(11)
-                .color(style::color(style::FAINT)),
-            icon(glyph, 16.0, neutral::TEXT),
+                .color(style::color(style::faint())),
+            icon(glyph, 16.0, neutral::text()),
             text(format!("{:.0}° {:.0}°", day.high, day.low)).size(11),
         ]
         .spacing(4)

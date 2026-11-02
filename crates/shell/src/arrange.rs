@@ -249,7 +249,7 @@ impl<M> canvas::Program<M> for Arrange<'_, M> {
             let tint = if dragged.is_some() {
                 self.palette.accent_soft
             } else {
-                style::FILL
+                style::fill_color()
             };
             frame.fill(&path, style::color(tint));
             frame.stroke(
@@ -258,13 +258,13 @@ impl<M> canvas::Program<M> for Arrange<'_, M> {
                     .with_color(style::color(if dragged.is_some() {
                         self.palette.accent
                     } else {
-                        neutral::TEXT.alpha(0.25)
+                        neutral::text().alpha(0.25)
                     }))
                     .with_width(1.5),
             );
             for (line, (words, size, tint)) in [
-                (&screen.name, 13.0, neutral::TEXT),
-                (&screen.label, 11.0, style::FAINT),
+                (&screen.name, 13.0, neutral::text()),
+                (&screen.label, 11.0, style::faint()),
             ]
             .into_iter()
             .enumerate()

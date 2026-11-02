@@ -353,7 +353,7 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
                     .font(style::semibold()),
                 text(request.message.as_str())
                     .size(13)
-                    .color(style::color(style::SOFT_TEXT)),
+                    .color(style::color(style::soft_text())),
             ]
             .spacing(4)
             .width(Fill),
@@ -392,12 +392,12 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
             .into(),
         (None, Some(info)) => text(info.as_str())
             .size(12)
-            .color(style::color(style::SOFT_TEXT))
+            .color(style::color(style::soft_text()))
             .into(),
         (None, None) => text(request.action.as_str())
             .size(11)
             .font(style::mono())
-            .color(style::color(style::FAINT))
+            .color(style::color(style::faint()))
             .into(),
     };
     body = body.push(

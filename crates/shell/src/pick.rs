@@ -218,7 +218,7 @@ impl Pick {
         let palette = self.palette;
         let visible = self.visible();
         let header = row![
-            icon(Icon::Search, 18.0, style::FAINT),
+            icon(Icon::Search, 18.0, style::faint()),
             text_input(&self.prompt, &self.query)
                 .id(FIELD)
                 .on_input(Message::Query)
@@ -238,7 +238,8 @@ impl Pick {
                 .style(move |theme, status| {
                     let mut style = style::ghost(10.0)(theme, status);
                     if on {
-                        style.background = Some(iced::Background::Color(style::color(style::FILL)));
+                        style.background =
+                            Some(iced::Background::Color(style::color(style::fill_color())));
                     }
                     style
                 })
@@ -252,14 +253,14 @@ impl Pick {
             .height(iced::Length::Shrink);
         let count = text(format!("{} of {}", visible.len(), self.items.len()))
             .size(12)
-            .color(style::color(style::FAINT));
+            .color(style::color(style::faint()));
         let panel = container(
             column![
                 container(header).padding([16, 18]),
                 container(space())
                     .width(Fill)
                     .height(1)
-                    .style(|_| { container::background(style::color(neutral::HAIRLINE)) }),
+                    .style(|_| { container::background(style::color(neutral::hairline())) }),
                 container(container(list).max_height(ROW * 9.0)).padding(8),
                 container(count).padding(Padding::new(0.0).left(18).bottom(12)),
             ]

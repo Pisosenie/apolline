@@ -5,12 +5,30 @@ use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{button, container, pick_list, scrollable, slider, text_input, toggler};
 use iced::{Background, Border, Color, Font, Shadow, Theme, Vector};
 
-pub const SURFACE: Rgba = Rgba::hex(0x15171b).alpha(0.95);
-pub const SUNKEN: Rgba = Rgba::hex(0xffffff).alpha(0.04);
-pub const FILL: Rgba = Rgba::hex(0xffffff).alpha(0.07);
-pub const HOVER: Rgba = Rgba::hex(0xffffff).alpha(0.11);
-pub const SOFT_TEXT: Rgba = neutral::TEXT.alpha(0.86);
-pub const FAINT: Rgba = neutral::TEXT.alpha(0.5);
+pub fn surface_color() -> Rgba {
+    apolline_theme::scheme().surface
+}
+
+pub fn sunken_color() -> Rgba {
+    apolline_theme::scheme().overlay.alpha(0.04)
+}
+
+pub fn fill_color() -> Rgba {
+    apolline_theme::scheme().overlay.alpha(0.07)
+}
+
+pub fn hover_color() -> Rgba {
+    apolline_theme::scheme().overlay.alpha(0.11)
+}
+
+pub fn soft_text() -> Rgba {
+    neutral::text().alpha(0.86)
+}
+
+pub fn faint() -> Rgba {
+    neutral::text().alpha(0.5)
+}
+
 pub const GOOD: Rgba = Rgba::hex(0x5dd39e);
 pub const WARN: Rgba = Rgba::hex(0xf2b35c);
 pub const DANGER: Rgba = Rgba::hex(0xff7a6b);
@@ -94,10 +112,10 @@ pub fn bar(_: &Theme) -> container::Style {
 
 pub fn glass(opacity: f32, floating: bool, radius: f32) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
-        text_color: Some(color(neutral::TEXT)),
-        background: fill(neutral::INK.alpha(opacity)),
+        text_color: Some(color(neutral::text())),
+        background: fill(neutral::ink().alpha(opacity)),
         border: if floating {
-            outlined(neutral::HAIRLINE, radius)
+            outlined(neutral::hairline(), radius)
         } else {
             Border::default()
         },
@@ -126,7 +144,7 @@ pub fn surface_as(look: apolline_config::Surface) -> impl Fn(&Theme) -> containe
     move |theme| {
         let mut style = surface(theme);
         if let Some(opacity) = look.opacity {
-            style.background = fill(SURFACE.alpha(opacity));
+            style.background = fill(surface_color().alpha(opacity));
         }
         if let Some(radius) = look.radius {
             style.border.radius = f32::from(radius).into();
@@ -137,9 +155,9 @@ pub fn surface_as(look: apolline_config::Surface) -> impl Fn(&Theme) -> containe
 
 pub fn surface(_: &Theme) -> container::Style {
     container::Style {
-        text_color: Some(color(neutral::TEXT)),
-        background: fill(SURFACE),
-        border: outlined(neutral::HAIRLINE, RADIUS_SURFACE),
+        text_color: Some(color(neutral::text())),
+        background: fill(surface_color()),
+        border: outlined(neutral::hairline(), RADIUS_SURFACE),
         shadow: lifted(24.0),
         ..container::Style::default()
     }
@@ -147,8 +165,8 @@ pub fn surface(_: &Theme) -> container::Style {
 
 pub fn card(_: &Theme) -> container::Style {
     container::Style {
-        background: fill(SUNKEN),
-        border: outlined(neutral::HAIRLINE, RADIUS_TILE),
+        background: fill(sunken_color()),
+        border: outlined(neutral::hairline(), RADIUS_TILE),
         ..container::Style::default()
     }
 }
@@ -180,11 +198,11 @@ pub fn scrim(_: &Theme) -> container::Style {
 pub fn ghost(radius: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, status| button::Style {
         background: match status {
-            button::Status::Hovered => fill(FILL),
-            button::Status::Pressed => fill(HOVER),
+            button::Status::Hovered => fill(fill_color()),
+            button::Status::Pressed => fill(hover_color()),
             _ => None,
         },
-        text_color: color(neutral::TEXT),
+        text_color: color(neutral::text()),
         border: rounded(radius),
         ..button::Style::default()
     }
@@ -193,10 +211,10 @@ pub fn ghost(radius: f32) -> impl Fn(&Theme, button::Status) -> button::Style {
 pub fn secondary(_: &Theme, status: button::Status) -> button::Style {
     button::Style {
         background: fill(match status {
-            button::Status::Hovered | button::Status::Pressed => HOVER,
-            _ => FILL,
+            button::Status::Hovered | button::Status::Pressed => hover_color(),
+            _ => fill_color(),
         }),
-        text_color: color(neutral::TEXT),
+        text_color: color(neutral::text()),
         border: rounded(metrics::RADIUS_CONTROL + 2.0),
         ..button::Style::default()
     }
@@ -231,10 +249,14 @@ pub fn danger(armed: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_, status| button::Style {
         background: fill(match (armed, status) {
             (true, _) => DANGER,
-            (_, button::Status::Hovered | button::Status::Pressed) => HOVER,
-            _ => FILL,
+            (_, button::Status::Hovered | button::Status::Pressed) => hover_color(),
+            _ => fill_color(),
         }),
-        text_color: color(if armed { neutral::INK } else { neutral::TEXT }),
+        text_color: color(if armed {
+            neutral::ink()
+        } else {
+            neutral::text()
+        }),
         border: rounded(PILL),
         ..button::Style::default()
     }
@@ -246,12 +268,16 @@ pub fn tile(on: bool, palette: Palette) -> impl Fn(&Theme, button::Status) -> bu
         let background = match (on, hovered) {
             (true, false) => palette.accent,
             (true, true) => WHITE.alpha(0.14).over(palette.accent),
-            (false, false) => FILL,
-            (false, true) => HOVER,
+            (false, false) => fill_color(),
+            (false, true) => hover_color(),
         };
         button::Style {
             background: fill(background),
-            text_color: color(if on { palette.on_accent } else { neutral::TEXT }),
+            text_color: color(if on {
+                palette.on_accent
+            } else {
+                neutral::text()
+            }),
             border: rounded(RADIUS_TILE),
             ..button::Style::default()
         }
@@ -264,10 +290,10 @@ pub fn choice(on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
         button::Style {
             background: match (on, hovered) {
                 (true, _) => fill(WHITE.alpha(0.14)),
-                (false, true) => fill(FILL),
+                (false, true) => fill(fill_color()),
                 (false, false) => None,
             },
-            text_color: color(if on { neutral::TEXT } else { SOFT_TEXT }),
+            text_color: color(if on { neutral::text() } else { soft_text() }),
             border: rounded(metrics::RADIUS_CONTROL),
             shadow: if on { lifted(4.0) } else { Shadow::default() },
             ..button::Style::default()
@@ -278,7 +304,7 @@ pub fn choice(on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
 pub fn segments(_: &Theme) -> container::Style {
     container::Style {
         background: fill(Rgba::hex(0x000000).alpha(0.28)),
-        border: outlined(neutral::HAIRLINE, metrics::RADIUS_CONTROL + 3.0),
+        border: outlined(neutral::hairline(), metrics::RADIUS_CONTROL + 3.0),
         ..container::Style::default()
     }
 }
@@ -340,14 +366,14 @@ pub fn field(palette: Palette) -> impl Fn(&Theme, text_input::Status) -> text_in
         let edge = match status {
             text_input::Status::Focused { .. } => palette.accent.alpha(0.7),
             text_input::Status::Hovered => WHITE.alpha(0.16),
-            _ => neutral::HAIRLINE,
+            _ => neutral::hairline(),
         };
         text_input::Style {
             background: Background::Color(color(Rgba::hex(0x000000).alpha(0.28))),
             border: outlined(edge, metrics::RADIUS_CONTROL + 2.0),
-            icon: color(FAINT),
-            placeholder: color(FAINT),
-            value: color(neutral::TEXT),
+            icon: color(faint()),
+            placeholder: color(faint()),
+            value: color(neutral::text()),
             selection: color(palette.accent.alpha(0.35)),
         }
     }
@@ -377,13 +403,13 @@ pub fn picker(palette: Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_li
         let edge = match status {
             pick_list::Status::Opened { .. } => palette.accent.alpha(0.7),
             pick_list::Status::Hovered => WHITE.alpha(0.16),
-            pick_list::Status::Active => neutral::HAIRLINE,
+            pick_list::Status::Active => neutral::hairline(),
         };
         pick_list::Style {
-            text_color: color(neutral::TEXT),
-            placeholder_color: color(SOFT_TEXT),
-            handle_color: color(FAINT),
-            background: Background::Color(color(FILL)),
+            text_color: color(neutral::text()),
+            placeholder_color: color(soft_text()),
+            handle_color: color(faint()),
+            background: Background::Color(color(fill_color())),
             border: outlined(edge, metrics::RADIUS_CONTROL + 2.0),
         }
     }
@@ -392,8 +418,8 @@ pub fn picker(palette: Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_li
 pub fn menu(palette: Palette) -> impl Fn(&Theme) -> menu::Style {
     move |_| menu::Style {
         background: Background::Color(color(Rgba::hex(0x1b1d22))),
-        border: outlined(neutral::HAIRLINE, metrics::RADIUS_CONTROL + 2.0),
-        text_color: color(neutral::TEXT),
+        border: outlined(neutral::hairline(), metrics::RADIUS_CONTROL + 2.0),
+        text_color: color(neutral::text()),
         selected_text_color: color(palette.on_accent),
         selected_background: Background::Color(color(palette.accent)),
         shadow: lifted(16.0),
@@ -404,9 +430,9 @@ pub fn bare_field(palette: Palette) -> impl Fn(&Theme, text_input::Status) -> te
     move |_, _| text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default(),
-        icon: color(FAINT),
-        placeholder: color(FAINT),
-        value: color(neutral::TEXT),
+        icon: color(faint()),
+        placeholder: color(faint()),
+        value: color(neutral::text()),
         selection: color(palette.accent.alpha(0.35)),
     }
 }

@@ -127,7 +127,7 @@ pub fn accent_of(rgba: &[u8]) -> Option<Rgba> {
     let chroma = (1.0 - r.min(g).min(b) / max).max(0.01);
     let scale = chroma.clamp(0.4, 0.65) / chroma;
     let vivid = [r, g, b].map(|c| 1.0 - (1.0 - c / max) * scale);
-    let panel = crate::neutral::PANEL.over(Rgba::hex(0x808080));
+    let panel = crate::neutral::panel().over(Rgba::hex(0x808080));
     (0..=20)
         .map(|step| {
             let white = step as f32 * 0.05;

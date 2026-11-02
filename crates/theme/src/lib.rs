@@ -11,11 +11,17 @@ pub struct Palette {
 
 impl Palette {
     pub fn new(accent: Rgba) -> Self {
-        let dark = neutral::INK;
-        let on_accent = if accent.contrast(dark) >= accent.contrast(neutral::TEXT) {
+        let (ink, text) = (neutral::ink(), neutral::text());
+        // Whichever of the two reads better on the accent, dark or light.
+        let (dark, light) = if scheme().light {
+            (text, ink)
+        } else {
+            (ink, text)
+        };
+        let on_accent = if accent.contrast(dark) >= accent.contrast(light) {
             dark
         } else {
-            neutral::TEXT
+            light
         };
         Self {
             accent,
@@ -42,17 +48,88 @@ pub const ACCENTS: [Rgba; 6] = [
 
 const SOFT: f32 = 0.18;
 
-pub mod neutral {
-    use crate::Rgba;
+// The colors everything is drawn with, by what they're for. A named palette, a palette file or the
+// wallpaper fills it; everything reads the current one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scheme {
+    pub light: bool,
+    // The deepest background: the bar's glass and what's dimmed behind overlays.
+    pub ink: Rgba,
+    // Notification cards.
+    pub panel: Rgba,
+    // Quick settings, the launcher and the other overlays.
+    pub surface: Rgba,
+    // The shell's own windows.
+    pub window: Rgba,
+    pub text: Rgba,
+    // What lines, fills and hovers are made of: white on dark, black on light.
+    pub overlay: Rgba,
+}
 
-    pub const TEXT: Rgba = Rgba::hex(0xf4f3f0);
-    pub const MUTED: Rgba = TEXT.alpha(0.72);
-    pub const INK: Rgba = Rgba::hex(0x0c0d10);
-    pub const GLASS: Rgba = INK.alpha(0.55);
-    pub const PANEL: Rgba = Rgba::hex(0x101114).alpha(0.78);
-    pub const WINDOW: Rgba = Rgba::hex(0x141619);
-    pub const HAIRLINE: Rgba = Rgba::hex(0xffffff).alpha(0.08);
-    pub const RAISED: Rgba = Rgba::hex(0xffffff).alpha(0.16);
+impl Scheme {
+    pub const DARK: Scheme = Scheme {
+        light: false,
+        ink: Rgba::hex(0x0c0d10),
+        panel: Rgba::hex(0x101114).alpha(0.78),
+        surface: Rgba::hex(0x15171b).alpha(0.95),
+        window: Rgba::hex(0x141619),
+        text: Rgba::hex(0xf4f3f0),
+        overlay: Rgba::hex(0xffffff),
+    };
+}
+
+impl Default for Scheme {
+    fn default() -> Self {
+        Self::DARK
+    }
+}
+
+static SCHEME: std::sync::RwLock<Scheme> = std::sync::RwLock::new(Scheme::DARK);
+
+pub fn scheme() -> Scheme {
+    SCHEME.read().map_or(Scheme::DARK, |scheme| *scheme)
+}
+
+pub fn set_scheme(scheme: Scheme) {
+    if let Ok(mut current) = SCHEME.write() {
+        *current = scheme;
+    }
+}
+
+pub mod neutral {
+    use crate::{Rgba, scheme};
+
+    pub fn text() -> Rgba {
+        scheme().text
+    }
+
+    pub fn muted() -> Rgba {
+        text().alpha(0.72)
+    }
+
+    pub fn ink() -> Rgba {
+        scheme().ink
+    }
+
+    pub fn glass() -> Rgba {
+        ink().alpha(0.55)
+    }
+
+    pub fn panel() -> Rgba {
+        scheme().panel
+    }
+
+    pub fn window() -> Rgba {
+        scheme().window
+    }
+
+    pub fn hairline() -> Rgba {
+        scheme().overlay.alpha(0.08)
+    }
+
+    pub fn raised() -> Rgba {
+        scheme().overlay.alpha(0.16)
+    }
 }
 
 pub mod metrics {
@@ -79,7 +156,7 @@ mod tests {
 
     #[test]
     fn every_accent_reads_on_its_own_surfaces() {
-        let panel = neutral::PANEL.over(BRIGHT_WALLPAPER);
+        let panel = neutral::panel().over(BRIGHT_WALLPAPER);
         for accent in ACCENTS {
             let p = Palette::new(accent);
             assert!(p.on_accent.contrast(p.accent) >= 4.5, "label on {accent:?}");
@@ -100,7 +177,7 @@ mod tests {
         }
         let accent = accent_of(&pixels).unwrap();
         assert!(accent.b > accent.r && accent.b > accent.g, "{accent:?}");
-        let panel = neutral::PANEL.over(BRIGHT_WALLPAPER);
+        let panel = neutral::panel().over(BRIGHT_WALLPAPER);
         assert!(
             Palette::new(accent).accent.contrast(panel) >= 4.5,
             "{accent:?}"
@@ -124,15 +201,15 @@ mod tests {
 
     #[test]
     fn muted_text_reads_on_glass_over_bright_wallpaper() {
-        let glass = neutral::GLASS.over(BRIGHT_WALLPAPER);
-        assert!(neutral::MUTED.over(glass).contrast(glass) >= 4.5);
+        let glass = neutral::glass().over(BRIGHT_WALLPAPER);
+        assert!(neutral::muted().over(glass).contrast(glass) >= 4.5);
     }
 
     #[test]
     fn custom_accent_picks_readable_label() {
         let light = Palette::new(Rgba::hex(0xffe08a));
         let dark = Palette::new(Rgba::hex(0x3b2a7a));
-        assert_eq!(light.on_accent, neutral::INK);
-        assert_eq!(dark.on_accent, neutral::TEXT);
+        assert_eq!(light.on_accent, neutral::ink());
+        assert_eq!(dark.on_accent, neutral::text());
     }
 }

@@ -264,9 +264,9 @@ pub fn view<'a>(
             container(text(cap).size(11).font(style::mono()))
                 .padding([2, 7])
                 .style(|_| container::Style {
-                    background: Some(iced::Background::Color(style::color(style::FILL))),
+                    background: Some(iced::Background::Color(style::color(style::fill_color()))),
                     border: iced::Border {
-                        color: style::color(neutral::HAIRLINE),
+                        color: style::color(neutral::hairline()),
                         width: 1.0,
                         radius: 5.0.into(),
                     },
@@ -288,7 +288,7 @@ pub fn view<'a>(
                         container(caps(&e.keys)).width(170),
                         text(e.what.as_str())
                             .size(13)
-                            .color(style::color(style::SOFT_TEXT))
+                            .color(style::color(style::soft_text()))
                             .width(Fill),
                     ]
                     .spacing(12)
@@ -324,7 +324,7 @@ pub fn view<'a>(
         container(
             text(format!("No shortcut does “{}”", query.trim()))
                 .size(14)
-                .color(style::color(style::SOFT_TEXT)),
+                .color(style::color(style::soft_text())),
         )
         .center_x(Fill)
         .padding([40, 0])
@@ -341,7 +341,7 @@ pub fn view<'a>(
         .into()
     };
     let search = row![
-        icon(Icon::Search, 18.0, style::FAINT),
+        icon(Icon::Search, 18.0, style::faint()),
         text_input("What do you want to do?", query)
             .id(SEARCH)
             .on_input(Message::KeysQuery)
@@ -350,7 +350,7 @@ pub fn view<'a>(
             .style(style::bare_field(palette)),
         text("Change Apolline's in Settings → Shortcuts")
             .size(12)
-            .color(style::color(style::FAINT)),
+            .color(style::color(style::faint())),
     ]
     .spacing(14)
     .align_y(Alignment::Center);
@@ -359,7 +359,7 @@ pub fn view<'a>(
             container(search).padding([16, 18]),
             container(Space::new().height(1))
                 .width(Fill)
-                .style(|_| container::background(style::color(neutral::HAIRLINE))),
+                .style(|_| container::background(style::color(neutral::hairline()))),
             container(body).padding([16, 20]),
         ]
         .width(920),

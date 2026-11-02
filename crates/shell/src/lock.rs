@@ -378,7 +378,7 @@ impl Lock {
             text(self.now.format("%A, %-d %B").to_string().to_uppercase())
                 .size(14)
                 .font(style::medium())
-                .color(style::color(neutral::TEXT.alpha(0.86))),
+                .color(style::color(neutral::text().alpha(0.86))),
             text(self.now.format("%H:%M").to_string())
                 .size(232)
                 .font(style::light())
@@ -392,7 +392,7 @@ impl Lock {
 
         let mut right = column![].spacing(14).align_x(Alignment::End);
         let line = |glyph: Option<Icon>, words: &str| {
-            let tint = neutral::TEXT.alpha(0.86);
+            let tint = neutral::text().alpha(0.86);
             let mut line = row![].spacing(8).align_y(Alignment::Center);
             line = match glyph {
                 Some(glyph) => line.push(icon(glyph, 15.0, tint)),
@@ -420,10 +420,10 @@ impl Lock {
             };
             right = right.push(
                 row![
-                    icon(Icon::Lock, 12.0, neutral::TEXT.alpha(0.8)),
+                    icon(Icon::Lock, 12.0, neutral::text().alpha(0.8)),
                     text(line)
                         .size(12)
-                        .color(style::color(neutral::TEXT.alpha(0.8))),
+                        .color(style::color(neutral::text().alpha(0.8))),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),
@@ -441,7 +441,7 @@ impl Lock {
                 .width(Fill)
                 .height(Fill),
         ])
-        .style(|_| container::background(style::color(neutral::INK)))
+        .style(|_| container::background(style::color(neutral::ink())))
         .into()
     }
 
@@ -461,7 +461,7 @@ impl Lock {
     }
 
     fn status(&self) -> Element<'_, Message> {
-        let tint = style::color(neutral::TEXT.alpha(0.86));
+        let tint = style::color(neutral::text().alpha(0.86));
         let mut items = row![].spacing(18).align_y(Alignment::Center);
         if let Some(layout) = self.layout() {
             items = items.push(text(layout).size(12).font(style::mono()).color(tint));
@@ -469,7 +469,7 @@ impl Lock {
         if let Some(network) = &self.network {
             items = items.push(
                 row![
-                    icon(Icon::Wifi, 13.0, neutral::TEXT.alpha(0.86)),
+                    icon(Icon::Wifi, 13.0, neutral::text().alpha(0.86)),
                     text(network.as_str()).size(12).color(tint)
                 ]
                 .spacing(6)
@@ -482,7 +482,7 @@ impl Lock {
                     icon(
                         Icon::battery(battery.percent, battery.charging),
                         15.0,
-                        neutral::TEXT.alpha(0.86)
+                        neutral::text().alpha(0.86)
                     ),
                     text(format!("{}%", battery.percent))
                         .size(12)
@@ -547,11 +547,11 @@ impl Lock {
                 text(layout)
                     .size(11)
                     .font(style::mono())
-                    .color(style::color(style::FAINT)),
+                    .color(style::color(style::faint())),
             );
         }
         line = line.push(
-            button(container(icon(Icon::Arrow, 16.0, neutral::TEXT)).center(36))
+            button(container(icon(Icon::Arrow, 16.0, neutral::text())).center(36))
                 .padding(0)
                 .style(|_: &Theme, status| button::Style {
                     background: Some(Background::Color(style::color(Rgba::hex(0xffffff).alpha(
@@ -606,8 +606,8 @@ impl Lock {
                 .color(style::color(style::DANGER))
                 .into(),
             _ if !finger.is_empty() => row![
-                icon(Icon::Fingerprint, 14.0, style::FAINT),
-                text(finger).size(13).color(style::color(style::FAINT)),
+                icon(Icon::Fingerprint, 14.0, style::faint()),
+                text(finger).size(13).color(style::color(style::faint())),
             ]
             .spacing(8)
             .align_y(Alignment::Center)
@@ -629,7 +629,7 @@ fn player(track: &Track, palette: Palette) -> Element<'_, Message> {
         words = words.push(
             text(media::shorten(artist, 32))
                 .size(13)
-                .color(style::color(neutral::MUTED)),
+                .color(style::color(neutral::muted())),
         );
     }
     container(
@@ -653,7 +653,7 @@ fn player(track: &Track, palette: Palette) -> Element<'_, Message> {
                         Icon::Play
                     },
                     14.0,
-                    neutral::TEXT
+                    neutral::text()
                 ))
                 .center(36)
             )
@@ -681,7 +681,7 @@ fn player(track: &Track, palette: Palette) -> Element<'_, Message> {
 
 fn glass(alpha: f32, edge: f32, radius: f32) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
-        text_color: Some(style::color(neutral::TEXT)),
+        text_color: Some(style::color(neutral::text())),
         background: Some(Background::Color(style::color(
             Rgba::hex(0x0c0d10).alpha(alpha),
         ))),

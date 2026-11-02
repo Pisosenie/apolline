@@ -385,10 +385,11 @@ fn shapes(mark: &Mark, base: f32) -> Vec<Shape> {
             let mut shapes = vec![Shape::Dot(first, radius, mark.ink)];
             if let Some((_, width, height)) = lettering(label, size, first) {
                 let corner = Point::new(first.x - width / 2.0, first.y - height / 2.0);
-                let on = if mark.ink.contrast(neutral::INK) >= mark.ink.contrast(neutral::TEXT) {
-                    neutral::INK
+                let on = if mark.ink.contrast(neutral::ink()) >= mark.ink.contrast(neutral::text())
+                {
+                    neutral::ink()
                 } else {
-                    neutral::TEXT
+                    neutral::text()
                 };
                 if let Some((path, _, _)) = lettering(label, size, corner) {
                     shapes.push(Shape::Glyphs(path, on));
@@ -645,7 +646,7 @@ impl canvas::Program<Message> for Board<'_> {
                         rect.size() * scale,
                     ),
                     Stroke::default()
-                        .with_color(style::color(neutral::TEXT.alpha(0.9)))
+                        .with_color(style::color(neutral::text().alpha(0.9)))
                         .with_width(1.5),
                 );
                 continue;
@@ -704,7 +705,7 @@ pub fn view(marks: &Marks, palette: Palette) -> Element<'_, Message> {
     ];
 
     let tool = |(tool, glyph): (Tool, Icon)| {
-        button(container(icon(glyph, 16.0, neutral::TEXT)).center(34))
+        button(container(icon(glyph, 16.0, neutral::text())).center(34))
             .padding(0)
             .style(style::choice(marks.tool == tool))
             .on_press(Message::Mark(Event::Tool(tool)))
@@ -726,7 +727,7 @@ pub fn view(marks: &Marks, palette: Palette) -> Element<'_, Message> {
     let action = |glyph: Icon, label: &'static str, event: Option<Event>| {
         button(
             row![
-                icon(glyph, 14.0, neutral::TEXT),
+                icon(glyph, 14.0, neutral::text()),
                 text(label).size(13).font(style::medium())
             ]
             .spacing(7)
@@ -738,7 +739,7 @@ pub fn view(marks: &Marks, palette: Palette) -> Element<'_, Message> {
     };
     let divider = || {
         container(space().width(1).height(22))
-            .style(|_| container::background(style::color(neutral::HAIRLINE)))
+            .style(|_| container::background(style::color(neutral::hairline())))
     };
     let bar = row![
         row(TOOLS.into_iter().map(tool)).spacing(4),
@@ -753,7 +754,7 @@ pub fn view(marks: &Marks, palette: Palette) -> Element<'_, Message> {
         space().width(18),
         action(Icon::Copy, "Copy", Some(Event::Copy)),
         action(Icon::Save, "Save", Some(Event::Save)),
-        text("↵ both").size(12).color(style::color(style::FAINT)),
+        text("↵ both").size(12).color(style::color(style::faint())),
         action(Icon::X, "Close", None).on_press(Message::CloseMarks),
     ]
     .spacing(10)

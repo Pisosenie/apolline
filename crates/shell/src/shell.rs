@@ -2522,7 +2522,7 @@ impl Shell {
             None => container(space())
                 .width(Fill)
                 .height(Fill)
-                .style(|_| container::background(style::color(neutral::INK)))
+                .style(|_| container::background(style::color(neutral::ink())))
                 .into(),
         }
     }

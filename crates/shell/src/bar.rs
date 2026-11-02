@@ -134,12 +134,12 @@ fn mode<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     let palette = bar.palette;
     let (glyph, name, tint) = match bar.mode {
         Some(mode) => (Icon::named(&mode.icon), mode.name.as_str(), palette.accent),
-        None => (Icon::Circle, "No mode", neutral::MUTED),
+        None => (Icon::Circle, "No mode", neutral::muted()),
     };
     let soft = if bar.mode.is_some() {
         palette.accent_soft
     } else {
-        style::FILL
+        style::fill_color()
     };
     Some(
         button(
@@ -174,7 +174,7 @@ fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
         clock = clock.push(
             text(bar.now.format("%a %-d %b").to_string())
                 .size(13)
-                .color(style::color(neutral::MUTED)),
+                .color(style::color(neutral::muted())),
         );
     }
     let time = if bar.look.seconds {
@@ -193,7 +193,7 @@ fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
                 container(space().width(6).height(6)).style(style::pill(bar.palette.accent)),
                 text(crate::events::when(&crate::media::shorten(what, 22), wait))
                     .size(12)
-                    .color(style::color(neutral::MUTED)),
+                    .color(style::color(neutral::muted())),
             ]
             .spacing(6)
             .align_y(Alignment::Center),
@@ -214,7 +214,7 @@ fn media<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
                 icon(Icon::Music, 13.0, bar.palette.accent),
                 text(crate::media::shorten(&track.line(), 34))
                     .size(12)
-                    .color(style::color(neutral::MUTED)),
+                    .color(style::color(neutral::muted())),
             ]
             .spacing(7)
             .align_y(Alignment::Center),
@@ -235,7 +235,7 @@ fn bell<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     } else {
         Icon::Bell
     };
-    let mut bell = row![icon(glyph, 15.0, neutral::TEXT)]
+    let mut bell = row![icon(glyph, 15.0, neutral::text())]
         .spacing(5)
         .align_y(Alignment::Center);
     if bar.held > 0 {
@@ -285,7 +285,7 @@ fn recording<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
 fn module<'a>(module: &Module<'a>) -> Element<'a, Message> {
     let label = text(module.text.to_owned())
         .size(12)
-        .color(style::color(neutral::MUTED));
+        .color(style::color(neutral::muted()));
     button(label)
         .padding([4, 8])
         .style(style::ghost(8.0))
@@ -317,11 +317,11 @@ fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
         let value = value.filter(|_| on)?;
         Some(
             row![
-                icon(glyph, 13.0, neutral::MUTED),
+                icon(glyph, 13.0, neutral::muted()),
                 text(value)
                     .size(12)
                     .font(style::mono())
-                    .color(style::color(neutral::MUTED)),
+                    .color(style::color(neutral::muted())),
             ]
             .spacing(5)
             .align_y(Alignment::Center)
@@ -347,8 +347,8 @@ fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             Workspaces::Dots => {
                 let (width, fill) = match (active, busy) {
                     (true, _) => (18.0, palette.accent),
-                    (false, true) => (6.0, neutral::TEXT.alpha(0.72)),
-                    (false, false) => (6.0, neutral::TEXT.alpha(0.26)),
+                    (false, true) => (6.0, neutral::text().alpha(0.72)),
+                    (false, false) => (6.0, neutral::text().alpha(0.26)),
                 };
                 container(space())
                     .width(width)
@@ -359,8 +359,8 @@ fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             Workspaces::Numbers => {
                 let ink = match (active, busy) {
                     (true, _) => palette.accent,
-                    (false, true) => neutral::TEXT,
-                    (false, false) => neutral::TEXT.alpha(0.45),
+                    (false, true) => neutral::text(),
+                    (false, false) => neutral::text().alpha(0.45),
                 };
                 text((i + 1).to_string())
                     .size(12)
@@ -417,8 +417,8 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
         let glyph = crate::windows::picture(bar.apps, id, 16.0, palette);
         let (width, tint) = match (focused, running) {
             (true, _) => (12, palette.accent),
-            (false, true) => (4, neutral::MUTED),
-            (false, false) => (0, neutral::MUTED),
+            (false, true) => (4, neutral::muted()),
+            (false, false) => (0, neutral::muted()),
         };
         let marker = container(space())
             .width(width)
@@ -432,7 +432,7 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
                 if held {
                     style.background = Some(Background::Color(style::color(palette.accent_soft)));
                 } else if focused {
-                    style.background = Some(Background::Color(style::color(style::FILL)));
+                    style.background = Some(Background::Color(style::color(style::fill_color())));
                 }
                 style
             })
@@ -445,7 +445,7 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
         container(space())
             .width(1)
             .height(14)
-            .style(|_| container::background(style::color(neutral::HAIRLINE)))
+            .style(|_| container::background(style::color(neutral::hairline())))
             .into()
     });
     let windows = loose.into_iter().map(|(id, app, focused)| {
@@ -459,7 +459,7 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             .style(move |theme, status| {
                 let mut style = style::ghost(7.0)(theme, status);
                 if focused {
-                    style.background = Some(Background::Color(style::color(style::FILL)));
+                    style.background = Some(Background::Color(style::color(style::fill_color())));
                 }
                 style
             })
@@ -511,7 +511,7 @@ fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
         .style(move |theme, status| {
             let mut style = style::ghost(style::PILL)(theme, status);
             if open {
-                style.background = Some(Background::Color(style::color(style::HOVER)));
+                style.background = Some(Background::Color(style::color(style::hover_color())));
             }
             style
         })
@@ -524,13 +524,13 @@ fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
 }
 
 fn tray_item<'a>(bar: &Bar<'a>, item: TrayItem) -> Option<Element<'a, Message>> {
-    let tint = neutral::TEXT;
+    let tint = neutral::text();
     match item {
         TrayItem::Keyboard => (!bar.status.keyboard.is_empty()).then(|| {
             text(bar.status.keyboard.clone())
                 .size(11)
                 .font(style::semibold())
-                .color(style::color(neutral::MUTED))
+                .color(style::color(neutral::muted()))
                 .into()
         }),
         TrayItem::Awake => bar
@@ -553,7 +553,7 @@ fn tray_item<'a>(bar: &Bar<'a>, item: TrayItem) -> Option<Element<'a, Message>> 
                 let shade = if bluetooth.connected.is_some() {
                     tint
                 } else {
-                    neutral::MUTED
+                    neutral::muted()
                 };
                 icon(Icon::Bluetooth, 15.0, shade).into()
             }),

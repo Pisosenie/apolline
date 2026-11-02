@@ -455,7 +455,7 @@ impl Greet {
             .style(|_| container::background(style::color(Rgba::hex(0x0c0d10).alpha(0.35))));
 
         let power = |glyph: Icon, action: &'static str| {
-            button(container(icon(glyph, 16.0, neutral::TEXT)).center(36))
+            button(container(icon(glyph, 16.0, neutral::text())).center(36))
                 .padding(0)
                 .style(style::ghost(18.0))
                 .on_press(Message::Power(action))
@@ -482,7 +482,7 @@ impl Greet {
             text(self.now.format("%A, %-d %B").to_string().to_uppercase())
                 .size(14)
                 .font(style::medium())
-                .color(style::color(neutral::TEXT.alpha(0.86))),
+                .color(style::color(neutral::text().alpha(0.86))),
             text(self.now.format("%H:%M").to_string())
                 .size(200)
                 .font(style::light()),
@@ -574,7 +574,7 @@ impl Greet {
         )
         .center(36)
         .style(style::pill(palette.accent));
-        let go = button(container(icon(Icon::Arrow, 16.0, neutral::TEXT)).center(36))
+        let go = button(container(icon(Icon::Arrow, 16.0, neutral::text())).center(36))
             .padding(0)
             .style(style::ghost(18.0))
             .on_press_maybe((!checking).then_some(Message::Submit));

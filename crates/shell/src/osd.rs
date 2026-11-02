@@ -61,7 +61,7 @@ pub fn view(osd: &Osd, palette: Palette, look: apolline_config::Surface) -> Elem
             .width(Fill)
             .into(),
     };
-    let mut line = row![icon(glyph, 17.0, neutral::TEXT), body]
+    let mut line = row![icon(glyph, 17.0, neutral::text()), body]
         .spacing(14)
         .align_y(Alignment::Center);
     if level.is_some() {
@@ -69,7 +69,7 @@ pub fn view(osd: &Osd, palette: Palette, look: apolline_config::Surface) -> Elem
             text(label)
                 .size(12)
                 .font(style::mono())
-                .color(style::color(style::SOFT_TEXT))
+                .color(style::color(style::soft_text()))
                 .width(Length::Fixed(40.0))
                 .align_x(Alignment::End),
         );
