@@ -997,12 +997,18 @@ impl Shell {
                     }
                     _ => Task::none(),
                 };
-                // Plugged in: the warning goes, and comes back on the next way down.
-                if low.is_none() && self.warned.is_some() {
+                // Plugged in: the warning goes, and comes back on the next way down. A reading
+                // that wobbles over the mark on battery doesn't count.
+                let plugged = battery.is_none_or(|b| b.charging);
+                if plugged && self.warned.is_some() {
                     self.forget(notify::BATTERY_CARD);
                     self.history.retain(|n| n.id != notify::BATTERY_CARD);
                 }
-                self.warned = low;
+                self.warned = match (plugged, self.warned, low) {
+                    (true, _, _) => None,
+                    (false, Some(warned), Some(low)) => Some(warned.min(low)),
+                    (false, warned, low) => warned.or(low),
+                };
                 return Task::batch([warn, self.triggers()]);
             }
             Message::Media(media) => self.system.get_or_insert_default().media = media,

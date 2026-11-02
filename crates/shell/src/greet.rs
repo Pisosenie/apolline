@@ -609,9 +609,15 @@ impl Greet {
 // greetd runs `apolline greet --kiosk`: cage, keyed the way the system is (what `localectl
 // set-x11-keymap` wrote), with the greeter in it. Without this cage types in US English.
 fn kiosk() -> ExitCode {
-    let keyboard = std::fs::read_to_string("/etc/X11/xorg.conf.d/00-keyboard.conf")
-        .map(|conf| xkb(&conf))
-        .unwrap_or_default();
+    let read = |path: &str| std::fs::read_to_string(path).unwrap_or_default();
+    let keyboard = [
+        xkb(&read("/etc/X11/xorg.conf.d/00-keyboard.conf")),
+        xkb_vars(&read("/etc/vconsole.conf")),
+        xkb_vars(&read("/etc/default/keyboard")),
+    ]
+    .into_iter()
+    .find(|found| !found.is_empty())
+    .unwrap_or_default();
     let me = std::env::current_exe().unwrap_or_else(|_| "apolline".into());
     let mut cage = std::process::Command::new("cage");
     cage.args(["-s", "--"]).arg(me).arg("greet");
@@ -650,9 +656,45 @@ fn xkb(conf: &str) -> Vec<(&'static str, String)> {
         .collect()
 }
 
+// The same as shell variables, the way Debian's /etc/default/keyboard and newer systemd's
+// /etc/vconsole.conf keep them: XKBLAYOUT="us,ru".
+fn xkb_vars(text: &str) -> Vec<(&'static str, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let (key, value) = line.split('#').next()?.trim().split_once('=')?;
+            let key = match key.trim() {
+                "XKBLAYOUT" => "XKB_DEFAULT_LAYOUT",
+                "XKBVARIANT" => "XKB_DEFAULT_VARIANT",
+                "XKBOPTIONS" => "XKB_DEFAULT_OPTIONS",
+                "XKBMODEL" => "XKB_DEFAULT_MODEL",
+                _ => return None,
+            };
+            let value = value.trim().trim_matches('"').trim_matches('\'');
+            (!value.is_empty()).then(|| (key, value.to_owned()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debian_and_vconsole_keyboards_count_too() {
+        let debian = "XKBMODEL=\"pc105\"\nXKBLAYOUT=\"us,ru\"\nXKBVARIANT=\"\"\nXKBOPTIONS=\"grp:alt_shift_toggle\"\nBACKSPACE=\"guess\"\n";
+        assert_eq!(
+            xkb_vars(debian),
+            [
+                ("XKB_DEFAULT_MODEL", "pc105".to_owned()),
+                ("XKB_DEFAULT_LAYOUT", "us,ru".to_owned()),
+                ("XKB_DEFAULT_OPTIONS", "grp:alt_shift_toggle".to_owned()),
+            ]
+        );
+        assert_eq!(
+            xkb_vars("KEYMAP=ru\nXKBLAYOUT=us,ru\n"),
+            [("XKB_DEFAULT_LAYOUT", "us,ru".to_owned())]
+        );
+    }
 
     #[test]
     fn the_system_keyboard_reaches_cage() {

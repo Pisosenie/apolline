@@ -164,8 +164,18 @@ fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
                         next.0 = now + next.1;
                     }
                 }
-                for source in ready {
-                    let result = fetch(source.clone()).await;
+                // All at once, and none longer than a minute: a keyring that asks or a server that
+                // hangs mustn't hold up the rest.
+                let fetched =
+                    iced::futures::future::join_all(ready.into_iter().map(|source| async {
+                        let result =
+                            tokio::time::timeout(Duration::from_secs(60), fetch(source.clone()))
+                                .await
+                                .unwrap_or_else(|_| Err("it didn't answer within a minute".into()));
+                        (source, result)
+                    }))
+                    .await;
+                for (source, result) in fetched {
                     let Some(next) = due.get_mut(&source) else {
                         continue;
                     };

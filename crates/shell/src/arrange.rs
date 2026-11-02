@@ -102,6 +102,7 @@ struct Arrange<'a, M> {
 struct Drag {
     index: usize,
     grab: Point,
+    from: Point,
     at: Point,
 }
 
@@ -184,6 +185,7 @@ impl<M> canvas::Program<M> for Arrange<'_, M> {
                 *drag = Some(Drag {
                     index,
                     grab: Point::new(point.x - rect.x, point.y - rect.y),
+                    from: Point::new(rect.x, rect.y),
                     at: Point::new(rect.x, rect.y),
                 });
                 Some(canvas::Action::request_redraw().and_capture())
@@ -196,7 +198,11 @@ impl<M> canvas::Program<M> for Arrange<'_, M> {
             }
             canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 let moved = drag.take()?;
-                let screen = &self.screens[moved.index];
+                // A click, not a move: nothing to settle.
+                if moved.at.distance(moved.from) < 4.0 {
+                    return Some(canvas::Action::request_redraw());
+                }
+                let screen = self.screens.get(moved.index)?;
                 let (x, y) = fit.logical(moved.at);
                 let others: Vec<Place> = self
                     .screens
