@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use apolline_theme::{Palette, font, metrics, neutral};
-use iced::widget::{button, column, container, image, progress_bar, row, space, text};
+use iced::widget::{button, column, container, image, progress_bar, row, space, text, text_input};
 use iced::{Background, Border, ContentFit, Element, Fill, Theme};
 
 use crate::apps::App;
@@ -13,6 +13,7 @@ use crate::shell::Message;
 use crate::style;
 
 pub const WIDTH: u32 = 360;
+pub const REPLY: &str = "notification-reply";
 pub const MAX: usize = 3;
 const HEIGHT: u32 = 84;
 const BUTTONS: u32 = 38;
@@ -22,7 +23,7 @@ const FACE: f32 = 36.0;
 const PROGRESS: u32 = 12;
 
 fn card_height(notification: &Notification) -> u32 {
-    let buttons = if notification.buttons().next().is_some() {
+    let buttons = if notification.buttons().next().is_some() || notification.reply.is_some() {
         BUTTONS
     } else {
         0
@@ -45,11 +46,17 @@ pub fn stack<'a>(
     notifications: impl Iterator<Item = &'a Notification>,
     apps: &'a [App],
     palette: Palette,
+    replying: Option<&'a (u32, String)>,
 ) -> Element<'a, Message> {
-    column(notifications.take(MAX).map(|n| card(n, apps, palette)))
-        .spacing(GAP as f32)
-        .width(WIDTH as f32)
-        .into()
+    column(notifications.take(MAX).map(|n| {
+        let typed = replying
+            .filter(|(id, _)| *id == n.id)
+            .map(|(_, typed)| typed.as_str());
+        card(n, apps, palette, typed)
+    }))
+    .spacing(GAP as f32)
+    .width(WIDTH as f32)
+    .into()
 }
 
 // What the app sent along, else the app's own icon.
@@ -77,6 +84,7 @@ fn card<'a>(
     notification: &'a Notification,
     apps: &'a [App],
     palette: Palette,
+    typed: Option<&'a str>,
 ) -> Element<'a, Message> {
     let muted = style::color(neutral::MUTED);
     let edge = if notification.urgency == Urgency::Critical {
@@ -111,15 +119,23 @@ fn card<'a>(
     ]
     .spacing(3);
 
-    let buttons: Vec<Element<'_, Message>> = notification
-        .buttons()
-        .map(|(key, label)| {
+    let reply = notification.reply.as_ref().map(|_| {
+        button(text("Reply").size(12).font(style::medium()))
+            .padding([5, 12])
+            .style(style::secondary)
+            .on_press(Message::ReplyOpen(notification.id))
+            .into()
+    });
+    let buttons: Vec<Element<'_, Message>> = reply
+        .into_iter()
+        .chain(notification.buttons().map(|(key, label)| {
             button(text(shorten(label, 18)).size(12).font(style::medium()))
                 .padding([5, 12])
                 .style(style::secondary)
                 .on_press(Message::Invoke(notification.id, key.clone()))
                 .into()
-        })
+        }))
+        .take(3)
         .collect();
     let content = match notification.progress {
         Some(value) => content.push(space().height(4)).push(
@@ -133,12 +149,28 @@ fn card<'a>(
         ),
         None => content,
     };
-    let content = if buttons.is_empty() {
-        content
-    } else {
-        content
+    let content = match (typed, &notification.reply) {
+        (Some(typed), Some(hint)) => content.push(space().height(6)).push(
+            row![
+                text_input(hint, typed)
+                    .id(REPLY)
+                    .on_input(Message::ReplyTyped)
+                    .on_submit(Message::ReplySend)
+                    .padding([5, 10])
+                    .size(12)
+                    .style(style::field(palette)),
+                button(icon(Icon::Send, 13.0, palette.on_accent))
+                    .padding([6, 10])
+                    .style(style::primary(palette))
+                    .on_press_maybe((!typed.trim().is_empty()).then_some(Message::ReplySend)),
+            ]
+            .spacing(6)
+            .align_y(iced::Alignment::Center),
+        ),
+        _ if buttons.is_empty() => content,
+        _ => content
             .push(space().height(6))
-            .push(row(buttons).spacing(6))
+            .push(row(buttons).spacing(6)),
     };
     let content = row![face(notification, apps, palette, FACE), content.width(Fill)].spacing(12);
 

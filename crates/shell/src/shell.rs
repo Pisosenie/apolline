@@ -98,6 +98,9 @@ pub enum Message {
     Profiles(Option<crate::profile::Profiles>),
     PickProfile(String),
     ProfileSet(String, Result<(), String>),
+    ReplyOpen(u32),
+    ReplyTyped(String),
+    ReplySend,
     Wifi(crate::wifi::Seen),
     Bluetooth(crate::bluetooth::Seen),
     PickNetwork(crate::wifi::Network),
@@ -204,6 +207,8 @@ pub struct Shell {
     joining: Option<(crate::wifi::Network, String)>,
     asking: Option<crate::bluetooth::Ask>,
     pin: String,
+    // An answer being typed on a notification card, and to which.
+    replying: Option<(u32, String)>,
     net_note: Option<String>,
     net_busy: bool,
     apps: Vec<App>,
@@ -291,6 +296,7 @@ impl Shell {
             gadgets: Vec::new(),
             asking: None,
             pin: String::new(),
+            replying: None,
             joining: None,
             net_note: None,
             net_busy: false,
@@ -1068,6 +1074,24 @@ impl Shell {
                 };
                 return Task::batch([close, focus, told]);
             }
+            Message::ReplyOpen(id) => {
+                self.replying = Some((id, String::new()));
+                return iced::widget::operation::focus(popup::REPLY);
+            }
+            Message::ReplyTyped(typed) => {
+                if let Some((_, text)) = &mut self.replying {
+                    *text = typed;
+                }
+            }
+            Message::ReplySend => {
+                if let Some((id, typed)) = self.replying.take()
+                    && !typed.trim().is_empty()
+                {
+                    self.forget(id);
+                    self.history.retain(|n| n.id != id);
+                    return notify::replied(id, typed);
+                }
+            }
             Message::Invoke(id, key) => {
                 let resident = self.popups.iter().any(|(n, _)| n.id == id && n.resident);
                 if resident {
@@ -1200,6 +1224,10 @@ impl Shell {
     }
 
     fn key(&mut self, key: Key, text: Option<&str>, captured: bool) -> Task<Message> {
+        if self.replying.is_some() && key == Key::Named(Named::Escape) {
+            self.replying = None;
+            return Task::none();
+        }
         let launcher = self.overlay == Some(Overlay::Launcher);
         if self.overlay == Some(Overlay::Clipboard) {
             return self.clipboard_key(key, text, captured);
@@ -2012,13 +2040,24 @@ impl Shell {
     fn forget(&mut self, id: u32) {
         self.popups.retain(|(n, _)| n.id != id);
         self.held.retain(|n| n.id != id);
+        self.replying.take_if(|(replying, _)| *replying == id);
+    }
+
+    // The card being answered needs the keyboard until the answer is sent or dropped.
+    #[cfg(target_os = "linux")]
+    pub fn replying(&self) -> bool {
+        self.replying.is_some()
     }
 
     fn expire(&mut self) -> Task<Message> {
         let now = Instant::now();
+        let answering = self.replying.as_ref().map(|(id, _)| *id);
         let (gone, live): (Vec<_>, Vec<_>) = std::mem::take(&mut self.popups)
             .into_iter()
-            .partition(|(n, shown)| n.timeout.is_some_and(|t| now.duration_since(*shown) >= t));
+            .partition(|(n, shown)| {
+                answering != Some(n.id)
+                    && n.timeout.is_some_and(|t| now.duration_since(*shown) >= t)
+            });
         self.popups = live;
         // A card that slips into the history isn't closed for the app: a click there
         // still has to reach it. Only what isn't kept is.
@@ -2112,6 +2151,7 @@ impl Shell {
             self.popups.iter().rev().map(|(n, _)| n),
             &self.apps,
             self.config.palette(self.mode),
+            self.replying.as_ref(),
         )
     }
 

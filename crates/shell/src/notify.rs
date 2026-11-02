@@ -53,6 +53,8 @@ pub struct Notification {
     pub transient: bool,
     // Stays after one of its buttons is pressed, for a player's controls and the like.
     pub resident: bool,
+    // A chat app takes an answer typed right on the card; this is what the field says before.
+    pub reply: Option<String>,
     pub summary: String,
     pub body: String,
     pub urgency: Urgency,
@@ -135,6 +137,7 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         progress: None,
         transient: false,
         resident: false,
+        reply: None,
         summary: capitalize(&first.message),
         body,
         urgency: Urgency::Normal,
@@ -156,6 +159,7 @@ pub fn shot_card(path: &str) -> Notification {
         progress: None,
         transient: false,
         resident: false,
+        reply: None,
         summary: "Screenshot copied".into(),
         body: "Click to add arrows, boxes or hide a part".into(),
         urgency: Urgency::Normal,
@@ -227,6 +231,37 @@ pub fn invoke(id: u32, key: String) -> Task<Message> {
                 NAME,
                 "ActionInvoked",
                 &(id, key.as_str()),
+            )
+            .await;
+        let _ = connection
+            .emit_signal(
+                None::<&str>,
+                PATH,
+                NAME,
+                "NotificationClosed",
+                &(id, Closed::Dismissed as u32),
+            )
+            .await;
+    })
+    .discard()
+}
+
+// What was typed on the card goes to the app, then the card is gone, as after a button.
+pub fn replied(id: u32, text: String) -> Task<Message> {
+    if id >= CONFIG_CARD {
+        return Task::none();
+    }
+    let Some(connection) = CONNECTION.get().cloned() else {
+        return Task::none();
+    };
+    Task::future(async move {
+        let _ = connection
+            .emit_signal(
+                None::<&str>,
+                PATH,
+                NAME,
+                "NotificationReplied",
+                &(id, text.as_str()),
             )
             .await;
         let _ = connection
@@ -340,7 +375,9 @@ impl Notification {
     pub fn buttons(&self) -> impl Iterator<Item = &(String, String)> {
         self.actions
             .iter()
-            .filter(|(key, label)| key != "default" && !label.trim().is_empty())
+            .filter(|(key, label)| {
+                !matches!(key.as_str(), "default" | "inline-reply") && !label.trim().is_empty()
+            })
             .take(3)
     }
 }
@@ -353,7 +390,7 @@ struct Server {
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Server {
     fn get_capabilities(&self) -> Vec<&str> {
-        vec!["actions", "body"]
+        vec!["actions", "body", "inline-reply"]
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -384,7 +421,7 @@ impl Server {
             .get("desktop-entry")
             .and_then(|v| v.downcast_ref::<String>().ok())
             .filter(|entry| !entry.is_empty());
-        let actions = actions
+        let actions: Vec<(String, String)> = actions
             .as_chunks::<2>()
             .0
             .iter()
@@ -407,6 +444,18 @@ impl Server {
                 .and_then(|v| v.downcast_ref::<bool>().ok())
                 .unwrap_or(false)
         };
+        // KDE's extension, which Telegram and other chat apps use when it's offered.
+        let reply = actions
+            .iter()
+            .any(|(key, _)| key == "inline-reply")
+            .then(|| {
+                hints
+                    .get("x-kde-reply-placeholder-text")
+                    .and_then(|v| v.downcast_ref::<&str>().ok())
+                    .filter(|text| !text.trim().is_empty())
+                    .unwrap_or("Reply…")
+                    .to_owned()
+            });
         let notification = Notification {
             id,
             app: app_name,
@@ -416,6 +465,7 @@ impl Server {
             progress,
             transient: flag("transient"),
             resident: flag("resident"),
+            reply,
             summary,
             body,
             urgency,

@@ -58,6 +58,8 @@ struct Layers {
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool),
     popups: Option<(window::Id, u32)>,
+    // Whether the cards have the keyboard, for an answer typed on one.
+    popups_typing: bool,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
 }
@@ -70,6 +72,7 @@ impl Layers {
             screens: BTreeMap::new(),
             look: (Edge::Top, true),
             popups: None,
+            popups_typing: false,
             overlay: None,
             osd: None,
         };
@@ -178,6 +181,29 @@ impl Layers {
     }
 
     fn fit_popups(&mut self) -> Task<Message> {
+        let size = self.size_popups();
+        let typing = self.shell.replying();
+        match self.popups {
+            Some((id, _)) if typing != self.popups_typing => {
+                self.popups_typing = typing;
+                let keyboard_interactivity = if typing {
+                    KeyboardInteractivity::Exclusive
+                } else {
+                    KeyboardInteractivity::None
+                };
+                Task::batch([
+                    size,
+                    Task::done(Message::KeyboardInteractivityChange {
+                        id,
+                        keyboard_interactivity,
+                    }),
+                ])
+            }
+            _ => size,
+        }
+    }
+
+    fn size_popups(&mut self) -> Task<Message> {
         let height = self.shell.popup_height();
         match self.popups {
             None if height > 0 => {
@@ -191,6 +217,7 @@ impl Layers {
                     ..Default::default()
                 });
                 self.popups = Some((id, height));
+                self.popups_typing = false;
                 open
             }
             Some((id, _)) if height == 0 => {
