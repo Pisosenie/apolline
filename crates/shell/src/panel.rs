@@ -210,6 +210,22 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             |v| Message::Change(Change::Volume(v)),
         ));
     }
+    // Each app playing, with its icon: a click on it mutes it.
+    for stream in &panel.controls.streams {
+        let level = if stream.volume.muted {
+            0.0
+        } else {
+            stream.volume.level
+        };
+        let id = stream.id;
+        sliders = sliders.push(slider_row(
+            crate::windows::picture(panel.apps, &stream.name, 18.0, palette),
+            Some(Message::Change(Change::AppMute(id, !stream.volume.muted))),
+            level,
+            palette,
+            move |v| Message::Change(Change::AppVolume(id, v)),
+        ));
+    }
     if let Some(mic) = panel.controls.mic {
         let glyph = if mic.muted { Icon::MicOff } else { Icon::Mic };
         sliders = sliders.push(slider_row(
@@ -616,7 +632,7 @@ fn tile<'a>(
 }
 
 fn slider_row<'a>(
-    glyph: iced::widget::Svg<'a>,
+    glyph: impl Into<Element<'a, Message>>,
     on_icon: Option<Message>,
     value: f32,
     palette: Palette,

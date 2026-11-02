@@ -9,6 +9,15 @@ pub struct Controls {
     pub bluetooth: Option<Radio>,
     pub outputs: Vec<Device>,
     pub inputs: Vec<Device>,
+    // The apps playing sound, each with its own level.
+    pub streams: Vec<Stream>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stream {
+    pub id: u32,
+    pub name: String,
+    pub volume: Volume,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,6 +45,8 @@ pub enum Change {
     Mute(bool),
     MicVolume(f32),
     MicMute(bool),
+    AppVolume(u32, f32),
+    AppMute(u32, bool),
     Brightness(u8),
     Wifi(bool),
     Bluetooth(bool),
@@ -76,6 +87,14 @@ impl Controls {
                 },
             ],
             inputs: Vec::new(),
+            streams: vec![Stream {
+                id: 63,
+                name: "Firefox".into(),
+                volume: Volume {
+                    level: 0.8,
+                    muted: false,
+                },
+            }],
         }
     }
 
@@ -101,6 +120,17 @@ impl Controls {
             Change::MicMute(muted) => {
                 if let Some(mic) = &mut self.mic {
                     mic.muted = muted;
+                }
+            }
+            Change::AppVolume(id, level) => {
+                if let Some(stream) = self.streams.iter_mut().find(|s| s.id == id) {
+                    stream.volume.level = level;
+                    stream.volume.muted = false;
+                }
+            }
+            Change::AppMute(id, muted) => {
+                if let Some(stream) = self.streams.iter_mut().find(|s| s.id == id) {
+                    stream.volume.muted = muted;
                 }
             }
             Change::Brightness(percent) => self.brightness = Some(percent),
@@ -199,7 +229,15 @@ pub async fn read() -> Controls {
         run("wpctl", &["status"]),
     );
     let (outputs, inputs) = status.as_deref().map(parse_devices).unwrap_or_default();
+    let mut streams = Vec::new();
+    for (id, name) in status.as_deref().map(parse_streams).unwrap_or_default() {
+        let volume = run("wpctl", &["get-volume", &id.to_string()]).await;
+        if let Some(volume) = volume.as_deref().and_then(parse_volume) {
+            streams.push(Stream { id, name, volume });
+        }
+    }
     Controls {
+        streams,
         mic: mic
             .as_deref()
             .and_then(parse_volume)
@@ -349,6 +387,22 @@ pub async fn change(change: Change) {
                 if muted { "1" } else { "0" }.into(),
             ],
         ),
+        Change::AppVolume(id, level) => (
+            "wpctl",
+            vec![
+                "set-volume".into(),
+                id.to_string(),
+                format!("{:.2}", level.clamp(0.0, 1.0)),
+            ],
+        ),
+        Change::AppMute(id, muted) => (
+            "wpctl",
+            vec![
+                "set-mute".into(),
+                id.to_string(),
+                if muted { "1" } else { "0" }.into(),
+            ],
+        ),
         Change::Brightness(percent) => (
             "brightnessctl",
             vec![
@@ -435,6 +489,51 @@ fn parse_devices(text: &str) -> (Vec<Device>, Vec<Device>) {
     (outputs, inputs)
 }
 
+// The apps playing sound: under Audio's Streams, each with its ports below it; a playing one has
+// a port going out (">").
+fn parse_streams(text: &str) -> Vec<(u32, String)> {
+    let mut audio = false;
+    let mut streams = false;
+    let mut found: Vec<(u32, String, bool)> = Vec::new();
+    for line in text.lines() {
+        if !line.starts_with([' ', '│', '├', '└']) {
+            audio = line.trim() == "Audio";
+            streams = false;
+            continue;
+        }
+        let item = line.trim_start_matches(|c: char| c.is_whitespace() || "│├└─".contains(c));
+        if line.contains('─') {
+            streams = item.trim() == "Streams:";
+            continue;
+        }
+        if !(audio && streams) {
+            continue;
+        }
+        let Some((id, rest)) = item.split_once(". ") else {
+            continue;
+        };
+        let Ok(id) = id.trim().parse::<u32>() else {
+            continue;
+        };
+        // A port: "64. output_FL > alsa_output…".
+        if rest.contains(" > ") || rest.contains(" < ") {
+            if rest.contains(" > ")
+                && let Some(last) = found.last_mut()
+            {
+                last.2 = true;
+            }
+            continue;
+        }
+        let name = rest.split(" [").next().unwrap_or(rest).trim().to_owned();
+        found.push((id, name, false));
+    }
+    found
+        .into_iter()
+        .filter(|(_, _, playing)| *playing)
+        .map(|(id, name, _)| (id, name))
+        .collect()
+}
+
 fn parse_volume(text: &str) -> Option<Volume> {
     let rest = text.trim().strip_prefix("Volume:")?.trim();
     let level = rest.split_whitespace().next()?.parse().ok()?;
@@ -502,6 +601,32 @@ Video
         );
         assert_eq!(inputs.len(), 1, "cameras are not microphones");
         assert!(inputs[0].default);
+    }
+
+    #[test]
+    fn the_apps_playing_are_the_streams_with_a_port_going_out() {
+        let status = "Audio
+ ├─ Sinks:
+ │  *   47. Speakers                [vol: 0.45]
+ │
+ └─ Streams:
+        63. Firefox
+             64. output_FL       > alsa_output.pci:playback_FL	[active]
+             65. output_FR       > alsa_output.pci:playback_FR	[active]
+        70. spotify
+             71. output_FL       > alsa_output.pci:playback_FL	[active]
+        80. Zoom
+             81. input_MONO      < alsa_input.pci:capture_MONO	[active]
+
+Video
+ └─ Streams:
+        90. OBS
+             91. output        > something
+";
+        assert_eq!(
+            parse_streams(status),
+            [(63, "Firefox".to_owned()), (70, "spotify".to_owned())]
+        );
     }
 
     #[test]

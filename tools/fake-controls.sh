@@ -10,6 +10,8 @@ mkdir -p "$state"
 echo 0.45 > "$state/volume"
 echo 0 > "$state/muted"
 echo 60 > "$state/brightness"
+echo 0.80 > "$state/stream63"
+echo 0.35 > "$state/stream70"
 
 cat > "$dir/wpctl" <<EOF
 #!/usr/bin/env bash
@@ -17,11 +19,14 @@ echo "wpctl \$*" >> "$state/log"
 args=("\$@"); last="\${args[-1]}"
 target=volume; mute=muted
 case "\$*" in *SOURCE*) target=mic; mute=mic_muted ;; esac
+# Firefox and Spotify playing, by their stream ids.
+case "\$2" in 63|70) target=stream\$2; mute=stream\$2_muted ;; esac
 case "\$1" in
     get-volume)
         flag=""; [ "\$(cat $state/\$mute 2>/dev/null || echo 0)" = 1 ] && flag=" [MUTED]"
         echo "Volume: \$(cat $state/\$target 2>/dev/null || echo 1.00)\$flag" ;;
     set-volume)
+        if [ "\$target" != volume ]; then echo "\$last" > $state/\$target; exit 0; fi
         now=\$(cat $state/volume)
         case "\$last" in
             *%+) awk -v n="\$now" -v d="\${last%\%+}" 'BEGIN { v = n + d / 100; if (v > 1) v = 1; printf "%.2f\n", v }' > $state/volume ;;
@@ -31,7 +36,7 @@ case "\$1" in
     status)
         sink=\$(cat $state/sink 2>/dev/null || echo 47)
         mark() { [ "\$1" = "\$sink" ] && echo "*" || echo " "; }
-        printf 'Audio\n ├─ Sinks:\n │  %s   47. Speakers                [vol: 0.45]\n │  %s   52. WH-1000XM5              [vol: 0.55]\n │\n ├─ Sources:\n │  *   48. Built-in Microphone     [vol: 1.00]\n │\n └─ Streams:\n' "\$(mark 47)" "\$(mark 52)" ;;
+        printf 'Audio\n ├─ Sinks:\n │  %s   47. Speakers                [vol: 0.45]\n │  %s   52. WH-1000XM5              [vol: 0.55]\n │\n ├─ Sources:\n │  *   48. Built-in Microphone     [vol: 1.00]\n │\n └─ Streams:\n        63. Firefox\n             64. output_FL       > alsa_output:playback_FL\t[active]\n        70. spotify\n             71. output_FL       > alsa_output:playback_FL\t[active]\n' "\$(mark 47)" "\$(mark 52)" ;;
     set-default) echo "\$last" > $state/sink ;;
     set-mute)
         if [ "\$last" = toggle ]; then
