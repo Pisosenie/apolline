@@ -75,6 +75,9 @@ struct Greet {
 }
 
 pub fn main(args: &[String]) -> ExitCode {
+    if args.iter().any(|a| a == "--kiosk") {
+        return kiosk();
+    }
     let preview = args.iter().any(|a| a == "--preview");
     let screenshot = args
         .iter()
@@ -603,9 +606,77 @@ impl Greet {
     }
 }
 
+// greetd runs `apolline greet --kiosk`: cage, keyed the way the system is (what `localectl
+// set-x11-keymap` wrote), with the greeter in it. Without this cage types in US English.
+fn kiosk() -> ExitCode {
+    let keyboard = std::fs::read_to_string("/etc/X11/xorg.conf.d/00-keyboard.conf")
+        .map(|conf| xkb(&conf))
+        .unwrap_or_default();
+    let me = std::env::current_exe().unwrap_or_else(|_| "apolline".into());
+    let mut cage = std::process::Command::new("cage");
+    cage.args(["-s", "--"]).arg(me).arg("greet");
+    // Set in greetd's own config, they stay.
+    for (key, value) in keyboard {
+        if std::env::var_os(key).is_none() {
+            cage.env(key, value);
+        }
+    }
+    #[cfg(unix)]
+    let err = std::os::unix::process::CommandExt::exec(&mut cage);
+    #[cfg(not(unix))]
+    let err = cage
+        .status()
+        .err()
+        .unwrap_or_else(|| std::io::Error::other("cage quit"));
+    eprintln!("apolline greet: cage: {err}");
+    ExitCode::FAILURE
+}
+
+// The X keyboard options in an xorg.conf section, as the names xkbcommon reads from the environment.
+fn xkb(conf: &str) -> Vec<(&'static str, String)> {
+    conf.lines()
+        .filter_map(|line| {
+            let line = line.split('#').next()?.trim();
+            let mut quoted = line.strip_prefix("Option")?.split('"').skip(1).step_by(2);
+            let key = match quoted.next()? {
+                "XkbLayout" => "XKB_DEFAULT_LAYOUT",
+                "XkbVariant" => "XKB_DEFAULT_VARIANT",
+                "XkbOptions" => "XKB_DEFAULT_OPTIONS",
+                "XkbModel" => "XKB_DEFAULT_MODEL",
+                _ => return None,
+            };
+            Some((key, quoted.next()?.to_owned()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_system_keyboard_reaches_cage() {
+        let conf = r#"# Written by systemd-localed(8), read by systemd-localed and Xorg.
+Section "InputClass"
+        Identifier "system-keyboard"
+        MatchIsKeyboard "on"
+        Option "XkbLayout" "us,ru"
+        Option "XkbModel" "pc105"
+        Option "XkbVariant" ","
+        Option "XkbOptions" "grp:alt_shift_toggle" # switch with Alt+Shift
+EndSection
+"#;
+        assert_eq!(
+            xkb(conf),
+            [
+                ("XKB_DEFAULT_LAYOUT", "us,ru".to_owned()),
+                ("XKB_DEFAULT_MODEL", "pc105".to_owned()),
+                ("XKB_DEFAULT_VARIANT", ",".to_owned()),
+                ("XKB_DEFAULT_OPTIONS", "grp:alt_shift_toggle".to_owned()),
+            ]
+        );
+        assert!(xkb("Section \"InputClass\"\nEndSection\n").is_empty());
+    }
 
     #[test]
     fn people_and_sessions_come_from_the_system_files() {

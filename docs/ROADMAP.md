@@ -112,7 +112,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   own helper, so there it is pam_fprintd in the polkit-1 PAM stack; the dialog talks to the helper from
   the moment it opens, so "place your finger" shows at once and a finger alone is enough.
 - The login screen (`apolline greet`, done in its first form) remembers the last person and session and
-  lists people through getent; next are the keyboard layout and no flash on the way into the session.
+  lists people through getent; `apolline greet --kiosk` starts cage with the system's keyboard layout.
+  Next is no flash on the way into the session.
   It still needs a run on real hardware.
 
 ### 5. Displays and comfort

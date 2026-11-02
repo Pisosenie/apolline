@@ -188,13 +188,15 @@ Apolline is a polkit agent: when an app needs an admin password (pkexec, GParted
 
 ## Login screen
 
-`apolline greet` is a greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) that looks like the lock screen: the time, the people who can log in (anyone `getent passwd` knows within `login.defs`' range, or a name field when there's no one to list), the session (from `/usr/share/wayland-sessions`, niri first), the password, restart and power off. It remembers who logged in last and with which session. Run it in a kiosk compositor such as cage, in `/etc/greetd/config.toml`:
+`apolline greet` is a greeter for [greetd](https://sr.ht/~kennylevinsen/greetd/) that looks like the lock screen: the time, the people who can log in (anyone `getent passwd` knows within `login.defs`' range, or a name field when there's no one to list), the session (from `/usr/share/wayland-sessions`, niri first), the password, restart and power off. It remembers who logged in last and with which session. It runs in the cage kiosk compositor, in `/etc/greetd/config.toml`:
 
 ```toml
 [default_session]
-command = "cage -s -- apolline greet"
+command = "apolline greet --kiosk"
 user = "greeter"
 ```
+
+`--kiosk` starts cage with the system's keyboard layout (`localectl set-x11-keymap us,ru "" "" grp:alt_shift_toggle` sets it), so the password is typed the way it is everywhere else; `cage -s -- apolline greet` works too, in US English.
 
 `apolline greet --preview` shows it in a window.
 
