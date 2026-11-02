@@ -60,7 +60,7 @@ Apolline doesn't race them on widgets:
 
 - Bar: workspaces, pinned apps and open windows, clock, tray, notifications bell; top or bottom,
   floating or edge to edge, glass or frosted; one per monitor.
-- Quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, volume and output device, microphone,
+- Quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, power profile, volume and output device, microphone,
   brightness, player, notification history, screenshot, power.
 - Launcher: apps and Steam games, open windows, sums, actions, keyboard navigation.
 - Lock screen (ext-session-lock + PAM, its own process), idle lock, lock before sleep, screen off.

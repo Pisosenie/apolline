@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# A fake NetworkManager, BlueZ and fprintd on a bus of their own, for trying Wi-Fi, Bluetooth and
-# the fingerprint reader on a machine without them. Needs python-dbusmock. Prints how to start apolline
-# against them and where the calls are logged (with what was typed, so no real passwords);
-# Ctrl+C stops everything.
+# A fake NetworkManager, BlueZ, fprintd and power-profiles-daemon on a bus of their own, for trying
+# Wi-Fi, Bluetooth, the fingerprint reader and power profiles without them. Needs python-dbusmock.
+# Prints how to start apolline against them and where the calls are logged (with what was typed,
+# so no real passwords); Ctrl+C stops everything.
 set -euo pipefail
 
 here=$(dirname "$(realpath "$0")")
@@ -37,6 +37,7 @@ if sudo -n true 2>/dev/null; then
 else
     echo "no fake fingerprint reader: it has to run as root, and sudo wants a password" >&2
 fi
+python3 -m dbusmock --system -t upower_power_profiles_daemon > "$socket-profiles.log" 2>&1 &
 echo "DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SYSTEM_BUS_ADDRESS apolline"
 echo "calls: $socket-*.log"
 wait

@@ -73,6 +73,7 @@ pub struct Panel<'a> {
     pub awake: bool,
     pub look: apolline_config::Surface,
     pub night: bool,
+    pub profiles: Option<&'a crate::profile::Profiles>,
     pub history: &'a [Notification],
     pub apps: &'a [crate::apps::App],
     pub detail: Option<Detail>,
@@ -167,7 +168,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         column![
             row![wifi, bluetooth].spacing(10),
             row![quiet, awake].spacing(10),
-            row![night, space::horizontal()].spacing(10),
+            row![night, power_tile(panel.profiles, palette)].spacing(10),
         ]
         .spacing(10),
     );
@@ -308,6 +309,29 @@ fn power_menu<'a>(armed: Option<Power>) -> Element<'a, Message> {
     }))
     .spacing(8);
     buttons.into()
+}
+
+// The power profile, one click to the next.
+fn power_tile<'a>(
+    profiles: Option<&crate::profile::Profiles>,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let Some(profiles) = profiles else {
+        return space::horizontal().into();
+    };
+    let (glyph, name) = match profiles.active.as_str() {
+        "power-saver" => (Icon::Leaf, "Power saver"),
+        "performance" => (Icon::Zap, "Performance"),
+        _ => (Icon::Gauge, "Balanced"),
+    };
+    tile(
+        glyph,
+        "Power",
+        name.to_owned(),
+        profiles.active != "balanced",
+        palette,
+        profiles.next().map(Message::PickProfile),
+    )
 }
 
 fn radio_tile<'a>(

@@ -95,6 +95,9 @@ pub enum Message {
     Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
     Volume(Option<controls::Volume>),
+    Profiles(Option<crate::profile::Profiles>),
+    PickProfile(String),
+    ProfileSet(String, Result<(), String>),
     Wifi(crate::wifi::Seen),
     Bluetooth(crate::bluetooth::Seen),
     PickNetwork(crate::wifi::Network),
@@ -192,6 +195,7 @@ pub struct Shell {
     month: i32,
     day: Option<chrono::NaiveDate>,
     stats: crate::stats::Stats,
+    profiles: Option<crate::profile::Profiles>,
     agenda: std::sync::Arc<crate::events::Agenda>,
     weather: Option<crate::weather::Weather>,
     detail: Option<panel::Detail>,
@@ -274,6 +278,12 @@ impl Shell {
             month: 0,
             day: None,
             stats: crate::stats::Stats::default(),
+            profiles: demo.then(|| crate::profile::Profiles {
+                active: "balanced".into(),
+                available: ["power-saver", "balanced", "performance"]
+                    .map(String::from)
+                    .into(),
+            }),
             agenda: std::sync::Arc::default(),
             weather: None,
             detail: None,
@@ -1100,6 +1110,24 @@ impl Shell {
                         ..controls
                     };
                 }
+            }
+            Message::Profiles(profiles) => self.profiles = profiles,
+            Message::PickProfile(profile) => {
+                if let Some(profiles) = &mut self.profiles {
+                    let previous = std::mem::replace(&mut profiles.active, profile.clone());
+                    if !self.sample() {
+                        return Task::perform(crate::profile::choose(profile), move |result| {
+                            Message::ProfileSet(previous, result)
+                        });
+                    }
+                }
+            }
+            Message::ProfileSet(_, Ok(())) => {}
+            Message::ProfileSet(previous, Err(err)) => {
+                if let Some(profiles) = &mut self.profiles {
+                    profiles.active = previous;
+                }
+                return self.show(Osd::Note(format!("Power: {err}")));
             }
             Message::Volume(volume) => {
                 if self
@@ -2024,6 +2052,7 @@ impl Shell {
                 awake: self.awake,
                 look: self.config.style.panel,
                 night: self.night.1.unwrap_or(self.night.0),
+                profiles: self.profiles.as_ref(),
                 history: &self.history,
                 apps: &self.apps,
                 detail: self.detail,
@@ -2274,6 +2303,7 @@ impl Shell {
                 } else {
                     controls::volume().map(Message::Volume)
                 },
+                crate::profile::subscription().map(Message::Profiles),
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
             ])
