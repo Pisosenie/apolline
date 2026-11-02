@@ -157,7 +157,7 @@ pub fn bar(_: &Theme) -> container::Style {
 pub fn glass(opacity: f32, floating: bool, radius: f32) -> impl Fn(&Theme) -> container::Style {
     // Light glass over a dark wallpaper turns grey and its dark text with it, so it's thicker.
     let opacity = if apolline_theme::scheme().light {
-        0.6 + opacity * 0.4
+        0.85 + opacity * 0.15
     } else {
         opacity
     };

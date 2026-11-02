@@ -378,6 +378,15 @@ impl Reader<'_> {
                         bar.floating = v
                     }
                 }
+                "shape" => {
+                    let shapes = [
+                        ("bar", crate::Shape::Bar),
+                        ("islands", crate::Shape::Islands),
+                    ];
+                    if let Some(v) = self.choice(key, value, &shapes) {
+                        bar.shape = v
+                    }
+                }
                 "opacity" => {
                     if let Some(v) = self.fraction(key, value, 0.0..=1.0) {
                         bar.opacity = v
@@ -464,6 +473,7 @@ impl Reader<'_> {
                         "battery_percent",
                         "position",
                         "floating",
+                        "shape",
                         "opacity",
                         "blur",
                         "pinned",

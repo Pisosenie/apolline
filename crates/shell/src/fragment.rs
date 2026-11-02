@@ -352,7 +352,8 @@ window-rule {{
             let effect = block("background-effect", &effect);
             text.push_str(&format!("\n{}", block("window-rule", &[effect])));
         }
-        if config.bar.blur {
+        // Islands leave the wallpaper bare between them, and niri blurs a whole surface.
+        if config.bar.blur && config.bar.shape == apolline_config::Shape::Bar {
             let mut lines = vec!["match namespace=\"^apolline-bar$\"".to_owned()];
             if config.bar.floating {
                 // The bar is drawn bigger with its size, its corners too.

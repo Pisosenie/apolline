@@ -325,6 +325,7 @@ enum Message {
     BarDrop(iced::Point, f32),
     TrayDrop(iced::Point, f32),
     BarFloating(bool),
+    BarShape(apolline_config::Shape),
     BarOpacity(u16),
     BarBlur(bool),
     Date(bool),
@@ -1178,6 +1179,10 @@ impl Settings {
                 )
             }),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
+            Message::BarShape(shape) => self.edit(|e| match shape {
+                apolline_config::Shape::Bar => e.unset("bar", "shape"),
+                apolline_config::Shape::Islands => e.set("bar", "shape", "islands"),
+            }),
             Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
             Message::BarBlur(on) => self.edit(|e| {
                 if on {
@@ -3761,6 +3766,18 @@ impl Settings {
                             [(Edge::Top, "Top", None), (Edge::Bottom, "Bottom", None)],
                             look.position,
                             Message::BarEdge,
+                        ),
+                    ),
+                    setting(
+                        "Shape",
+                        "One strip, or a pill for each side and the middle",
+                        segmented(
+                            [
+                                (apolline_config::Shape::Bar, "Bar", None),
+                                (apolline_config::Shape::Islands, "Islands", None),
+                            ],
+                            look.shape,
+                            Message::BarShape,
                         ),
                     ),
                     setting(

@@ -89,6 +89,7 @@ impl Theme {
             "bar",
             self.bar.position == now.bar.position
                 && self.bar.floating == now.bar.floating
+                && self.bar.shape == now.bar.shape
                 && self.bar.opacity == now.bar.opacity
                 && self.bar.blur == now.bar.blur,
         );
@@ -126,6 +127,7 @@ impl Theme {
         config.layout = self.layout;
         config.bar.position = self.bar.position;
         config.bar.floating = self.bar.floating;
+        config.bar.shape = self.bar.shape;
         config.bar.opacity = self.bar.opacity;
         config.bar.blur = self.bar.blur;
         config.windows.opacity = self.opacity;
@@ -169,6 +171,10 @@ impl Theme {
         };
         editor.set("bar", "position", edge);
         editor.set("bar", "floating", self.bar.floating);
+        match self.bar.shape {
+            crate::Shape::Bar => editor.unset("bar", "shape"),
+            crate::Shape::Islands => editor.set("bar", "shape", "islands"),
+        }
         editor.set("bar", "opacity", round(self.bar.opacity));
         if self.bar.blur {
             editor.set("bar", "blur", true);

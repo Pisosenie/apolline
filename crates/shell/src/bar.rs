@@ -62,10 +62,27 @@ pub struct Module<'a> {
 
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     let look = bar.look;
-    let zone = |pieces: &[Piece], spacing: f32| {
-        Row::with_children(pieces.iter().filter_map(|p| piece(&bar, p)))
+    let islands = look.shape == apolline_config::Shape::Islands;
+    let zone = |pieces: &[Piece], spacing: f32| -> Element<'_, Message> {
+        let parts: Vec<Element<'_, Message>> =
+            pieces.iter().filter_map(|p| piece(&bar, p)).collect();
+        let empty = parts.is_empty();
+        let row = Row::with_children(parts)
             .spacing(spacing)
+            .align_y(Alignment::Center);
+        if !islands {
+            return row.into();
+        }
+        if empty {
+            return space().into();
+        }
+        // Each side its own pill of glass, as tall as the bar.
+        container(row)
+            .height(Fill)
+            .padding([0, 5])
             .align_y(Alignment::Center)
+            .style(style::glass(look.opacity, true, bar.radius))
+            .into()
     };
     // With nothing in the middle, the right side keeps what it needs and the left has the rest,
     // instead of half each.
@@ -83,13 +100,18 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
                 .align_x(Alignment::End),
         ]
     };
-    container(sides.align_y(Alignment::Center))
+    let strip = container(sides.align_y(Alignment::Center))
         .width(Fill)
         .height(metrics::BAR_HEIGHT)
-        .padding([0, 5])
-        .align_y(Alignment::Center)
-        .style(style::glass(look.opacity, look.floating, bar.radius))
-        .into()
+        .align_y(Alignment::Center);
+    if islands {
+        strip.into()
+    } else {
+        strip
+            .padding([0, 5])
+            .style(style::glass(look.opacity, look.floating, bar.radius))
+            .into()
+    }
 }
 
 fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {

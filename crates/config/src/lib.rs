@@ -319,6 +319,7 @@ pub struct Bar {
     pub battery_percent: bool,
     pub position: Edge,
     pub floating: bool,
+    pub shape: Shape,
     pub opacity: f32,
     pub blur: bool,
     pub stats: Stats,
@@ -357,6 +358,14 @@ impl Stats {
 pub enum Edge {
     Top,
     Bottom,
+}
+
+// One strip of glass, or a pill for each side and the middle with the wallpaper between them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Shape {
+    #[default]
+    Bar,
+    Islands,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -727,6 +736,7 @@ impl Default for Config {
                 battery_percent: true,
                 position: Edge::Top,
                 floating: true,
+                shape: Shape::Bar,
                 opacity: 0.55,
                 blur: false,
                 stats: Stats::default(),
