@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use apolline_config::Calendar;
 use chrono::{
     DateTime, Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, Offset, TimeDelta,
     TimeZone, Utc, Weekday,
@@ -14,7 +16,7 @@ use crate::shell::Message;
 const EVERY: Duration = Duration::from_secs(10 * 60);
 const RETRY: Duration = Duration::from_secs(60);
 // How far from today occurrences are worked out, both ways.
-const REACH: i64 = 400;
+pub const REACH: i64 = 400;
 // Limits against a calendar that would eat the machine.
 const MOST: usize = 60_000;
 const PER_DAY: usize = 60;
@@ -88,7 +90,7 @@ impl Agenda {
     }
 }
 
-pub fn subscription(sources: &[String]) -> Subscription<Message> {
+pub fn subscription(sources: &[Calendar]) -> Subscription<Message> {
     if sources.is_empty() {
         return Subscription::none();
     }
@@ -99,20 +101,21 @@ pub fn subscription(sources: &[String]) -> Subscription<Message> {
     clippy::ptr_arg,
     reason = "Subscription::run_with hands the data over as &D"
 )]
-fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
+fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
     let sources = sources.clone();
     iced::stream::channel(1, async move |mut output| {
         // A source that can't be read keeps what it said last time, and only it is asked
         // again soon, waiting longer after each failure.
-        let mut texts: HashMap<String, String> = HashMap::new();
+        let mut texts: HashMap<Calendar, String> = HashMap::new();
+        let mut heard: HashMap<Calendar, Heard> = HashMap::new();
         let start = Instant::now();
-        let mut due: HashMap<String, (Instant, Duration)> = sources
+        let mut due: HashMap<Calendar, (Instant, Duration)> = sources
             .iter()
             .map(|source| (source.clone(), (start, RETRY)))
             .collect();
         loop {
             let now = Instant::now();
-            let ready: Vec<String> = due
+            let ready: Vec<Calendar> = due
                 .iter()
                 .filter(|(_, (at, _))| *at <= now)
                 .map(|(source, _)| source.clone())
@@ -124,32 +127,29 @@ fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
                         next.0 = now + next.1;
                     }
                 }
-                let fetched = tokio::task::spawn_blocking(move || {
-                    ready
-                        .into_iter()
-                        .map(|source| {
-                            let text = read(&source);
-                            (source, text)
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .await
-                .unwrap_or_default();
-                for (source, result) in fetched {
+                for source in ready {
+                    let result = fetch(source.clone()).await;
                     let Some(next) = due.get_mut(&source) else {
                         continue;
                     };
+                    let state = heard.entry(source.clone()).or_default();
                     match result {
                         Ok(text) => {
                             texts.insert(source, text);
                             *next = (Instant::now() + EVERY, RETRY);
+                            *state = Heard {
+                                read: Some(Utc::now().timestamp()),
+                                error: None,
+                            };
                         }
                         Err(err) => {
-                            eprintln!("apolline: calendar {}: {err}", shown(&source));
+                            eprintln!("apolline: calendar {}: {err}", name(&source));
                             next.1 = (next.1 * 2).min(EVERY);
+                            state.error = Some(err);
                         }
                     }
                 }
+                tell(&heard);
                 let all: Vec<String> = texts.values().cloned().collect();
                 let built =
                     tokio::task::spawn_blocking(move || agenda(&all, Local::now().date_naive()))
@@ -164,6 +164,90 @@ fn watch(sources: &Vec<String>) -> impl Stream<Item = Message> + use<> {
             tokio::time::sleep_until(tokio::time::Instant::from_std(next)).await;
         }
     })
+}
+
+async fn fetch(source: Calendar) -> Result<String, String> {
+    match source {
+        Calendar::Ics(link) => tokio::task::spawn_blocking(move || read(&link))
+            .await
+            .map_err(|err| err.to_string())?,
+        Calendar::CalDav { url, user } => crate::caldav::read(url, user).await,
+    }
+}
+
+// What the watcher last heard from a source, for Settings.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Heard {
+    // Seconds since 1970.
+    pub read: Option<i64>,
+    pub error: Option<String>,
+}
+
+// Sources go by a hash in this file: a calendar's secret link shouldn't sit where others may read.
+pub fn key(source: &Calendar) -> u64 {
+    let text = match source {
+        Calendar::Ics(link) => link.clone(),
+        Calendar::CalDav { url, user } => format!("{user} {url}"),
+    };
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+fn heard_path() -> PathBuf {
+    crate::control::runtime_dir().join("apolline.calendars")
+}
+
+fn tell(heard: &HashMap<Calendar, Heard>) {
+    let text: String = heard
+        .iter()
+        .map(|(source, heard)| {
+            let error = heard.error.as_deref().unwrap_or_default();
+            format!(
+                "{:016x} {} {}\n",
+                key(source),
+                heard.read.unwrap_or(0),
+                error.replace('\n', " ")
+            )
+        })
+        .collect();
+    let path = heard_path();
+    let staged = path.with_extension("calendars.new");
+    if std::fs::write(&staged, text)
+        .and_then(|()| std::fs::rename(&staged, &path))
+        .is_err()
+    {
+        eprintln!("apolline: cannot write {}", path.display());
+    }
+}
+
+pub fn heard() -> HashMap<u64, Heard> {
+    let text = std::fs::read_to_string(heard_path()).unwrap_or_default();
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, ' ');
+            let key = u64::from_str_radix(parts.next()?, 16).ok()?;
+            let read = parts.next()?.parse().ok().filter(|at| *at > 0);
+            let error = parts.next().filter(|e| !e.is_empty()).map(str::to_owned);
+            Some((key, Heard { read, error }))
+        })
+        .collect()
+}
+
+// "~/home.ics", "calendar.google.com", or "work · me at dav.example.org".
+pub fn name(source: &Calendar) -> String {
+    match source {
+        Calendar::Ics(link) => shown(link).to_owned(),
+        Calendar::CalDav { url, user } => {
+            let host = shown(url);
+            match url.trim_end_matches('/').rsplit('/').next() {
+                Some(collection) if collection != host && !collection.is_empty() => {
+                    format!("{collection} · {user} at {host}")
+                }
+                _ => format!("{user} at {host}"),
+            }
+        }
+    }
 }
 
 // A link shows only its host: a calendar's secret address, or a login in it, is a password of sorts.
@@ -223,7 +307,7 @@ fn read(source: &str) -> Result<String, String> {
 }
 
 // Folds are undone before the bytes become text: a fold may split a letter in two.
-fn unfold_bytes(bytes: &[u8]) -> String {
+pub fn unfold_bytes(bytes: &[u8]) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
     while at < bytes.len() {
@@ -1555,6 +1639,33 @@ DTSTART:20261102T100000"
             "dav.example.org"
         );
         assert_eq!(shown("~/calendars/home.ics"), "~/calendars/home.ics");
+    }
+
+    #[test]
+    fn calendars_are_named_without_their_secrets() {
+        let work = Calendar::CalDav {
+            url: "https://dav.example.org/calendars/me/work/".into(),
+            user: "me".into(),
+        };
+        assert_eq!(name(&work), "work · me at dav.example.org");
+        let bare = Calendar::CalDav {
+            url: "https://dav.example.org".into(),
+            user: "me".into(),
+        };
+        assert_eq!(name(&bare), "me at dav.example.org");
+        let secret =
+            Calendar::Ics("https://calendar.google.com/calendar/ical/secret/basic.ics".into());
+        assert_eq!(name(&secret), "calendar.google.com");
+        let theirs = Calendar::CalDav {
+            url: "https://dav.example.org/calendars/me/work/".into(),
+            user: "them".into(),
+        };
+        assert_ne!(key(&work), key(&theirs));
+        assert_eq!(
+            key(&Calendar::Ics("a".into())),
+            0xaf63_dc4c_8601_ec8c,
+            "the same in every build, so Settings and a bar started earlier agree"
+        );
     }
 
     #[test]

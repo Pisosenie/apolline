@@ -139,6 +139,7 @@ dependencies = [
  "apolline-config",
  "apolline-niri",
  "apolline-theme",
+ "base64 0.23.1",
  "chrono",
  "chrono-tz",
  "iced",

@@ -5,9 +5,9 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Appear, Blur, Center, Config, Desktop, Diagnostic, Display, Edge, Idle,
-    Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Rule, Shortcut,
-    Shortcuts, Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
+    Accent, Alerts, Appear, Blur, Calendar, Center, Config, Desktop, Diagnostic, Display, Edge,
+    Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Rule,
+    Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -68,6 +68,8 @@ const WINDOW_OPTIONS: [&str; 13] = [
     "blur",
     "switcher",
 ];
+
+const CALENDARS: &str = r#"a list of files and links, or { caldav = "…", user = "…" }"#;
 
 const NOTIFICATIONS: [(&str, Notifications); 3] = [
     ("all", Notifications::All),
@@ -405,7 +407,7 @@ impl Reader<'_> {
                     }
                 }
                 "calendars" => {
-                    if let Some(v) = self.strings(key, value) {
+                    if let Some(v) = self.calendars(key, value) {
                         config.calendars = v
                     }
                 }
@@ -1182,6 +1184,63 @@ impl Reader<'_> {
                 .collect::<Option<Vec<_>>>()
         });
         list.or_else(|| self.wrong(key, value, r#"a list of names like ["steam", "discord"]"#))
+    }
+
+    // Files and links as text, CalDAV collections as { caldav = "…", user = "…" }.
+    fn calendars(&mut self, key: &Key, value: &Value) -> Option<Vec<Calendar>> {
+        let Some(items) = value.get_ref().as_array() else {
+            return self.wrong(key, value, CALENDARS);
+        };
+        let mut calendars = Vec::new();
+        for item in items {
+            match item.get_ref() {
+                DeValue::String(link) => calendars.push(Calendar::Ics(link.to_string())),
+                DeValue::Table(table) => calendars.extend(self.caldav(item, table)),
+                _ => return self.wrong(key, value, CALENDARS),
+            }
+        }
+        Some(calendars)
+    }
+
+    fn caldav(&mut self, item: &Value, table: &DeTable) -> Option<Calendar> {
+        let (mut url, mut user) = (String::new(), String::new());
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "caldav" => {
+                    url = self
+                        .string(key, value)
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned()
+                }
+                "user" => {
+                    user = self
+                        .string(key, value)
+                        .unwrap_or_default()
+                        .trim()
+                        .to_owned()
+                }
+                "password" => self.diagnostics.push(
+                    Diagnostic::new(
+                        self.line(key.span()),
+                        "passwords aren't read from this file",
+                    )
+                    .hint("add the calendar in Settings → Bar; its password goes to your keyring"),
+                ),
+                _ => self.unknown(key, "option", &["caldav", "user"]),
+            }
+        }
+        if url.is_empty() || user.is_empty() {
+            self.diagnostics.push(
+                Diagnostic::new(
+                    self.line(item.span()),
+                    "a CalDAV calendar needs caldav and user",
+                )
+                .hint(r#"write it like { caldav = "https://…/calendars/me/home/", user = "me" }"#),
+            );
+            return None;
+        }
+        Some(Calendar::CalDav { url, user })
     }
 
     fn accent(&mut self, key: &Key, value: &Value) -> Option<Accent> {

@@ -35,8 +35,8 @@ pub struct Config {
     pub modules: Vec<Module>,
     pub pinned: Vec<String>,
     pub weather: Option<String>,
-    // Calendar files and https/webcal links whose events the clock's calendar shows.
-    pub calendars: Vec<String>,
+    // Where the clock's calendar gets its events.
+    pub calendars: Vec<Calendar>,
     pub modes: Vec<ModeSettings>,
 }
 
@@ -200,6 +200,14 @@ pub struct Module {
     pub command: String,
     pub every: Option<u32>,
     pub click: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Calendar {
+    // A file, or an https or webcal link.
+    Ics(String),
+    // A CalDAV collection. Its password is kept in the Secret Service, never in this file.
+    CalDav { url: String, user: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -848,6 +856,40 @@ mod tests {
         assert!(config.alerts.muted("Discord"));
         assert!(config.alerts.always("telegram"));
         assert!(!config.alerts.muted("slack"));
+    }
+
+    #[test]
+    fn calendars_are_files_links_or_caldav() {
+        let (config, problems) = Config::parse(
+            "[bar]\ncalendars = [\n  \"~/home.ics\",\n  { caldav = \"https://dav.example.org/me/\", user = \"me\", password = \"x\", colour = \"red\" },\n  { caldav = \"https://dav.example.org/them/\" },\n]\n",
+        );
+        assert_eq!(
+            config.calendars,
+            [
+                Calendar::Ics("~/home.ics".into()),
+                Calendar::CalDav {
+                    url: "https://dav.example.org/me/".into(),
+                    user: "me".into()
+                }
+            ]
+        );
+        let messages: Vec<&str> = problems.iter().map(|p| p.message.as_str()).collect();
+        assert_eq!(
+            messages,
+            [
+                "unknown option “colour”",
+                "passwords aren't read from this file",
+                "a CalDAV calendar needs caldav and user"
+            ]
+        );
+        assert_eq!(problems[2].line, 5);
+
+        let (config, problems) = Config::parse("[bar]\ncalendars = [\"a.ics\", 5]\n");
+        assert_eq!(
+            problems[0].message,
+            r#"“calendars” should be a list of files and links, or { caldav = "…", user = "…" }"#
+        );
+        assert!(config.calendars.is_empty());
     }
 
     #[test]

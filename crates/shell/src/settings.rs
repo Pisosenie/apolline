@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use apolline_config::{
-    Accent, Appear, Blur, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
+    Accent, Appear, Blur, Calendar, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
     Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Trigger, Width, Workspaces,
     auto_accent,
 };
@@ -20,10 +20,11 @@ use iced::{
 
 use crate::apps::{self, App};
 use crate::controls::Controls;
+use crate::events::{self, Heard};
 use crate::fragment::{self, Fragment};
 use crate::icon::{Icon, MODE_ICONS, icon};
 use crate::status::Status;
-use crate::{bar, fonts, keys, notify, shot, style, themes, wallpaper};
+use crate::{bar, caldav, fonts, keys, notify, secrets, shot, style, themes, wallpaper};
 
 const WINDOW: Rgba = Rgba::hex(0x111316);
 const SIDEBAR: Rgba = Rgba::hex(0x16181c);
@@ -271,6 +272,16 @@ enum Message {
     RemoveModule(usize),
     WeatherDraft(String),
     SetWeather,
+    CalendarDraft(String),
+    AddCalendar,
+    RemoveCalendar(usize),
+    CalDavUrl(String),
+    CalDavUser(String),
+    CalDavPassword(String),
+    AddCalDav,
+    CalDavAdded(Result<Calendar, String>),
+    Forgotten(Result<(), String>),
+    Keyring(Result<(), String>),
     PinApp(String),
     UnpinApp(usize),
     RemoveFolder(usize),
@@ -381,6 +392,16 @@ enum Message {
     Noop,
 }
 
+// The password stays here only until it's in the keyring.
+#[derive(Default)]
+struct CalDavForm {
+    url: String,
+    user: String,
+    password: String,
+    checking: bool,
+    error: Option<String>,
+}
+
 struct Settings {
     path: PathBuf,
     stamp: Option<SystemTime>,
@@ -411,6 +432,10 @@ struct Settings {
     app_draft: (&'static str, String),
     module_draft: String,
     weather_draft: Option<String>,
+    calendar_draft: String,
+    caldav: CalDavForm,
+    keyring: Option<Result<(), String>>,
+    heard: std::collections::HashMap<u64, Heard>,
     night_draft: Option<String>,
     live: crate::control::Shared,
     monitors: Vec<String>,
@@ -492,6 +517,10 @@ impl Settings {
             app_draft: ("", String::new()),
             module_draft: String::new(),
             weather_draft: None,
+            calendar_draft: String::new(),
+            caldav: CalDavForm::default(),
+            keyring: None,
+            heard: events::heard(),
             night_draft: None,
             live: crate::control::shared(),
             monitors: wallpaper::monitors(),
@@ -538,6 +567,7 @@ impl Settings {
                 custom,
                 library,
                 apps,
+                Task::perform(secrets::here(), Message::Keyring),
             ]),
         )
     }
@@ -777,7 +807,7 @@ impl Settings {
                 let mut list = self.app_list_of(key).to_vec();
                 if !name.is_empty() && !list.iter().any(|a| a.eq_ignore_ascii_case(&name)) {
                     list.push(name);
-                    self.edit(|e| e.set_list(list_section(key), key, &list));
+                    self.edit(|e| e.set_list("notifications", key, &list));
                 }
                 self.app_draft = ("", String::new());
             }
@@ -788,9 +818,9 @@ impl Settings {
                     list.remove(index);
                     self.edit(|e| {
                         if list.is_empty() {
-                            e.unset(list_section(key), key);
+                            e.unset("notifications", key);
                         } else {
-                            e.set_list(list_section(key), key, &list);
+                            e.set_list("notifications", key, &list);
                         }
                     });
                 }
@@ -804,6 +834,49 @@ impl Settings {
                 }
             }
             Message::RemoveModule(index) => self.edit(|e| e.remove_module(index)),
+            Message::CalendarDraft(draft) => self.calendar_draft = draft,
+            Message::AddCalendar => {
+                let link = Calendar::Ics(self.calendar_draft.trim().to_owned());
+                if !self.calendar_draft.trim().is_empty() && !self.config.calendars.contains(&link)
+                {
+                    let mut calendars = self.config.calendars.clone();
+                    calendars.push(link);
+                    self.edit(|e| e.set_calendars(&calendars));
+                }
+                self.calendar_draft.clear();
+            }
+            Message::RemoveCalendar(index) if index < self.config.calendars.len() => {
+                let mut calendars = self.config.calendars.clone();
+                let gone = calendars.remove(index);
+                self.edit(|e| e.set_calendars(&calendars));
+                // Listed twice, it still needs its password.
+                if let Calendar::CalDav { url, user } = &gone
+                    && !calendars.contains(&gone)
+                {
+                    let (url, user) = (url.clone(), user.clone());
+                    return Task::perform(
+                        async move { secrets::forget(&url, &user).await },
+                        Message::Forgotten,
+                    );
+                }
+            }
+            Message::RemoveCalendar(_) => {}
+            Message::CalDavUrl(url) => self.caldav.url = url,
+            Message::CalDavUser(user) => self.caldav.user = user,
+            Message::CalDavPassword(password) => self.caldav.password = password,
+            Message::AddCalDav => return self.add_caldav(),
+            Message::CalDavAdded(Ok(calendar)) => {
+                let mut calendars = self.config.calendars.clone();
+                calendars.push(calendar);
+                self.edit(|e| e.set_calendars(&calendars));
+                self.caldav = CalDavForm::default();
+            }
+            Message::CalDavAdded(Err(error)) => {
+                self.caldav.checking = false;
+                self.caldav.error = Some(error);
+            }
+            Message::Forgotten(result) => self.caldav.error = result.err(),
+            Message::Keyring(result) => self.keyring = Some(result),
             Message::WeatherDraft(draft) => self.weather_draft = Some(draft),
             Message::SetWeather => {
                 if let Some(place) = self.weather_draft.take() {
@@ -1330,6 +1403,9 @@ impl Settings {
             Message::Thumb(_, None) => return self.next_thumb(),
             Message::Tick => {
                 self.live = crate::control::shared();
+                if self.page == Page::Bar {
+                    self.heard = events::heard();
+                }
                 if self
                     .revert
                     .as_ref()
@@ -1437,6 +1513,28 @@ impl Settings {
             .iter()
             .find(|(n, _)| n == name)
             .map(|(_, handle)| handle)
+    }
+
+    fn add_caldav(&mut self) -> Task<Message> {
+        let form = &mut self.caldav;
+        let (url, user) = (form.url.trim().to_owned(), form.user.trim().to_owned());
+        let calendar = Calendar::CalDav {
+            url: url.clone(),
+            user: user.clone(),
+        };
+        form.error = match caldav::secure(&url) {
+            Err(error) => Some(error),
+            Ok(()) if self.config.calendars.contains(&calendar) => {
+                Some("That calendar is here already".into())
+            }
+            Ok(()) if user.is_empty() || form.password.is_empty() || form.checking => None,
+            Ok(()) => {
+                form.checking = true;
+                let password = form.password.clone();
+                return Task::perform(caldav::add(url, user, password), Message::CalDavAdded);
+            }
+        };
+        Task::none()
     }
 
     fn stage(&mut self, change: impl FnOnce(&mut Editor)) {
@@ -3360,7 +3458,6 @@ impl Settings {
     fn app_list_of(&self, key: &str) -> &[String] {
         match key {
             "mute" => &self.config.alerts.mute,
-            "calendars" => &self.config.calendars,
             _ => &self.config.alerts.always,
         }
     }
@@ -3611,15 +3708,10 @@ impl Settings {
                         .spacing(8)
                         .align_y(Alignment::Center),
                     ),
-                    self.app_list(
-                        "Events",
-                        "ICS files or https and webcal links, read every ten minutes. No sign-in",
-                        "calendars",
-                        &self.config.calendars,
-                        "~/calendar.ics or a link",
-                        palette,
-                    ),
                 ]
+                .into_iter()
+                .chain(self.calendar_rows(palette))
+                .collect()
             ),
             group(
                 "Workspaces",
@@ -3905,6 +3997,112 @@ impl Settings {
         .into()
     }
 
+    // Each calendar with what the bar last heard from it, then ways to add one.
+    fn calendar_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let mut rows: Vec<Element<'_, Message>> = self
+            .config
+            .calendars
+            .iter()
+            .enumerate()
+            .map(|(index, source)| {
+                let heard = heard_line(self.heard.get(&events::key(source)));
+                row![
+                    column![
+                        text(events::name(source)).size(13),
+                        text(heard).size(11).color(style::color(style::FAINT)),
+                    ]
+                    .spacing(3)
+                    .width(Fill),
+                    button(icon(Icon::X, 14.0, style::FAINT))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::RemoveCalendar(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([10, 16])
+                .into()
+            })
+            .collect();
+        let link = self.calendar_draft.trim();
+        rows.push(
+            row![
+                text_input(
+                    "~/calendar.ics, or an https or webcal link",
+                    &self.calendar_draft
+                )
+                .on_input(Message::CalendarDraft)
+                .on_submit(Message::AddCalendar)
+                .padding([8, 12])
+                .size(13)
+                .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::secondary)
+                    .on_press_maybe((!link.is_empty()).then_some(Message::AddCalendar)),
+            ]
+            .spacing(8)
+            .padding([12, 16])
+            .into(),
+        );
+        rows.push(self.caldav_form(palette));
+        match (&self.keyring, &self.caldav.error) {
+            (Some(Err(error)), _) | (_, Some(error)) => rows.push(warning(error)),
+            _ => rows.push(note(
+                "Files and links are read every ten minutes, with no sign-in. A CalDAV password goes to your keyring; this file keeps the address and user name.",
+            )),
+        }
+        rows
+    }
+
+    fn caldav_form(&self, palette: Palette) -> Element<'_, Message> {
+        let form = &self.caldav;
+        let field = |hint, value| {
+            text_input(hint, value)
+                .padding([8, 12])
+                .size(13)
+                .style(style::field(palette))
+        };
+        let ready = !form.checking
+            && !matches!(self.keyring, Some(Err(_)))
+            && !form.url.trim().is_empty()
+            && !form.user.trim().is_empty()
+            && !form.password.is_empty();
+        column![
+            text("CalDAV").size(14).font(style::medium()),
+            text("Nextcloud, Fastmail, Radicale and the like, by the calendar's own address")
+                .size(12)
+                .color(style::color(style::FAINT)),
+            field(
+                "https://cloud.example.org/remote.php/dav/calendars/me/personal/",
+                &form.url
+            )
+            .on_input(Message::CalDavUrl),
+            row![
+                field("User name", &form.user).on_input(Message::CalDavUser),
+                field("Password", &form.password)
+                    .secure(true)
+                    .on_input(Message::CalDavPassword)
+                    .on_submit(Message::AddCalDav),
+                button(
+                    text(if form.checking {
+                        "Signing in…"
+                    } else {
+                        "Add"
+                    })
+                    .size(13)
+                )
+                .padding([8, 14])
+                .style(style::secondary)
+                .on_press_maybe(ready.then_some(Message::AddCalDav)),
+            ]
+            .spacing(8),
+        ]
+        .spacing(8)
+        .padding([12, 16])
+        .into()
+    }
+
     fn app_list<'a>(
         &'a self,
         title: &'a str,
@@ -3919,7 +4117,7 @@ impl Settings {
             chips = chips.push(
                 container(
                     row![
-                        text(chip_name(app)).size(12),
+                        text(app.as_str()).size(12),
                         button(icon(Icon::X, 12.0, style::FAINT))
                             .padding(2)
                             .style(style::ghost(6.0))
@@ -3943,7 +4141,7 @@ impl Settings {
                 .on_submit(Message::AppListAdd(key))
                 .padding([6, 10])
                 .size(12)
-                .width(if key == "calendars" { 260 } else { 150 })
+                .width(150)
                 .style(style::field(palette)),
         );
         setting(title, about, chips.wrap())
@@ -5567,16 +5765,23 @@ fn hundredths(percent: u16) -> f64 {
     f64::from(percent) / 100.0
 }
 
-fn list_section(key: &str) -> &'static str {
-    if key == "calendars" {
-        "bar"
-    } else {
-        "notifications"
+// "Read at 14:05", or what went wrong, in a sentence.
+fn heard_line(heard: Option<&Heard>) -> String {
+    let at = |seconds: i64| {
+        let at = chrono::DateTime::from_timestamp(seconds, 0)
+            .unwrap_or_default()
+            .with_timezone(&chrono::Local);
+        let today = at.date_naive() == chrono::Local::now().date_naive();
+        at.format(if today { "%H:%M" } else { "%-d %b, %H:%M" })
+    };
+    match heard.map(|heard| (heard.read, heard.error.as_deref())) {
+        Some((Some(read), None)) => format!("Read at {}", at(read)),
+        Some((Some(read), Some(error))) => {
+            format!("{error}. Still showing what it said at {}", at(read))
+        }
+        Some((None, Some(error))) => error.to_owned(),
+        _ => "Not read yet".into(),
     }
-}
-
-fn chip_name(entry: &str) -> String {
-    crate::events::shown(entry).to_owned()
 }
 
 // What a mode puts over the everyday look while it's on.

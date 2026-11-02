@@ -3,7 +3,7 @@ use std::{fs, io};
 
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
-use crate::{Accent, ModeSettings, Notifications, Rule};
+use crate::{Accent, Calendar, ModeSettings, Notifications, Rule};
 
 #[derive(Debug)]
 pub struct Editor {
@@ -45,6 +45,32 @@ impl Editor {
     pub fn set_list(&mut self, section: &str, key: &str, items: &[String]) {
         let list: Array = items.iter().map(String::as_str).collect();
         self.set(section, key, list);
+    }
+
+    // One calendar a line, since a CalDAV address alone fills most of one.
+    pub fn set_calendars(&mut self, calendars: &[Calendar]) {
+        if calendars.is_empty() {
+            self.unset("bar", "calendars");
+            return;
+        }
+        let mut list: Array = calendars
+            .iter()
+            .map(|calendar| match calendar {
+                Calendar::Ics(link) => Value::from(link.as_str()),
+                Calendar::CalDav { url, user } => {
+                    let mut table = InlineTable::new();
+                    table.insert("caldav", url.as_str().into());
+                    table.insert("user", user.as_str().into());
+                    Value::InlineTable(table)
+                }
+            })
+            .collect();
+        for value in list.iter_mut() {
+            value.decor_mut().set_prefix("\n    ");
+        }
+        list.set_trailing("\n");
+        list.set_trailing_comma(true);
+        self.set("bar", "calendars", list);
     }
 
     pub fn add_mode(&mut self, mode: &ModeSettings) -> usize {
@@ -545,6 +571,30 @@ mod tests {
                 .sections(&["touchpad", "mouse"])
                 .starts_with("[touchpad]\n")
         );
+    }
+
+    #[test]
+    fn calendars_of_both_kinds_are_written_and_read_back() {
+        let calendars = [
+            Calendar::Ics("~/calendars/home.ics".into()),
+            Calendar::CalDav {
+                url: "https://dav.example.org/calendars/me/work/".into(),
+                user: "me".into(),
+            },
+        ];
+        let mut editor = Editor::parse("[bar]\ncalendars = [\"old.ics\"] # mine\n").unwrap();
+        editor.set_calendars(&calendars);
+        let text = editor.text();
+        assert!(
+            text.contains("    { caldav = \"https://dav.example.org/calendars/me/work/\", user = \"me\" },\n] # mine"),
+            "{text}"
+        );
+        let (config, problems) = Config::parse(&text);
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.calendars, calendars);
+
+        editor.set_calendars(&[]);
+        assert!(!editor.text().contains("calendars"));
     }
 
     #[test]
