@@ -151,6 +151,8 @@ opacity = 0.3
 
 Themes can also carry the eye candy: `gradient = true` in `[layout]` lets the focused border flow across the workspace, and in `[windows]` `motion` is `snappy`, `smooth` or `bouncy`, `appear` is `pop`, `slide` or `fade`, and `blur` is `wallpaper` or `all` for see-through windows; `[bar] blur = true` frosts the bar. Performance modes turn all of it off.
 
+`[desktop] palette` picks the colors everything is drawn with: `dark` (as it comes), `light`, `catppuccin-mocha`, `catppuccin-macchiato`, `catppuccin-latte`, `gruvbox`, `gruvbox-light`, `nord`, `tokyo-night`, `rose-pine`, `rose-pine-dawn`, `everforest`, `kanagawa`, `dracula`, `paper`, or `wallpaper` and `wallpaper-light` for neutrals tinted with the wallpaper's color. `accent = "palette"` takes the accent the palette is known for. Settings → Appearance shows them all as small screens to click; the bar, the overlays, the cards and the settings window change at once, and an accent too pale or too dark for the palette is shifted until it reads.
+
 Applying a theme rewrites only these keys in your config and leaves the rest alone. With `accent = "auto"` and your own wallpaper, the accent is the picture's most present vivid color, softened to sit next to the built-in accents and lightened until it reads on the bar's glass; window borders in niri follow it.
 
 ## Apps in your colors

@@ -31,6 +31,7 @@ pub fn summary(mode: Option<&ModeSettings>) -> Vec<String> {
         None => "the desktop's accent",
         Some(Accent::Auto) => "accent from it",
         Some(Accent::Fixed(_)) => "its own accent",
+        Some(Accent::Palette) => "the palette's accent",
     };
     let mut lines = vec![format!("{wallpaper}, {accent}")];
     if !mode.open.is_empty() {

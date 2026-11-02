@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-use apolline_theme::{ACCENTS, Palette, Rgba};
+use apolline_theme::{ACCENTS, Palette, Rgba, Scheme, palettes};
 pub use diagnostic::Diagnostic;
 pub use edit::Editor;
 pub use pieces::{Piece, TrayItem};
@@ -288,6 +288,8 @@ pub struct Rule {
 pub struct Desktop {
     pub wallpaper: String,
     pub accent: Accent,
+    // A named palette, or "wallpaper" / "wallpaper-light" for one made from the wallpaper's color.
+    pub palette: String,
     pub theme: Option<String>,
     pub folders: Vec<String>,
     pub rotate: u32,
@@ -584,7 +586,11 @@ pub const TEMPLATES: [&str; 5] = ["Work", "Play", "Evening", "Focus", "Presentat
 pub enum Accent {
     Auto,
     Fixed(Rgba),
+    // The one the palette is known for.
+    Palette,
 }
+
+pub const WALLPAPER_PALETTES: [&str; 2] = ["wallpaper", "wallpaper-light"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Notifications {
@@ -632,10 +638,21 @@ impl Config {
             .and_then(|i| self.modes.get(i))
             .and_then(|m| m.accent)
             .unwrap_or(self.desktop.accent);
+        let auto = || auto_accent(self.wallpaper(mode));
         Palette::new(match accent {
-            Accent::Auto => auto_accent(self.wallpaper(mode)),
+            Accent::Auto => auto(),
             Accent::Fixed(color) => color,
+            Accent::Palette => palettes::named(&self.desktop.palette).map_or_else(auto, |(_, a)| a),
         })
+    }
+
+    // The colors to draw with: a named palette, or neutrals tinted with the wallpaper's color.
+    pub fn scheme(&self, mode: Option<usize>) -> Scheme {
+        match self.desktop.palette.as_str() {
+            "wallpaper" => palettes::tonal(auto_accent(self.wallpaper(mode)), false),
+            "wallpaper-light" => palettes::tonal(auto_accent(self.wallpaper(mode)), true),
+            name => palettes::named(name).map_or(Scheme::DARK, |(scheme, _)| scheme),
+        }
     }
 
     pub fn notifications(&self, mode: Option<usize>) -> Notifications {
@@ -684,6 +701,7 @@ impl Default for Config {
             desktop: Desktop {
                 wallpaper: "fog.jpg".into(),
                 accent: Accent::Auto,
+                palette: "dark".into(),
                 theme: None,
                 folders: Vec::new(),
                 rotate: 0,
@@ -900,6 +918,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_palette_names_the_colors_and_can_lend_its_accent() {
+        let (config, problems) =
+            parse("[desktop]\npalette = \"catppuccin-mocha\"\naccent = \"palette\"\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(config.scheme(None).text, Rgba::hex(0xcdd6f4));
+        assert_eq!(config.palette(None).accent, Rgba::hex(0xcba6f7));
+        let (light, _) = parse("[desktop]\npalette = \"wallpaper-light\"\n");
+        assert!(light.scheme(None).light);
+        let (_, problems) = parse("[desktop]\npalette = \"catpuccin-mocha\"\n");
+        assert_eq!(
+            problems[0].hint.as_deref(),
+            Some("did you mean “catppuccin-mocha”?")
+        );
+    }
+
+    #[test]
     fn cards_and_popups_are_placed_and_styled() {
         let (config, problems) = parse(
             "[notifications]\nposition = \"bottom-left\"\n\n[style.notifications]\nradius = 4\nopacity = 0.8\n\n[style.osd]\nsize = 1.2\n",
@@ -1092,7 +1126,11 @@ mod tests {
         let (config, diagnostics) = parse(
             "[desktop]\nwallpaper = \"night.jpg\"\n\n[[mode]]\nname = \"Deep\"\naccent = \"#3b2a7a\"\n\n[[mode]]\nname = \"Same\"\naccent = \"blue\"\n",
         );
-        assert_eq!(config.palette(Some(0)).accent, Rgba::hex(0x3b2a7a));
+        assert_eq!(
+            config.palette(Some(0)).accent,
+            palettes::readable(Rgba::hex(0x3b2a7a), &Scheme::DARK),
+            "too dark to read, so lightened"
+        );
         assert_eq!(config.modes[1].accent, None);
         assert_eq!(
             config.palette(Some(1)).accent,

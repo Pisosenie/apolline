@@ -567,6 +567,10 @@ impl Shell {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.handle(message);
         self.publish();
+        let scheme = self.config.scheme(self.mode);
+        if scheme != apolline_theme::scheme() {
+            apolline_theme::set_scheme(scheme);
+        }
         task
     }
 

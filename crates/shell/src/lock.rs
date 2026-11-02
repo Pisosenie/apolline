@@ -35,7 +35,7 @@ pub fn run(preview: bool, mode: Option<String>, screenshot: Option<PathBuf>) -> 
         )
         .title("Apolline Lock")
         .subscription(Lock::subscription)
-        .theme(Theme::Dark)
+        .theme(|_: &Lock| style::theme())
         .default_font(Font::with_name(crate::style::family()))
         .window_size((1440.0, 900.0));
         return fonts::ALL
@@ -60,7 +60,7 @@ fn session(mode: Option<String>) -> Result<(), String> {
         Lock::view,
     )
     .subscription(Lock::subscription)
-    .theme(|_: &Lock| Theme::Dark)
+    .theme(|_: &Lock| style::theme())
     .default_font(Font::with_name(crate::style::family()));
     fonts::ALL
         .into_iter()

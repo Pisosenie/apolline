@@ -371,6 +371,7 @@ pub fn accent_text(accent: Accent) -> String {
     match accent {
         Accent::Auto => "auto".to_owned(),
         Accent::Fixed(color) => color.to_hex(),
+        Accent::Palette => "palette".to_owned(),
     }
 }
 

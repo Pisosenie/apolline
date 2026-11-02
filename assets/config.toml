@@ -7,7 +7,8 @@ mode = ""                  # the mode to start in, by name; empty means none
 
 [desktop]
 wallpaper = "fog.jpg"      # fog.jpg, ember.jpg, night.jpg or a path to your own
-accent = "auto"            # "auto" follows the wallpaper, or a color like "#86bdf0"
+accent = "auto"            # "auto" follows the wallpaper, "palette" the palette's own, or a color like "#86bdf0"
+palette = "dark"           # dark, light, catppuccin-mocha, gruvbox, nord, tokyo-night, rose-pine, paper… or wallpaper
 
 [layout]
 gaps = 10

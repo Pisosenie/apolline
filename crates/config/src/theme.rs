@@ -7,6 +7,7 @@ pub struct Theme {
     pub author: Option<String>,
     pub wallpaper: String,
     pub accent: Accent,
+    pub palette: String,
     pub layout: Layout,
     pub bar: Bar,
     pub opacity: Option<f32>,
@@ -38,6 +39,7 @@ impl Theme {
             author,
             wallpaper: config.desktop.wallpaper.clone(),
             accent: config.desktop.accent,
+            palette: config.desktop.palette.clone(),
             layout: config.layout,
             bar: config.bar.clone(),
             opacity: config.windows.opacity,
@@ -74,6 +76,7 @@ impl Theme {
         };
         differ("wallpaper", self.wallpaper == now.wallpaper);
         differ("accent", self.accent == now.accent);
+        differ("colors", self.palette == now.palette);
         differ("gaps", self.layout.gaps == now.layout.gaps);
         differ("corners", self.layout.radius == now.layout.radius);
         differ(
@@ -107,6 +110,7 @@ impl Theme {
     pub fn dress(&self, config: &mut Config) {
         config.desktop.wallpaper = self.wallpaper.clone();
         config.desktop.accent = self.accent;
+        config.desktop.palette = self.palette.clone();
         config.layout = self.layout;
         config.bar.position = self.bar.position;
         config.bar.floating = self.bar.floating;
@@ -124,6 +128,11 @@ impl Theme {
     fn write(&self, editor: &mut Editor) {
         editor.set("desktop", "wallpaper", self.wallpaper.as_str());
         editor.set("desktop", "accent", accent_text(self.accent));
+        if self.palette == "dark" {
+            editor.unset("desktop", "palette");
+        } else {
+            editor.set("desktop", "palette", self.palette.as_str());
+        }
         editor.set("layout", "gaps", i64::from(self.layout.gaps));
         editor.set("layout", "radius", i64::from(self.layout.radius));
         editor.set("layout", "borders", self.layout.borders);

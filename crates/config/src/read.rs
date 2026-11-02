@@ -924,6 +924,17 @@ impl Reader<'_> {
                         desktop.accent = v
                     }
                 }
+                "palette" => {
+                    let names: Vec<(&str, ())> = apolline_theme::palettes::NAMED
+                        .iter()
+                        .map(|(name, ..)| *name)
+                        .chain(crate::WALLPAPER_PALETTES)
+                        .map(|name| (name, ()))
+                        .collect();
+                    if self.choice(key, value, &names).is_some() {
+                        desktop.palette = value.get_ref().as_str().unwrap_or("dark").to_owned()
+                    }
+                }
                 "theme" => {
                     if let Some(v) = self.string(key, value) {
                         desktop.theme = Some(v.to_owned())
@@ -988,6 +999,7 @@ impl Reader<'_> {
                     &[
                         "wallpaper",
                         "accent",
+                        "palette",
                         "theme",
                         "folders",
                         "rotate",
@@ -1305,8 +1317,13 @@ impl Reader<'_> {
     fn accent(&mut self, key: &Key, value: &Value) -> Option<Accent> {
         match value.get_ref().as_str() {
             Some("auto") => Some(Accent::Auto),
+            Some("palette") => Some(Accent::Palette),
             Some(text) if Rgba::parse(text).is_some() => Rgba::parse(text).map(Accent::Fixed),
-            _ => self.wrong(key, value, r##""auto" or a color like "#ff6a3d""##),
+            _ => self.wrong(
+                key,
+                value,
+                r##""auto", "palette" or a color like "#ff6a3d""##,
+            ),
         }
     }
 

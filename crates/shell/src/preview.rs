@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use apolline_theme::metrics;
 use iced::widget::{container, stack};
-use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme, window};
+use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, window};
 
 use crate::shell::{Message, Shell};
 use crate::{fonts, shot};
@@ -35,7 +35,7 @@ pub fn run(mode: Option<String>, screenshot: Option<PathBuf>, open: Vec<Message>
     )
     .title("Apolline")
     .subscription(Preview::subscription)
-    .theme(Theme::Dark)
+    .theme(|_: &Preview| crate::style::theme())
     .default_font(Font::with_name(crate::style::family()))
     .window_size((1440.0, 900.0));
     fonts::ALL

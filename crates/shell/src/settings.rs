@@ -26,8 +26,6 @@ use crate::icon::{Icon, MODE_ICONS, icon};
 use crate::status::Status;
 use crate::{bar, caldav, fonts, keys, notify, secrets, shot, style, themes, wallpaper};
 
-const WINDOW: Rgba = Rgba::hex(0x111316);
-const SIDEBAR: Rgba = Rgba::hex(0x16181c);
 const HISTORY: usize = 100;
 const SYSTEM_CURSOR: &str = "System's";
 const BUILT_IN_FONT: &str = "Geist, built in";
@@ -35,7 +33,6 @@ const WALLS: usize = 11;
 const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
 const NARROW: f32 = 860.0;
-const STRING: Rgba = Rgba::hex(0xa8d8a0);
 
 const LAYOUTS: [(&str, &str); 24] = [
     ("us", "English (US)"),
@@ -72,7 +69,7 @@ pub fn run(screenshot: Option<PathBuf>, page: Option<String>) -> iced::Result {
     )
     .title("Apolline Settings")
     .subscription(Settings::subscription)
-    .theme(Theme::Dark)
+    .theme(|_: &Settings| style::theme())
     .default_font(Font::with_name(crate::style::family()))
     .window(window::Settings {
         size: iced::Size::new(1280.0, 820.0),
@@ -240,6 +237,7 @@ enum Message {
     ModeAccent(Option<Accent>),
     DesktopWallpaper(String),
     DesktopAccent(Accent),
+    Palette(String),
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,
@@ -579,7 +577,17 @@ impl Settings {
         )
     }
 
+    // Every change shows at once, the colors too.
     fn update(&mut self, message: Message) -> Task<Message> {
+        let task = self.handle(message);
+        let scheme = self.config.scheme(None);
+        if scheme != apolline_theme::scheme() {
+            apolline_theme::set_scheme(scheme);
+        }
+        task
+    }
+
+    fn handle(&mut self, message: Message) -> Task<Message> {
         let index = self.selected;
         match message {
             Message::Page(page) => {
@@ -749,6 +757,16 @@ impl Settings {
                 return self.custom_thumb();
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
+            // A palette brings its own accent; one made from the wallpaper takes the wallpaper's.
+            Message::Palette(name) => self.edit(|e| {
+                if name == "dark" {
+                    e.unset("desktop", "palette");
+                } else {
+                    e.set("desktop", "palette", name.as_str());
+                }
+                let made = apolline_config::WALLPAPER_PALETTES.contains(&name.as_str());
+                e.set_accent(if made { Accent::Auto } else { Accent::Palette });
+            }),
             Message::WallpaperDraft(draft) => self.wallpaper_draft = draft,
             Message::AllWallpapers => self.all_walls = !self.all_walls,
             Message::Rotate(minutes) => self.edit(|e| {
@@ -1668,7 +1686,7 @@ impl Settings {
             ])
             .width(Fill)
             .height(Fill)
-            .style(|_| container::background(style::color(WINDOW)))
+            .style(|_| container::background(style::color(neutral::window())))
             .into()
         })
         .into()
@@ -1867,7 +1885,9 @@ impl Settings {
             .height(Fill)
             .padding([20, 14])
             .style(|_| container::Style {
-                background: Some(Background::Color(style::color(SIDEBAR))),
+                background: Some(Background::Color(style::color(
+                    style::sunken_color().over(neutral::window()),
+                ))),
                 border: Border {
                     color: style::color(neutral::hairline()),
                     width: 1.0,
@@ -1947,7 +1967,7 @@ impl Settings {
                     .height(Fill)
                     .style(move |_| container::Style {
                         background: Some(Background::Color(style::color(
-                            Rgba::hex(0x141619).alpha(0.92),
+                            neutral::window().alpha(0.92),
                         ))),
                         border: Border {
                             color: style::color(palette.accent),
@@ -2523,6 +2543,8 @@ impl Settings {
         let accent = match theme.accent {
             Accent::Fixed(color) => color,
             Accent::Auto => auto_accent(&theme.wallpaper),
+            Accent::Palette => apolline_theme::palettes::named(&theme.palette)
+                .map_or_else(|| auto_accent(&theme.wallpaper), |(_, accent)| accent),
         };
         let look = Palette::new(accent);
         let picture: Element<'a, Message> = match self.thumb(&theme.wallpaper) {
@@ -2572,7 +2594,7 @@ impl Settings {
             .height(Fill)
             .style(move |_| container::Style {
                 background: Some(Background::Color(style::color(
-                    Rgba::hex(0x15171b).alpha(theme.opacity.unwrap_or(1.0) * 0.95),
+                    neutral::window().alpha(theme.opacity.unwrap_or(1.0) * 0.95),
                 ))),
                 border: Border {
                     color: style::color(if theme.layout.borders {
@@ -2590,7 +2612,7 @@ impl Settings {
             .height(Fill)
             .style(move |_| container::Style {
                 background: Some(Background::Color(style::color(
-                    Rgba::hex(0x15171b).alpha(theme.inactive_opacity.unwrap_or(1.0) * 0.9),
+                    neutral::window().alpha(theme.inactive_opacity.unwrap_or(1.0) * 0.9),
                 ))),
                 border: Border {
                     radius: (f32::from(theme.layout.radius) * 0.5).into(),
@@ -2898,6 +2920,7 @@ impl Settings {
                     "Pick at random instead of in order",
                     switch(self.config.desktop.shuffle, Message::Shuffle, palette),
                 ),
+                padded(palette_picker(&self.config.desktop.palette, palette)),
                 padded(accent_picker(
                     Some(self.config.desktop.accent),
                     auto_accent(&self.config.desktop.wallpaper),
@@ -3020,7 +3043,7 @@ impl Settings {
                     })
                     .height(Fill)
                     .style(move |_| container::Style {
-                        background: Some(Background::Color(style::color(Rgba::hex(0x15171b)))),
+                        background: Some(Background::Color(style::color(neutral::window()))),
                         border: Border {
                             color: style::color(match (layout.borders, focused) {
                                 (true, true) => palette.accent,
@@ -3166,7 +3189,7 @@ impl Settings {
             .height(Fill)
             .style(move |_| container::Style {
                 background: Some(Background::Color(style::color(
-                    Rgba::hex(0x15171b).alpha(alpha * 0.96),
+                    neutral::window().alpha(alpha * 0.96),
                 ))),
                 border: Border {
                     color: style::color(if focused {
@@ -5357,9 +5380,7 @@ impl Settings {
             .width(Length::Fixed(340.0))
             .padding(18)
             .style(|_| container::Style {
-                background: Some(Background::Color(style::color(
-                    Rgba::hex(0x000000).alpha(0.3),
-                ))),
+                background: Some(Background::Color(style::color(style::sunken_color()))),
                 border: Border {
                     color: style::color(neutral::hairline()),
                     width: 1.0,
@@ -5742,10 +5763,13 @@ fn highlight<'a>(code: &str, palette: Palette) -> Element<'a, Message> {
             spans.push(span(line.to_owned()).color(style::color(palette.accent)));
         } else if let Some((key, rest)) = line.split_once('=') {
             let (value, comment) = split_comment(rest);
-            let tint = if value.trim_start().starts_with(['"', '[']) {
-                STRING
-            } else {
-                style::WARN
+            // Strings in green, numbers and the rest in amber, darker on a light scheme.
+            let light = apolline_theme::scheme().light;
+            let tint = match (value.trim_start().starts_with(['"', '[']), light) {
+                (true, false) => Rgba::hex(0xa8d8a0),
+                (true, true) => Rgba::hex(0x2f7d3c),
+                (false, false) => style::WARN,
+                (false, true) => Rgba::hex(0x9a5a00),
             };
             spans.push(span(key.to_owned()).color(style::color(neutral::text())));
             spans.push(span("=").color(faint));
@@ -6108,6 +6132,109 @@ fn corner_picker<'a>(chosen: Corner, palette: Palette) -> Element<'a, Message> {
         ..container::Style::default()
     })
     .into()
+}
+
+// Each palette as a little screen: its background, a card on it, a line of its text and its accent.
+fn palette_picker<'a>(chosen: &str, palette: Palette) -> Element<'a, Message> {
+    let wallpaper = auto_accent("fog.jpg");
+    let named = apolline_theme::palettes::NAMED
+        .iter()
+        .map(|(name, scheme, accent)| (*name, *scheme, *accent))
+        .chain([
+            (
+                "wallpaper",
+                apolline_theme::palettes::tonal(wallpaper, false),
+                wallpaper,
+            ),
+            (
+                "wallpaper-light",
+                apolline_theme::palettes::tonal(wallpaper, true),
+                wallpaper,
+            ),
+        ]);
+    let cards = named.map(|(name, scheme, accent)| {
+        let on = name == chosen;
+        let accent = apolline_theme::palettes::readable(accent, &scheme);
+        let sample = container(
+            container(
+                column![
+                    container(space().width(36).height(4))
+                        .style(style::pill(scheme.text.alpha(0.85))),
+                    container(space().width(24).height(4))
+                        .style(style::pill(scheme.text.alpha(0.45))),
+                    container(space().width(14).height(8)).style(style::pill(accent)),
+                ]
+                .spacing(5),
+            )
+            .padding(8)
+            .style(move |_| container::Style {
+                background: Some(Background::Color(style::color(scheme.surface))),
+                border: Border::default().rounded(6),
+                ..container::Style::default()
+            }),
+        )
+        .padding(8)
+        .width(Fill)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(style::color(scheme.ink))),
+            border: Border::default().rounded(8),
+            ..container::Style::default()
+        });
+        button(
+            column![sample, text(palette_name(name)).size(11)]
+                .spacing(6)
+                .width(118),
+        )
+        .padding(4)
+        .style(move |_: &Theme, status| button::Style {
+            background: Some(Background::Color(style::color(
+                if status == button::Status::Hovered {
+                    style::fill_color()
+                } else {
+                    neutral::text().alpha(0.0)
+                },
+            ))),
+            border: Border {
+                color: style::color(if on {
+                    palette.accent
+                } else {
+                    neutral::text().alpha(0.0)
+                }),
+                width: 2.0,
+                radius: 12.0.into(),
+            },
+            text_color: style::color(neutral::text()),
+            ..button::Style::default()
+        })
+        .on_press(Message::Palette(name.to_owned()))
+        .into()
+    });
+    column![
+        text("Colors").size(13).font(style::medium()),
+        Row::with_children(cards).spacing(6).wrap(),
+    ]
+    .spacing(10)
+    .into()
+}
+
+fn palette_name(name: &str) -> String {
+    match name {
+        "dark" => "Apolline dark".to_owned(),
+        "light" => "Apolline light".to_owned(),
+        "wallpaper" => "From the wallpaper".to_owned(),
+        "wallpaper-light" => "Wallpaper, light".to_owned(),
+        name => name
+            .split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().chain(chars).collect::<String>())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 #[cfg(test)]

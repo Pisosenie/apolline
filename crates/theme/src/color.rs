@@ -77,6 +77,51 @@ impl Rgba {
         Rgba { r, g, b, a: self.a }
     }
 
+    // Part of the way to `other`; the alpha stays.
+    pub fn mix(self, other: Rgba, t: f32) -> Rgba {
+        let t = t.clamp(0.0, 1.0);
+        let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
+        Rgba {
+            r: mix(self.r, other.r),
+            g: mix(self.g, other.g),
+            b: mix(self.b, other.b),
+            a: self.a,
+        }
+    }
+
+    // The hue, 0 to 360, of a color; grey has none and gives 0.
+    pub fn hue(self) -> f32 {
+        let [r, g, b] = [self.r, self.g, self.b].map(|c| f32::from(c) / 255.0);
+        let max = r.max(g).max(b);
+        let delta = max - r.min(g).min(b);
+        if delta == 0.0 {
+            0.0
+        } else if max == r {
+            60.0 * ((g - b) / delta).rem_euclid(6.0)
+        } else if max == g {
+            60.0 * ((b - r) / delta + 2.0)
+        } else {
+            60.0 * ((r - g) / delta + 4.0)
+        }
+    }
+
+    pub fn hsl(hue: f32, saturation: f32, light: f32) -> Rgba {
+        let hue = hue.rem_euclid(360.0);
+        let chroma = (1.0 - (2.0 * light - 1.0).abs()) * saturation;
+        let x = chroma * (1.0 - ((hue / 60.0).rem_euclid(2.0) - 1.0).abs());
+        let [r, g, b] = match (hue / 60.0) as u8 {
+            0 => [chroma, x, 0.0],
+            1 => [x, chroma, 0.0],
+            2 => [0.0, chroma, x],
+            3 => [0.0, x, chroma],
+            4 => [x, 0.0, chroma],
+            _ => [chroma, 0.0, x],
+        };
+        let m = light - chroma / 2.0;
+        let [r, g, b] = [r, g, b].map(|c| ((c + m) * 255.0).round().clamp(0.0, 255.0) as u8);
+        Rgba { r, g, b, a: 1.0 }
+    }
+
     pub fn luminance(self) -> f32 {
         let linear = |c: u8| {
             let c = c as f32 / 255.0;

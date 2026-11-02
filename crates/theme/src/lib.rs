@@ -1,4 +1,5 @@
 mod color;
+pub mod palettes;
 
 pub use color::{Rgba, accent_of};
 
@@ -11,6 +12,7 @@ pub struct Palette {
 
 impl Palette {
     pub fn new(accent: Rgba) -> Self {
+        let accent = palettes::readable(accent, &scheme());
         let (ink, text) = (neutral::ink(), neutral::text());
         // Whichever of the two reads better on the accent, dark or light.
         let (dark, light) = if scheme().light {

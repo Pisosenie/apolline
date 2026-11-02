@@ -9,7 +9,7 @@ use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
     Column, button, column, container, mouse_area, opaque, row, scrollable, space, text, text_input,
 };
-use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, Theme};
+use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task};
 
 use crate::icon::{Icon, icon};
 use crate::{apps, fonts, style};
@@ -96,7 +96,7 @@ fn run(pick: Pick) -> Result<(), String> {
         Pick::view,
     )
     .subscription(Pick::subscription)
-    .theme(|_: &Pick| Theme::Dark)
+    .theme(|_: &Pick| style::theme())
     .style(|_, theme| iced::theme::Style {
         background_color: iced::Color::TRANSPARENT,
         text_color: theme.palette().text,
@@ -137,7 +137,7 @@ fn run(pick: Pick) -> Result<(), String> {
     )
     .title("Apolline")
     .subscription(Pick::subscription)
-    .theme(Theme::Dark)
+    .theme(|_: &Pick| style::theme())
     .default_font(Font::with_name(crate::style::family()))
     .window_size((900.0, 640.0));
     fonts::ALL

@@ -36,7 +36,51 @@ pub const RADIUS_SURFACE: f32 = 20.0;
 pub const RADIUS_TILE: f32 = 14.0;
 pub const PILL: f32 = 999.0;
 
-const WHITE: Rgba = Rgba::hex(0xffffff);
+// Lines, tracks and fills: white on dark schemes, black on light ones.
+fn ink(a: f32) -> Rgba {
+    apolline_theme::scheme().overlay.alpha(a)
+}
+
+// What a field or a well is cut into: darker on dark, lighter on light.
+fn well() -> Rgba {
+    if apolline_theme::scheme().light {
+        Rgba::hex(0xffffff).alpha(0.6)
+    } else {
+        Rgba::hex(0x000000).alpha(0.28)
+    }
+}
+
+// The knob of a switch or a slider stays white: it reads on the accent and on the track.
+const KNOB: Rgba = Rgba::hex(0xffffff);
+
+// iced's own theme, made from the current scheme so default text, scrollbars and fields follow it;
+// kept until the scheme changes.
+pub fn theme() -> Theme {
+    static MADE: std::sync::Mutex<Option<(apolline_theme::Scheme, Theme)>> =
+        std::sync::Mutex::new(None);
+    let scheme = apolline_theme::scheme();
+    let Ok(mut made) = MADE.lock() else {
+        return Theme::Dark;
+    };
+    if let Some((was, theme)) = made.as_ref()
+        && *was == scheme
+    {
+        return theme.clone();
+    }
+    let theme = Theme::custom(
+        "Apolline",
+        iced::theme::Palette {
+            background: color(scheme.window),
+            text: color(scheme.text),
+            primary: color(apolline_theme::ACCENTS[0]),
+            success: color(GOOD),
+            warning: color(WARN),
+            danger: color(DANGER),
+        },
+    );
+    *made = Some((scheme, theme.clone()));
+    theme
+}
 
 pub fn color(c: Rgba) -> Color {
     Color::from_rgba8(c.r, c.g, c.b, c.a)
@@ -111,6 +155,12 @@ pub fn bar(_: &Theme) -> container::Style {
 }
 
 pub fn glass(opacity: f32, floating: bool, radius: f32) -> impl Fn(&Theme) -> container::Style {
+    // Light glass over a dark wallpaper turns grey and its dark text with it, so it's thicker.
+    let opacity = if apolline_theme::scheme().light {
+        0.6 + opacity * 0.4
+    } else {
+        opacity
+    };
     move |_| container::Style {
         text_color: Some(color(neutral::text())),
         background: fill(neutral::ink().alpha(opacity)),
@@ -225,7 +275,7 @@ pub fn primary(palette: Palette) -> impl Fn(&Theme, button::Status) -> button::S
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: fill(if hovered {
-                WHITE.alpha(0.14).over(palette.accent)
+                KNOB.alpha(0.14).over(palette.accent)
             } else {
                 palette.accent
             }),
@@ -267,7 +317,7 @@ pub fn tile(on: bool, palette: Palette) -> impl Fn(&Theme, button::Status) -> bu
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         let background = match (on, hovered) {
             (true, false) => palette.accent,
-            (true, true) => WHITE.alpha(0.14).over(palette.accent),
+            (true, true) => KNOB.alpha(0.14).over(palette.accent),
             (false, false) => fill_color(),
             (false, true) => hover_color(),
         };
@@ -289,7 +339,7 @@ pub fn choice(on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
         let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         button::Style {
             background: match (on, hovered) {
-                (true, _) => fill(WHITE.alpha(0.14)),
+                (true, _) => fill(ink(0.14)),
                 (false, true) => fill(fill_color()),
                 (false, false) => None,
             },
@@ -303,7 +353,7 @@ pub fn choice(on: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
 
 pub fn segments(_: &Theme) -> container::Style {
     container::Style {
-        background: fill(Rgba::hex(0x000000).alpha(0.28)),
+        background: fill(well()),
         border: outlined(neutral::hairline(), metrics::RADIUS_CONTROL + 3.0),
         ..container::Style::default()
     }
@@ -319,15 +369,15 @@ pub fn switch(palette: Palette) -> impl Fn(&Theme, toggler::Status) -> toggler::
         };
         let track = match (on, hovered) {
             (true, false) => palette.accent,
-            (true, true) => WHITE.alpha(0.14).over(palette.accent),
-            (false, false) => WHITE.alpha(0.16),
-            (false, true) => WHITE.alpha(0.22),
+            (true, true) => KNOB.alpha(0.14).over(palette.accent),
+            (false, false) => ink(0.16),
+            (false, true) => ink(0.22),
         };
         toggler::Style {
             background: Background::Color(color(track)),
             background_border_width: 0.0,
             background_border_color: Color::TRANSPARENT,
-            foreground: Background::Color(color(WHITE)),
+            foreground: Background::Color(color(KNOB)),
             foreground_border_width: 0.0,
             foreground_border_color: Color::TRANSPARENT,
             text_color: None,
@@ -342,7 +392,7 @@ pub fn rail(palette: Palette, thickness: f32) -> impl Fn(&Theme, slider::Status)
         rail: slider::Rail {
             backgrounds: (
                 Background::Color(color(palette.accent)),
-                Background::Color(color(WHITE.alpha(0.14))),
+                Background::Color(color(ink(0.14))),
             ),
             width: thickness,
             border: rounded(PILL),
@@ -354,7 +404,7 @@ pub fn rail(palette: Palette, thickness: f32) -> impl Fn(&Theme, slider::Status)
                     _ => thickness.max(6.0) + 2.0,
                 },
             },
-            background: Background::Color(color(WHITE)),
+            background: Background::Color(color(KNOB)),
             border_width: 0.0,
             border_color: Color::TRANSPARENT,
         },
@@ -365,11 +415,11 @@ pub fn field(palette: Palette) -> impl Fn(&Theme, text_input::Status) -> text_in
     move |_, status| {
         let edge = match status {
             text_input::Status::Focused { .. } => palette.accent.alpha(0.7),
-            text_input::Status::Hovered => WHITE.alpha(0.16),
+            text_input::Status::Hovered => ink(0.16),
             _ => neutral::hairline(),
         };
         text_input::Style {
-            background: Background::Color(color(Rgba::hex(0x000000).alpha(0.28))),
+            background: Background::Color(color(well())),
             border: outlined(edge, metrics::RADIUS_CONTROL + 2.0),
             icon: color(faint()),
             placeholder: color(faint()),
@@ -392,7 +442,7 @@ pub fn scroller(theme: &Theme, status: scrollable::Status) -> scrollable::Style 
     for rail in [&mut style.vertical_rail, &mut style.horizontal_rail] {
         rail.background = None;
         rail.border = Border::default();
-        rail.scroller.background = Background::Color(color(WHITE.alpha(grip)));
+        rail.scroller.background = Background::Color(color(ink(grip)));
         rail.scroller.border = rounded(PILL);
     }
     style
@@ -402,7 +452,7 @@ pub fn picker(palette: Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_li
     move |_, status| {
         let edge = match status {
             pick_list::Status::Opened { .. } => palette.accent.alpha(0.7),
-            pick_list::Status::Hovered => WHITE.alpha(0.16),
+            pick_list::Status::Hovered => ink(0.16),
             pick_list::Status::Active => neutral::hairline(),
         };
         pick_list::Style {
@@ -417,7 +467,7 @@ pub fn picker(palette: Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_li
 
 pub fn menu(palette: Palette) -> impl Fn(&Theme) -> menu::Style {
     move |_| menu::Style {
-        background: Background::Color(color(Rgba::hex(0x1b1d22))),
+        background: Background::Color(color(neutral::window())),
         border: outlined(neutral::hairline(), metrics::RADIUS_CONTROL + 2.0),
         text_color: color(neutral::text()),
         selected_text_color: color(palette.on_accent),

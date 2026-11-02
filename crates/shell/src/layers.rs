@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use apolline_theme::metrics;
 use iced::widget::space;
-use iced::{Color, Element, Font, Subscription, Task, Theme, mouse, window};
+use iced::{Color, Element, Font, Subscription, Task, mouse, window};
 use iced_layershell::build_pattern::daemon;
 use iced_layershell::reexport::{
     Anchor, KeyboardInteractivity, Layer, NewLayerShellSettings, OutputOption,
@@ -27,7 +27,7 @@ pub fn run(mode: Option<String>) -> Result<(), String> {
     )
     .subscription(Layers::subscription)
     .scale_factor(Layers::scale)
-    .theme(Theme::Dark)
+    .theme(|_: &Layers, _| crate::style::theme())
     .style(|_, theme| iced::theme::Style {
         background_color: Color::TRANSPARENT,
         text_color: theme.palette().text,

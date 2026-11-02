@@ -9,8 +9,7 @@ use iced::widget::{
     Row, Space, button, column, container, image, pick_list, row, space, stack, text, text_input,
 };
 use iced::{
-    Alignment, Background, Border, ContentFit, Element, Fill, Font, Subscription, Task, Theme,
-    window,
+    Alignment, Background, Border, ContentFit, Element, Fill, Font, Subscription, Task, window,
 };
 
 use crate::icon::{Icon, icon};
@@ -169,7 +168,7 @@ pub fn main(args: &[String]) -> ExitCode {
     )
     .title("Apolline")
     .subscription(Greet::subscription)
-    .theme(Theme::Dark)
+    .theme(|_: &Greet| style::theme())
     .default_font(Font::with_name(crate::style::family()))
     .window(window::Settings {
         size: iced::Size::new(1440.0, 900.0),
