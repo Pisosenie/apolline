@@ -93,10 +93,25 @@ Any command can put text on the bar: each line it prints replaces the last. One 
 command = "while true; do date +%V; sleep 3600; done"   # the week number, kept up to date
 
 [[module]]
+name = "weather"
 command = "curl -s 'wttr.in/?format=%t'"
 every = 900
 click = "xdg-open https://wttr.in"
 ```
+
+## Laying out the bar
+
+The bar has three places, and each takes a list of what goes there, in order:
+
+```toml
+[bar]
+left = ["mode", "workspaces", "windows"]
+center = ["clock"]
+right = ["media", "notifications", "recording", "modules", "stats", "tray"]
+tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
+```
+
+That is the bar as it comes. `mode` shows only once you have modes, `media` while something plays, `notifications` while some wait or do not disturb is on, and `recording` while the screen is recorded. `tray` is the quick settings button, and `[bar] tray` picks what it shows and in which order. A module with a `name` can stand anywhere by that name (`left = ["weather", "workspaces"]`); `modules` is all the others. A name nothing answers to is reported by `apolline check` with the closest match, and something placed twice stays where it's first.
 
 ## Themes
 

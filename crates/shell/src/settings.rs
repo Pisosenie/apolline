@@ -3590,7 +3590,7 @@ impl Settings {
     }
 
     fn bar(&self) -> Element<'_, Message> {
-        let look = self.config.bar;
+        let look = &self.config.bar;
         let palette = self.palette();
         let status = &self.sample;
         let preview = self.preview(&self.config.desktop.wallpaper, 96.0, {

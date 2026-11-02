@@ -1,5 +1,6 @@
 mod diagnostic;
 mod edit;
+mod pieces;
 mod read;
 mod theme;
 
@@ -10,6 +11,7 @@ use std::sync::RwLock;
 use apolline_theme::{ACCENTS, Palette, Rgba};
 pub use diagnostic::Diagnostic;
 pub use edit::Editor;
+pub use pieces::{Piece, TrayItem};
 pub use theme::Theme;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -197,6 +199,8 @@ pub struct Apps {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Module {
+    // What [bar] left, center and right call it, to place it on its own.
+    pub name: Option<String>,
     pub command: String,
     pub every: Option<u32>,
     pub click: Option<String>,
@@ -264,7 +268,7 @@ pub struct Layout {
     pub shadows: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bar {
     pub workspaces: Workspaces,
     pub seconds: bool,
@@ -275,6 +279,10 @@ pub struct Bar {
     pub opacity: f32,
     pub blur: bool,
     pub stats: Stats,
+    pub left: Vec<Piece>,
+    pub center: Vec<Piece>,
+    pub right: Vec<Piece>,
+    pub tray: Vec<TrayItem>,
 }
 
 // What the bar shows of the machine itself.
@@ -662,6 +670,10 @@ impl Default for Config {
                 opacity: 0.55,
                 blur: false,
                 stats: Stats::default(),
+                left: Piece::left(),
+                center: Piece::center(),
+                right: Piece::right(),
+                tray: TrayItem::all(),
             },
             keyboard: Keyboard::default(),
             touchpad: None,

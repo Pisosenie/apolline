@@ -6,8 +6,9 @@ use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
     Accent, Alerts, Appear, Blur, Calendar, Center, Config, Desktop, Diagnostic, Display, Edge,
-    Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Rule,
-    Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, Trigger, Width, Windows, Workspaces, slug,
+    Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Piece, Rule,
+    Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem, Trigger, Width, Windows,
+    Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -83,6 +84,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
         src,
         diagnostics: Vec::new(),
         start: None,
+        placed: Vec::new(),
     };
     for error in &errors {
         let line = error.span().map_or(0, |span| reader.line(span));
@@ -106,6 +108,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
             .push(Diagnostic::new(line, format!("there is no mode called “{key}”")).hint(hint));
         config.mode = None;
     }
+    reader.settle_bar(&mut config);
     reader.diagnostics.sort_by_key(|d| d.line);
     (config, reader.diagnostics)
 }
@@ -114,6 +117,8 @@ struct Reader<'s> {
     src: &'s str,
     diagnostics: Vec<Diagnostic>,
     start: Option<usize>,
+    // Names placed on the bar and their lines, checked once [[module]]s are known.
+    placed: Vec<(String, usize)>,
 }
 
 impl Reader<'_> {
@@ -376,6 +381,37 @@ impl Reader<'_> {
                         bar.blur = v
                     }
                 }
+                "left" | "center" | "right" => {
+                    if let Some(names) = self.strings(key, value) {
+                        let line = self.line(value.span());
+                        self.placed
+                            .extend(names.iter().map(|name| (name.clone(), line)));
+                        let pieces = names.iter().map(|name| Piece::named(name)).collect();
+                        match key.get_ref().as_ref() {
+                            "left" => bar.left = pieces,
+                            "center" => bar.center = pieces,
+                            _ => bar.right = pieces,
+                        }
+                    }
+                }
+                "tray" => {
+                    if let Some(names) = self.strings(key, value) {
+                        let mut tray = Vec::new();
+                        for name in &names {
+                            match TrayItem::named(name) {
+                                Some(item) if !tray.contains(&item) => tray.push(item),
+                                Some(_) => {}
+                                None => self.unknown_name(
+                                    value,
+                                    name,
+                                    "tray item",
+                                    &TrayItem::ALL.map(|(name, _)| name),
+                                ),
+                            }
+                        }
+                        bar.tray = tray;
+                    }
+                }
                 "stats" => {
                     if let Some(names) = self.strings(key, value) {
                         let mut stats = crate::Stats::default();
@@ -427,6 +463,10 @@ impl Reader<'_> {
                         "weather",
                         "calendars",
                         "stats",
+                        "left",
+                        "center",
+                        "right",
+                        "tray",
                     ],
                 ),
             }
@@ -700,12 +740,19 @@ impl Reader<'_> {
                 continue;
             };
             let mut module = Module {
+                name: None,
                 command: String::new(),
                 every: None,
                 click: None,
             };
             for (key, value) in table.iter() {
                 match key.get_ref().as_ref() {
+                    "name" => {
+                        module.name = self
+                            .string(key, value)
+                            .map(|v| v.trim().to_owned())
+                            .filter(|v| !v.is_empty())
+                    }
                     "command" => {
                         if let Some(v) = self.string(key, value) {
                             module.command = v.trim().to_owned()
@@ -718,7 +765,7 @@ impl Reader<'_> {
                             .map(|v| v.trim().to_owned())
                             .filter(|v| !v.is_empty())
                     }
-                    _ => self.unknown(key, "option", &["command", "every", "click"]),
+                    _ => self.unknown(key, "option", &["name", "command", "every", "click"]),
                 }
             }
             if module.command.is_empty() {
@@ -1267,6 +1314,67 @@ impl Reader<'_> {
         self.diagnostics
             .push(Diagnostic::new(self.line(value.span()), message).hint(hint));
         None
+    }
+
+    // Pieces on the bar that name nothing, or that are there twice, come off it.
+    fn settle_bar(&mut self, config: &mut Config) {
+        let modules: Vec<&str> = config
+            .modules
+            .iter()
+            .filter_map(|m| m.name.as_deref())
+            .collect();
+        let mut known: Vec<&str> = Piece::NAMED.iter().map(|(name, _)| *name).collect();
+        known.extend(modules.iter().copied());
+        let mut seen: Vec<Piece> = Vec::new();
+        let bar = &mut config.bar;
+        for zone in [&mut bar.left, &mut bar.center, &mut bar.right] {
+            let mut kept = Vec::new();
+            for piece in std::mem::take(zone) {
+                let line = self
+                    .placed
+                    .iter()
+                    .find(|(name, _)| name == piece.name())
+                    .map_or(0, |(_, line)| *line);
+                let missing =
+                    matches!(&piece, Piece::Module(name) if !modules.contains(&name.as_str()));
+                if missing {
+                    let name = piece.name();
+                    let hint = match suggest(name, &known) {
+                        Some(close) => format!("did you mean “{close}”?"),
+                        None => format!(
+                            "known: {}, or the name of a [[module]]",
+                            Piece::NAMED.map(|(name, _)| name).join(", ")
+                        ),
+                    };
+                    self.diagnostics.push(
+                        Diagnostic::new(line, format!("nothing on the bar is called “{name}”"))
+                            .hint(hint),
+                    );
+                } else if seen.contains(&piece) {
+                    self.diagnostics.push(Diagnostic::new(
+                        line,
+                        format!(
+                            "“{}” is on the bar twice; it stays where it's first",
+                            piece.name()
+                        ),
+                    ));
+                } else {
+                    seen.push(piece.clone());
+                    kept.push(piece);
+                }
+            }
+            *zone = kept;
+        }
+    }
+
+    fn unknown_name(&mut self, value: &Value, name: &str, what: &str, known: &[&str]) {
+        let hint = match suggest(name, known) {
+            Some(close) => format!("did you mean “{close}”?"),
+            None => format!("known: {}", known.join(", ")),
+        };
+        self.diagnostics.push(
+            Diagnostic::new(self.line(value.span()), format!("unknown {what} “{name}”")).hint(hint),
+        );
     }
 
     fn wrong<T>(&mut self, key: &Key, value: &Value, expected: &str) -> Option<T> {

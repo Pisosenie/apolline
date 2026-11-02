@@ -2501,7 +2501,7 @@ impl Shell {
             do_not_disturb: self.config.alerts.do_not_disturb,
             awake: self.awake,
             now: self.now,
-            look: self.config.bar,
+            look: &self.config.bar,
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
@@ -2515,13 +2515,18 @@ impl Shell {
                 .module_text
                 .iter()
                 .filter(|(i, _)| *i < self.config.modules.len())
-                .map(|(i, text)| (*i, text.as_str(), self.config.modules[*i].click.is_some()))
+                .map(|(i, text)| bar::Module {
+                    index: *i,
+                    name: self.config.modules[*i].name.as_deref(),
+                    text,
+                    clickable: self.config.modules[*i].click.is_some(),
+                })
                 .collect(),
         })
     }
 
     pub fn bar_margin(&self) -> Padding {
-        let look = self.config.bar;
+        let look = &self.config.bar;
         let inset = if look.floating {
             metrics::BAR_INSET
         } else {

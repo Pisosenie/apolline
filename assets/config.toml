@@ -23,6 +23,11 @@ battery_percent = true
 position = "top"          # top or bottom
 floating = true            # an island with a gap, or edge to edge
 opacity = 0.55             # how solid the glass is, 0 to 1
+# What goes where, in order (this is the bar as it comes):
+# left = ["mode", "workspaces", "windows"]
+# center = ["clock"]
+# right = ["media", "notifications", "recording", "modules", "stats", "tray"]
+# tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
 
 [notifications]
 do_not_disturb = false     # hold everything but urgent, in every mode

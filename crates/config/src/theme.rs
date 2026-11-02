@@ -37,7 +37,7 @@ impl Theme {
             wallpaper: config.desktop.wallpaper.clone(),
             accent: config.desktop.accent,
             layout: config.layout,
-            bar: config.bar,
+            bar: config.bar.clone(),
             opacity: config.windows.opacity,
             inactive_opacity: config.windows.inactive_opacity,
             animations: config.windows.animations,

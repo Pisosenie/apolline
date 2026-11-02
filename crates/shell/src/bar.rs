@@ -1,4 +1,4 @@
-use apolline_config::{ModeSettings, Workspaces};
+use apolline_config::{ModeSettings, Piece, TrayItem, Workspaces};
 use apolline_theme::{Palette, metrics, neutral};
 use chrono::{DateTime, Local};
 use iced::widget::{Row, button, column, container, mouse_area, row, space, text};
@@ -26,11 +26,11 @@ pub struct Bar<'a> {
     pub do_not_disturb: bool,
     pub awake: bool,
     pub now: DateTime<Local>,
-    pub look: apolline_config::Bar,
+    pub look: &'a apolline_config::Bar,
     pub panel_open: bool,
     pub apps: &'a [App],
     pub pinned: Vec<Pinned>,
-    pub modules: Vec<(usize, &'a str, bool)>,
+    pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
     pub stats: crate::stats::Stats,
     // The calendar's next thing, and in how many minutes (None: it's on now).
@@ -43,19 +43,92 @@ pub struct Pinned {
     pub focused: bool,
 }
 
-pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
-    let palette = bar.palette;
+// A [[module]]'s latest line.
+pub struct Module<'a> {
+    pub index: usize,
+    pub name: Option<&'a str>,
+    pub text: &'a str,
+    pub clickable: bool,
+}
 
-    let chip = bar.has_modes.then(|| {
-        let (glyph, name, tint) = match bar.mode {
-            Some(mode) => (Icon::named(&mode.icon), mode.name.as_str(), palette.accent),
-            None => (Icon::Circle, "No mode", neutral::MUTED),
-        };
-        let soft = if bar.mode.is_some() {
-            palette.accent_soft
-        } else {
-            style::FILL
-        };
+pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
+    let look = bar.look;
+    let zone = |pieces: &[Piece], spacing: f32| {
+        Row::with_children(pieces.iter().filter_map(|p| piece(&bar, look, p)))
+            .spacing(spacing)
+            .align_y(Alignment::Center)
+    };
+    container(
+        row![
+            container(zone(&look.left, 10.0)).width(Fill),
+            zone(&look.center, 10.0),
+            container(zone(&look.right, 6.0))
+                .width(Fill)
+                .align_x(Alignment::End),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .width(Fill)
+    .height(metrics::BAR_HEIGHT)
+    .padding([0, 5])
+    .align_y(Alignment::Center)
+    .style(style::glass(look.opacity, look.floating))
+    .into()
+}
+
+fn piece<'a>(
+    bar: &Bar<'a>,
+    look: &apolline_config::Bar,
+    piece: &Piece,
+) -> Option<Element<'a, Message>> {
+    match piece {
+        Piece::Mode => mode(bar),
+        Piece::Workspaces => Some(workspaces(bar)),
+        Piece::Windows => Some(tasks(bar)),
+        Piece::Clock => Some(clock(bar)),
+        Piece::Media => media(bar),
+        Piece::Notifications => bell(bar),
+        Piece::Recording => recording(bar),
+        Piece::Stats => stats(bar),
+        Piece::Tray => Some(tray(bar)),
+        // The ones placed by name elsewhere stay there.
+        Piece::Modules => {
+            let placed = |name: &str| {
+                [&look.left, &look.center, &look.right]
+                    .iter()
+                    .any(|zone| zone.iter().any(|p| *p == Piece::Module(name.to_owned())))
+            };
+            let loose: Vec<Element<'a, Message>> = bar
+                .modules
+                .iter()
+                .filter(|m| m.name.is_none_or(|name| !placed(name)))
+                .map(module)
+                .collect();
+            (!loose.is_empty()).then(|| Row::with_children(loose).spacing(6).into())
+        }
+        Piece::Module(name) => bar
+            .modules
+            .iter()
+            .find(|m| m.name == Some(name.as_str()))
+            .map(module),
+    }
+}
+
+fn mode<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
+    if !bar.has_modes {
+        return None;
+    }
+    let palette = bar.palette;
+    let (glyph, name, tint) = match bar.mode {
+        Some(mode) => (Icon::named(&mode.icon), mode.name.as_str(), palette.accent),
+        None => (Icon::Circle, "No mode", neutral::MUTED),
+    };
+    let soft = if bar.mode.is_some() {
+        palette.accent_soft
+    } else {
+        style::FILL
+    };
+    Some(
         button(
             row![
                 icon(glyph, 14.0, tint),
@@ -78,12 +151,11 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             ..button::Style::default()
         })
         .on_press(Message::Overlay(Some(Overlay::Switcher)))
-    });
+        .into(),
+    )
+}
 
-    let left = row![chip, workspaces(&bar), tasks(&bar)]
-        .spacing(10)
-        .align_y(Alignment::Center);
-
+fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     let mut clock = row![].spacing(10).align_y(Alignment::Center);
     if bar.look.date {
         clock = clock.push(
@@ -105,7 +177,7 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     if let Some((what, wait)) = bar.next {
         clock = clock.push(
             row![
-                container(space().width(6).height(6)).style(style::pill(palette.accent)),
+                container(space().width(6).height(6)).style(style::pill(bar.palette.accent)),
                 text(crate::events::when(&crate::media::shorten(what, 22), wait))
                     .size(12)
                     .color(style::color(neutral::MUTED)),
@@ -114,94 +186,107 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .align_y(Alignment::Center),
         );
     }
-    let clock = button(clock)
+    button(clock)
         .padding([4, 10])
         .style(style::ghost(8.0))
-        .on_press(Message::Overlay(Some(Overlay::Calendar)));
+        .on_press(Message::Overlay(Some(Overlay::Calendar)))
+        .into()
+}
 
-    let mut right = Row::new().spacing(6).align_y(Alignment::Center);
-    if let Some(track) = bar.track.filter(|t| t.playing) {
-        right = right.push(
-            button(
-                row![
-                    icon(Icon::Music, 13.0, palette.accent),
-                    text(crate::media::shorten(&track.line(), 34))
-                        .size(12)
-                        .color(style::color(neutral::MUTED)),
-                ]
-                .spacing(7)
-                .align_y(Alignment::Center),
-            )
-            .padding([4, 10])
-            .style(style::ghost(style::PILL))
-            .on_press(Message::Overlay(Some(Overlay::Panel))),
-        );
+fn media<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
+    let track = bar.track.filter(|t| t.playing)?;
+    Some(
+        button(
+            row![
+                icon(Icon::Music, 13.0, bar.palette.accent),
+                text(crate::media::shorten(&track.line(), 34))
+                    .size(12)
+                    .color(style::color(neutral::MUTED)),
+            ]
+            .spacing(7)
+            .align_y(Alignment::Center),
+        )
+        .padding([4, 10])
+        .style(style::ghost(style::PILL))
+        .on_press(Message::Overlay(Some(Overlay::Panel)))
+        .into(),
+    )
+}
+
+fn bell<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
+    if bar.held == 0 && !bar.do_not_disturb {
+        return None;
     }
-    if bar.held > 0 || bar.do_not_disturb {
-        let mut bell = row![icon(
-            if bar.do_not_disturb {
-                Icon::BellOff
-            } else {
-                Icon::Bell
-            },
-            15.0,
-            neutral::TEXT
-        )]
+    let glyph = if bar.do_not_disturb {
+        Icon::BellOff
+    } else {
+        Icon::Bell
+    };
+    let mut bell = row![icon(glyph, 15.0, neutral::TEXT)]
         .spacing(5)
         .align_y(Alignment::Center);
-        if bar.held > 0 {
-            bell = bell.push(
-                container(
-                    text(bar.held.to_string())
-                        .size(10)
-                        .font(style::semibold())
-                        .color(style::color(palette.on_accent)),
-                )
-                .padding([0, 5])
-                .style(style::pill(palette.accent)),
-            );
-        }
-        right = right.push(
-            button(bell)
-                .padding([5, 8])
-                .style(style::ghost(style::PILL))
-                .on_press(Message::Overlay(Some(Overlay::Panel))),
-        );
-    }
-    if let Some(elapsed) = bar.recording {
-        let secs = elapsed.as_secs();
-        right = right.push(
-            button(
-                row![
-                    container(space())
-                        .width(8)
-                        .height(8)
-                        .style(style::pill(style::DANGER)),
-                    text(format!("{}:{:02}", secs / 60, secs % 60))
-                        .size(12)
-                        .font(style::mono()),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
+    if bar.held > 0 {
+        bell = bell.push(
+            container(
+                text(bar.held.to_string())
+                    .size(10)
+                    .font(style::semibold())
+                    .color(style::color(bar.palette.on_accent)),
             )
-            .padding([4, 8])
-            .style(style::ghost(8.0))
-            .on_press(Message::StopRecording),
+            .padding([0, 5])
+            .style(style::pill(bar.palette.accent)),
         );
     }
-    for (index, line, clickable) in &bar.modules {
-        let label = text(line.to_string())
-            .size(12)
-            .color(style::color(neutral::MUTED));
-        right = right.push(
-            button(label)
-                .padding([4, 8])
-                .style(style::ghost(8.0))
-                .on_press_maybe(clickable.then_some(Message::ModuleClick(*index))),
-        );
-    }
+    Some(
+        button(bell)
+            .padding([5, 8])
+            .style(style::ghost(style::PILL))
+            .on_press(Message::Overlay(Some(Overlay::Panel)))
+            .into(),
+    )
+}
+
+fn recording<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
+    let secs = bar.recording?.as_secs();
+    Some(
+        button(
+            row![
+                container(space())
+                    .width(8)
+                    .height(8)
+                    .style(style::pill(style::DANGER)),
+                text(format!("{}:{:02}", secs / 60, secs % 60))
+                    .size(12)
+                    .font(style::mono()),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .padding([4, 8])
+        .style(style::ghost(8.0))
+        .on_press(Message::StopRecording)
+        .into(),
+    )
+}
+
+fn module<'a>(module: &Module<'a>) -> Element<'a, Message> {
+    let label = text(module.text.to_owned())
+        .size(12)
+        .color(style::color(neutral::MUTED));
+    button(label)
+        .padding([4, 8])
+        .style(style::ghost(8.0))
+        .on_press_maybe(
+            module
+                .clickable
+                .then_some(Message::ModuleClick(module.index)),
+        )
+        .into()
+}
+
+fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     let shown = bar.look.stats;
-    let figures = [
+    let figures: Vec<Element<'a, Message>> = [
         (shown.cpu, Icon::Cpu, bar.stats.cpu.map(|v| format!("{v}%"))),
         (
             shown.memory,
@@ -213,39 +298,31 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             Icon::Thermometer,
             bar.stats.temperature.map(|v| format!("{v}°")),
         ),
-    ];
-    for (on, glyph, value) in figures {
-        if let (true, Some(value)) = (on, value) {
-            right = right.push(
-                row![
-                    icon(glyph, 13.0, neutral::MUTED),
-                    text(value)
-                        .size(12)
-                        .font(style::mono())
-                        .color(style::color(neutral::MUTED)),
-                ]
-                .spacing(5)
-                .align_y(Alignment::Center)
-                .padding([0, 4]),
-            );
-        }
-    }
-    right = right.push(tray(&bar));
-
-    container(
-        row![
-            container(left).width(Fill),
-            clock,
-            container(right).width(Fill).align_x(Alignment::End),
-        ]
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .height(metrics::BAR_HEIGHT)
-    .padding([0, 5])
-    .align_y(Alignment::Center)
-    .style(style::glass(bar.look.opacity, bar.look.floating))
-    .into()
+    ]
+    .into_iter()
+    .filter_map(|(on, glyph, value)| {
+        let value = value.filter(|_| on)?;
+        Some(
+            row![
+                icon(glyph, 13.0, neutral::MUTED),
+                text(value)
+                    .size(12)
+                    .font(style::mono())
+                    .color(style::color(neutral::MUTED)),
+            ]
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .padding([0, 4])
+            .into(),
+        )
+    })
+    .collect();
+    (!figures.is_empty()).then(|| {
+        Row::with_children(figures)
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+    })
 }
 
 fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
@@ -377,63 +454,14 @@ pub fn app_key<'a>(apps: &'a [App], app_id: &'a str) -> &'a str {
 }
 
 fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
-    let tint = neutral::TEXT;
-    let mut items = Row::new().spacing(10).align_y(Alignment::Center);
-    if !bar.status.keyboard.is_empty() {
-        items = items.push(
-            text(bar.status.keyboard.clone())
-                .size(11)
-                .font(style::semibold())
-                .color(style::color(neutral::MUTED)),
-        );
-    }
-    if bar.awake {
-        items = items.push(icon(Icon::Coffee, 15.0, bar.palette.accent));
-    }
-    if let Some(wifi) = &bar.controls.wifi {
-        let glyph = if wifi.on && wifi.connected.is_some() {
-            Icon::Wifi
-        } else {
-            Icon::WifiOff
-        };
-        items = items.push(icon(glyph, 15.0, tint));
-    }
-    if let Some(bluetooth) = bar.controls.bluetooth.as_ref().filter(|b| b.on) {
-        let shade = if bluetooth.connected.is_some() {
-            tint
-        } else {
-            neutral::MUTED
-        };
-        items = items.push(icon(Icon::Bluetooth, 15.0, shade));
-    }
-    if let Some(volume) = bar.controls.volume {
-        items = items.push(icon(Icon::volume(volume.level, volume.muted), 15.0, tint));
-    }
-    if let Some(battery) = bar.battery {
-        let shade = match battery {
-            Battery { charging: true, .. } => bar.palette.accent,
-            Battery {
-                percent: 0..=10, ..
-            } => style::DANGER,
-            _ => tint,
-        };
-        let mut level = row![icon(
-            Icon::battery(battery.percent, battery.charging),
-            17.0,
-            shade
-        )]
-        .spacing(5)
+    let items = bar
+        .look
+        .tray
+        .iter()
+        .filter_map(|item| tray_item(bar, *item));
+    let items = Row::with_children(items)
+        .spacing(10)
         .align_y(Alignment::Center);
-        if bar.look.battery_percent {
-            level = level.push(
-                text(format!("{}%", battery.percent))
-                    .size(12)
-                    .font(style::medium())
-                    .color(style::color(shade)),
-            );
-        }
-        items = items.push(level);
-    }
     let open = bar.panel_open;
     button(items)
         .padding([5, 11])
@@ -450,4 +478,70 @@ fn tray<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             Some(Overlay::Panel)
         }))
         .into()
+}
+
+fn tray_item<'a>(bar: &Bar<'a>, item: TrayItem) -> Option<Element<'a, Message>> {
+    let tint = neutral::TEXT;
+    match item {
+        TrayItem::Keyboard => (!bar.status.keyboard.is_empty()).then(|| {
+            text(bar.status.keyboard.clone())
+                .size(11)
+                .font(style::semibold())
+                .color(style::color(neutral::MUTED))
+                .into()
+        }),
+        TrayItem::Awake => bar
+            .awake
+            .then(|| icon(Icon::Coffee, 15.0, bar.palette.accent).into()),
+        TrayItem::Wifi => bar.controls.wifi.as_ref().map(|wifi| {
+            let glyph = if wifi.on && wifi.connected.is_some() {
+                Icon::Wifi
+            } else {
+                Icon::WifiOff
+            };
+            icon(glyph, 15.0, tint).into()
+        }),
+        TrayItem::Bluetooth => bar
+            .controls
+            .bluetooth
+            .as_ref()
+            .filter(|b| b.on)
+            .map(|bluetooth| {
+                let shade = if bluetooth.connected.is_some() {
+                    tint
+                } else {
+                    neutral::MUTED
+                };
+                icon(Icon::Bluetooth, 15.0, shade).into()
+            }),
+        TrayItem::Volume => bar
+            .controls
+            .volume
+            .map(|volume| icon(Icon::volume(volume.level, volume.muted), 15.0, tint).into()),
+        TrayItem::Battery => bar.battery.map(|battery| {
+            let shade = match battery {
+                Battery { charging: true, .. } => bar.palette.accent,
+                Battery {
+                    percent: 0..=10, ..
+                } => style::DANGER,
+                _ => tint,
+            };
+            let mut level = row![icon(
+                Icon::battery(battery.percent, battery.charging),
+                17.0,
+                shade
+            )]
+            .spacing(5)
+            .align_y(Alignment::Center);
+            if bar.look.battery_percent {
+                level = level.push(
+                    text(format!("{}%", battery.percent))
+                        .size(12)
+                        .font(style::medium())
+                        .color(style::color(shade)),
+                );
+            }
+            level.into()
+        }),
+    }
 }
