@@ -1,5 +1,5 @@
 use crate::edit::accent_text;
-use crate::{Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Motion};
+use crate::{Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Motion, Styles, Surface};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
@@ -15,6 +15,8 @@ pub struct Theme {
     pub motion: Option<Motion>,
     pub appear: Option<Appear>,
     pub blur: Option<Blur>,
+    // Each surface's size, corners and glass, and the launcher as a list or a grid.
+    pub style: Styles,
 }
 
 impl Theme {
@@ -44,6 +46,7 @@ impl Theme {
             motion: config.windows.motion,
             appear: config.windows.appear,
             blur: config.windows.blur,
+            style: config.style,
         }
     }
 
@@ -97,6 +100,7 @@ impl Theme {
                 && self.appear == now.appear,
         );
         differ("blur", self.blur == now.blur);
+        differ("surfaces", self.style == now.style);
         changed
     }
 
@@ -114,6 +118,7 @@ impl Theme {
         config.windows.motion = self.motion;
         config.windows.appear = self.appear;
         config.windows.blur = self.blur;
+        config.style = self.style;
     }
 
     fn write(&self, editor: &mut Editor) {
@@ -149,6 +154,31 @@ impl Theme {
                 Some(value) => editor.set("windows", key, round(value)),
                 None => editor.unset("windows", key),
             }
+        }
+        let surfaces: [(&str, Surface); 5] = [
+            ("bar", self.style.bar),
+            ("launcher", self.style.launcher),
+            ("panel", self.style.panel),
+            ("notifications", self.style.cards),
+            ("osd", self.style.osd),
+        ];
+        for (name, surface) in surfaces {
+            let path = ["style", name];
+            match surface.radius {
+                Some(radius) => editor.set_in(&path, "radius", i64::from(radius)),
+                None => editor.unset_in(&path, "radius"),
+            }
+            for (key, value) in [("opacity", surface.opacity), ("size", surface.size)] {
+                match value {
+                    Some(value) => editor.set_in(&path, key, round(value)),
+                    None => editor.unset_in(&path, key),
+                }
+            }
+        }
+        if self.style.grid {
+            editor.set_in(&["style", "launcher"], "grid", true);
+        } else {
+            editor.unset_in(&["style", "launcher"], "grid");
         }
         for (key, value) in [
             ("motion", self.motion.map(Motion::key)),
@@ -196,6 +226,32 @@ mod tests {
         );
         assert_eq!(config.modes[0].keys.len(), 1, "modes are left alone");
         assert_eq!(Theme::parse(&theme.text()).unwrap(), theme);
+    }
+
+    #[test]
+    fn a_theme_carries_the_shape_of_each_surface() {
+        let sharp = Theme::parse(
+            "[theme]\nname = \"Sharp\"\n\n[style.bar]\nradius = 0\nsize = 0.9\n\n[style.notifications]\nradius = 2\n",
+        )
+        .unwrap();
+        assert_eq!(sharp.style.bar.radius, Some(0));
+        assert_eq!(Theme::parse(&sharp.text()).unwrap(), sharp);
+
+        let mut editor =
+            Editor::parse("[style.launcher]\nradius = 30\n\n[style.osd]\nopacity = 0.5\n").unwrap();
+        sharp.apply(&mut editor);
+        let (config, problems) = Config::parse(&editor.text());
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.style.bar.size, Some(0.9));
+        assert_eq!(config.style.cards.radius, Some(2));
+        assert_eq!(
+            config.style.launcher.radius, None,
+            "the theme's look, not what was there"
+        );
+        assert!(
+            !editor.text().contains("[style.osd]"),
+            "an emptied table goes"
+        );
     }
 
     #[test]

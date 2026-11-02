@@ -245,6 +245,26 @@ impl Editor {
         put(at, key, value.into());
     }
 
+    // Drops a key from a table inside a table; an emptied table goes with it.
+    pub fn unset_in(&mut self, path: &[&str], key: &str) {
+        let Some((last, parents)) = path.split_last() else {
+            return;
+        };
+        let mut at = self.doc.as_table_mut();
+        for name in parents {
+            match at.get_mut(name).and_then(Item::as_table_mut) {
+                Some(table) => at = table,
+                None => return,
+            }
+        }
+        if let Some(table) = at.get_mut(last).and_then(Item::as_table_mut) {
+            table.remove(key);
+            if table.is_empty() {
+                at.remove(last);
+            }
+        }
+    }
+
     pub fn unset(&mut self, section: &str, key: &str) {
         if let Some(table) = self.doc.get_mut(section).and_then(Item::as_table_mut) {
             table.remove(key);
