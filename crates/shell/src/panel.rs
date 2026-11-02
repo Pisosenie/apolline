@@ -90,6 +90,7 @@ pub struct Panel<'a> {
     pub pin: &'a str,
     pub note: Option<&'a str>,
     pub busy: bool,
+    pub tunnels: &'a [crate::vpn::Tunnel],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +98,7 @@ pub enum Detail {
     Wifi,
     Bluetooth,
     Quiet,
+    Vpn,
 }
 
 // How long do not disturb lasts, picked in quick settings.
@@ -123,6 +125,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             Detail::Wifi => wifi_list(&panel),
             Detail::Bluetooth => gadget_list(&panel),
             Detail::Quiet => quiet_list(&panel),
+            Detail::Vpn => vpn_list(&panel),
         });
         return frame(body, panel.at_bottom, panel.gap, panel.look);
     }
@@ -181,14 +184,16 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         palette,
         Some(Message::NightLight(!panel.night)),
     );
-    body = body.push(
-        column![
-            row![wifi, bluetooth].spacing(10),
-            row![quiet, awake].spacing(10),
-            row![night, power_tile(panel.profiles, palette)].spacing(10),
-        ]
-        .spacing(10),
-    );
+    let mut tiles = column![
+        row![wifi, bluetooth].spacing(10),
+        row![quiet, awake].spacing(10),
+        row![night, power_tile(panel.profiles, palette)].spacing(10),
+    ]
+    .spacing(10);
+    if let Some(vpn) = vpn_tile(&panel) {
+        tiles = tiles.push(row![vpn, space::horizontal()].spacing(10));
+    }
+    body = body.push(tiles);
 
     let mut sliders = column![].spacing(6);
     if let Some(volume) = panel.controls.volume {
@@ -394,6 +399,78 @@ fn more<'a>(
             .padding(Padding::new(0.0).right(6.0)),
     ]
     .into()
+}
+
+// With one tunnel the tile switches it; with more it also lists them.
+fn vpn_tile<'a>(panel: &Panel<'a>) -> Option<Element<'a, Message>> {
+    let first = panel.tunnels.first()?;
+    let on: Vec<&crate::vpn::Tunnel> = panel
+        .tunnels
+        .iter()
+        .filter(|t| t.active.is_some())
+        .collect();
+    let subtitle = match on.as_slice() {
+        [] => "Off".to_owned(),
+        [one] if one.busy => format!("{}…", one.name),
+        [one] => one.name.clone(),
+        many => format!("{} on", many.len()),
+    };
+    let target = on.first().copied().unwrap_or(first);
+    let tile = tile(
+        Icon::Shield,
+        "VPN",
+        subtitle,
+        !on.is_empty(),
+        panel.palette,
+        Some(Message::Vpn(target.clone(), target.active.is_none())),
+    );
+    Some(if panel.tunnels.len() > 1 {
+        more(tile, Detail::Vpn, !on.is_empty(), panel.palette)
+    } else {
+        tile
+    })
+}
+
+fn vpn_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
+    let palette = panel.palette;
+    let mut list = column![detail_header("VPN", false)].spacing(4);
+    for tunnel in panel.tunnels {
+        let on = tunnel.active.is_some();
+        let state = match (on, tunnel.busy) {
+            (true, true) => "Connecting…",
+            (true, false) => "On",
+            (false, _) => "",
+        };
+        let line = row![
+            icon(
+                Icon::Shield,
+                15.0,
+                if on { palette.accent } else { neutral::muted() }
+            ),
+            text(tunnel.name.clone()).size(13).width(Fill),
+            text(state).size(12).color(style::color(style::faint())),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+        list = list.push(
+            button(line)
+                .width(Fill)
+                .padding([9, 10])
+                .style(style::ghost(8.0))
+                .on_press(Message::Vpn(tunnel.clone(), !on)),
+        );
+    }
+    if let Some(note) = panel.note {
+        list = list.push(
+            container(
+                text(note.to_owned())
+                    .size(12)
+                    .color(style::color(style::WARN)),
+            )
+            .padding([4, 10]),
+        );
+    }
+    list.into()
 }
 
 fn quiet_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {

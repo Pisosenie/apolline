@@ -59,6 +59,7 @@ mod themes;
 mod tray;
 mod tray_menu;
 mod usage;
+mod vpn;
 mod wallpaper;
 mod weather;
 mod wifi;

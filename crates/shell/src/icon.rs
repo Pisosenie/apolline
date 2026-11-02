@@ -112,6 +112,7 @@ icons! {
     Speaker = "speaker",
     Square = "square",
     Sparkles = "sparkles",
+    Shield = "shield",
     Sun = "sun",
     Target = "target",
     Terminal = "square-terminal",

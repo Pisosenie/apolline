@@ -102,6 +102,9 @@ pub enum Message {
     HistoryGroup(String),
     Quiet(panel::Quiet),
     Tray(crate::tray::Event),
+    Tunnels(Vec<crate::vpn::Tunnel>),
+    Vpn(crate::vpn::Tunnel, bool),
+    VpnSwitched(Result<(), String>),
     TrayPress(usize, crate::tray::Press),
     TrayMenu(usize),
     TrayMenuRead(usize, Vec<crate::tray::MenuEntry>),
@@ -266,6 +269,7 @@ pub struct Shell {
     shown: Vec<Shown>,
     usage: crate::usage::Usage,
     tray: Vec<crate::tray::Item>,
+    tunnels: Vec<crate::vpn::Tunnel>,
     // The open tray menu: whose, and its entries.
     tray_menu: Option<(crate::tray::Item, Vec<crate::tray::MenuEntry>)>,
     // An app being dragged on the bar: which, whether it was pinned, and where it is now.
@@ -372,6 +376,7 @@ impl Shell {
             wallpapers: Vec::new(),
             shown: Vec::new(),
             tray: Vec::new(),
+            tunnels: Vec::new(),
             tray_menu: None,
             usage: if demo {
                 crate::usage::Usage::default()
@@ -837,6 +842,13 @@ impl Shell {
             }
             Message::OpenPinned(id) => return self.open_pinned(&id),
             Message::Tray(crate::tray::Event::Items(items)) => self.tray = items,
+            Message::Tunnels(tunnels) => self.tunnels = tunnels,
+            Message::Vpn(tunnel, on) => {
+                self.net_note = None;
+                return Task::perform(crate::vpn::switch(tunnel, on), Message::VpnSwitched);
+            }
+            Message::VpnSwitched(Err(err)) => self.net_note = Some(err),
+            Message::VpnSwitched(Ok(())) => {}
             Message::TrayPress(index, press) => {
                 if let Some(item) = self.tray.get(index).cloned() {
                     return Task::future(crate::tray::press(item, press, (0, 0))).discard();
@@ -2481,6 +2493,7 @@ impl Shell {
                 pin: &self.pin,
                 note: self.net_note.as_deref(),
                 busy: self.net_busy,
+                tunnels: &self.tunnels,
             }),
             None => space().into(),
         }
@@ -2761,6 +2774,7 @@ impl Shell {
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
                 crate::tray::subscription().map(Message::Tray),
+                crate::vpn::subscription().map(Message::Tunnels),
             ])
         };
         iced::Subscription::batch([

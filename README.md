@@ -48,7 +48,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 | Key | Opens |
 |---|---|
 | `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included) and what they offer besides (`private` or `firefox new` finds Firefox's new private window), open windows, sums like `15% of 340`, units like `10 km in mi` and money like `100 usd in eur` (today's rates from ExchangeRate-API, asked for only when you type a sum of money; Enter copies the answer), `:emoji` by name, `/files` in your home, screenshots of an area, the screen or the window, a color picker, screen recording (with wf-recorder), modes, settings, lock. What you start often and lately comes first, and a search that finds nothing offers to run it as a command or look it up on the web |
-| `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, night light, power profile, volume, brightness, mode, the player, past notifications, screenshot, power |
+| `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, night light, power profile, VPN and WireGuard tunnels saved in NetworkManager, volume, the microphone, brightness, mode, the player, past notifications, screenshot, power |
 | `Mod+Shift+M` | the mode switcher |
 | `Mod+Alt+V` | clipboard history: kept in memory only, except what you pin, which stays in `~/.local/share/apolline/pinned.json` (readable only by you); password managers' secrets are never kept |
 | `Mod+/` | every shortcut, Apolline's and niri's, searchable |

@@ -118,6 +118,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   It still needs a run on real hardware.
 
 ### 5. Displays and comfort
+- VPN and WireGuard tunnels from NetworkManager in quick settings — done, tried against the fake.
 - The apps' tray (StatusNotifierItem with DBusMenu menus) on the bar — done, tried against a fake app
   (`tools/fake-tray-app.py`); Steam, Discord and Telegram themselves are still to be seen.
 - Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,

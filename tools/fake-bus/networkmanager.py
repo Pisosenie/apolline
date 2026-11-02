@@ -2,7 +2,8 @@
 
 It starts on "Polina", which is saved. Every locked network takes the password "polina";
 a wrong one fails a second later the way NetworkManager does, for want of secrets. "Office" is
-saved as a home network but now asks for a work login, the way a look-alike would.
+saved as a home network but now asks for a work login, the way a look-alike would. Two tunnels
+are saved too, "Home tunnel" (WireGuard) and "Work" (a VPN); "Work" fails to come up.
 """
 
 import uuid
@@ -37,14 +38,18 @@ ACTIVATING, ACTIVATED, DEACTIVATED = 1, 2, 4
 FAILED, NO_SECRETS, DEVICE_DISCONNECTED = 120, 7, 3
 
 count = [0]
+# The manager itself, which isn't listed among the objects yet while the template loads.
+manager = []
 
 
 def load(mock, _parameters):
+    manager.append(mock)
     mock.AddProperties(
         MAIN_IFACE,
         {
             "WirelessEnabled": dbus.Boolean(True),
             "WirelessHardwareEnabled": dbus.Boolean(True),
+            "ActiveConnections": dbus.Array([], signature="o"),
         },
     )
     mock.AddMethods(
@@ -53,6 +58,7 @@ def load(mock, _parameters):
             ("GetDevices", "", "ao", lambda _self: [dbus.ObjectPath(DEVICE)]),
             ("ActivateConnection", "ooo", "o", lambda _self, profile, _dev, point: activate(profile, point)),
             ("AddAndActivateConnection", "a{sa{sv}}oo", "oo", add_and_activate),
+            ("DeactivateConnection", "o", "", lambda _self, active: deactivate(active)),
         ],
     )
     mock.AddObject(DEVICE, "org.freedesktop.NetworkManager.Device", {"DeviceType": dbus.UInt32(2)}, [])
@@ -88,6 +94,8 @@ def load(mock, _parameters):
     )
     saved = save("Polina", PASSWORD, PSK)
     save("Office", PASSWORD, PSK)
+    save_tunnel("Home tunnel", "wireguard")
+    save_tunnel("Work", "vpn")
     finish(activate(saved, points[0]), ACTIVATED, 0)
 
 
@@ -95,11 +103,37 @@ def profiles(_self):
     return dbus.Array([dbus.ObjectPath(p) for p in dbusmock.mockobject.objects if p.startswith(SETTINGS + "/")], signature="o")
 
 
+def actives():
+    return dbus.Array(
+        [dbus.ObjectPath(p) for p, o in dbusmock.mockobject.objects.items() if ACTIVE in o.props],
+        signature="o",
+    )
+
+
+def save_tunnel(name, kind):
+    count[0] += 1
+    path = f"{SETTINGS}/{count[0]}"
+    ident = str(uuid.uuid4())
+    settings = {"connection": {"id": name, "type": kind, "uuid": ident}}
+    dbusmock.get_object(DEVICE).AddObject(
+        path, PROFILE, {}, [("GetSettings", "", "a{sa{sv}}", lambda _self: settings)]
+    )
+    profile = dbusmock.get_object(path)
+    profile.password, profile.uuid, profile.tunnel = PASSWORD, ident, name != "Work"
+    dbusmock.get_object(SETTINGS).Set("org.freedesktop.NetworkManager.Settings", "Connections", profiles(None))
+
+
+def deactivate(active):
+    dbusmock.get_object(DEVICE).RemoveObject(active)
+    manager[0].Set(MAIN_IFACE, "ActiveConnections", actives())
+
+
 def save(ssid, password, keys):
     count[0] += 1
     path = f"{SETTINGS}/{count[0]}"
+    ident = str(uuid.uuid4())
     settings = {
-        "connection": {"id": ssid, "type": "802-11-wireless", "uuid": str(uuid.uuid4())},
+        "connection": {"id": ssid, "type": "802-11-wireless", "uuid": ident},
         "802-11-wireless": {"ssid": dbus.ByteArray(ssid.encode())},
     }
     if keys:
@@ -114,6 +148,7 @@ def save(ssid, password, keys):
         ],
     )
     dbusmock.get_object(path).password = password
+    dbusmock.get_object(path).uuid = ident
     dbusmock.get_object(SETTINGS).Set("org.freedesktop.NetworkManager.Settings", "Connections", profiles(None))
     return path
 
@@ -137,14 +172,31 @@ def add_and_activate(_self, settings, _device, point):
 def activate(profile, point):
     count[0] += 1
     path = f"{MAIN_OBJ}/ActiveConnection/{count[0]}"
+    saved = dbusmock.get_object(profile)
     dbusmock.get_object(DEVICE).AddObject(
         path,
         ACTIVE,
-        {"State": dbus.UInt32(ACTIVATING), "Connection": dbus.ObjectPath(profile)},
+        {
+            "State": dbus.UInt32(ACTIVATING),
+            "Connection": dbus.ObjectPath(profile),
+            "Uuid": dbus.String(saved.uuid),
+        },
         [],
     )
+    manager[0].Set(MAIN_IFACE, "ActiveConnections", actives())
+    if hasattr(saved, "tunnel"):
+        def up():
+            if saved.tunnel:
+                finish(path, ACTIVATED, 0)
+            else:
+                finish(path, DEACTIVATED, 0)
+                deactivate(path)
+            return False
+
+        GLib.timeout_add(1000, up)
+        return dbus.ObjectPath(path)
     rsn = dbusmock.get_object(point).props[POINT]["RsnFlags"]
-    known = dbusmock.get_object(profile).password
+    known = saved.password
     fits = rsn == 0 or known == PASSWORD
 
     def later():
