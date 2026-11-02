@@ -60,7 +60,7 @@ pub struct Module<'a> {
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     let look = bar.look;
     let zone = |pieces: &[Piece], spacing: f32| {
-        Row::with_children(pieces.iter().filter_map(|p| piece(&bar, look, p)))
+        Row::with_children(pieces.iter().filter_map(|p| piece(&bar, p)))
             .spacing(spacing)
             .align_y(Alignment::Center)
     };
@@ -89,11 +89,7 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
         .into()
 }
 
-fn piece<'a>(
-    bar: &Bar<'a>,
-    look: &apolline_config::Bar,
-    piece: &Piece,
-) -> Option<Element<'a, Message>> {
+fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
     match piece {
         Piece::Mode => mode(bar),
         Piece::Workspaces => Some(workspaces(bar)),
@@ -106,15 +102,11 @@ fn piece<'a>(
         Piece::Tray => Some(tray(bar)),
         // The ones placed by name elsewhere stay there.
         Piece::Modules => {
-            let placed = |name: &str| {
-                [&look.left, &look.center, &look.right]
-                    .iter()
-                    .any(|zone| zone.iter().any(|p| *p == Piece::Module(name.to_owned())))
-            };
+            // A named one stands only where it's placed; left off, it's off.
             let loose: Vec<Element<'a, Message>> = bar
                 .modules
                 .iter()
-                .filter(|m| m.name.is_none_or(|name| !placed(name)))
+                .filter(|m| m.name.is_none())
                 .map(module)
                 .collect();
             (!loose.is_empty()).then(|| Row::with_children(loose).spacing(6).into())

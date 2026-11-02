@@ -290,6 +290,12 @@ impl Hold {
         matches!(self.keys, Keys::Ready | Keys::Held)
     }
 
+    // Has the keyboard, or is giving it back.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn holds(self) -> bool {
+        matches!(self.keys, Keys::Held | Keys::Returning)
+    }
+
     pub fn settle(self, typing: bool, answerable: bool) -> Hold {
         let keys = match self.keys {
             _ if typing => Keys::Held,

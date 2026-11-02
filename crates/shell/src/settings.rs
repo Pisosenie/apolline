@@ -19,6 +19,7 @@ use iced::{
 };
 
 use crate::apps::{self, App};
+use crate::board;
 use crate::controls::Controls;
 use crate::events::{self, Heard};
 use crate::fragment::{self, Fragment};
@@ -318,11 +319,11 @@ enum Message {
     Seconds(bool),
     BarEdge(Edge),
     // A piece of the bar, or an icon of the quick settings button, picked up and let go.
-    BarHold(Option<crate::board::Held>),
-    TrayHold(Option<crate::board::Held>),
+    BarHold(Option<board::Held>),
+    TrayHold(Option<board::Held>),
     BoardMove(iced::Point),
-    BarDrop(Option<crate::board::Board>),
-    TrayDrop(Option<crate::board::Board>),
+    BarDrop(iced::Point, f32),
+    TrayDrop(iced::Point, f32),
     BarFloating(bool),
     BarOpacity(u16),
     BarBlur(bool),
@@ -427,8 +428,8 @@ struct Settings {
     draft: String,
     wallpaper_draft: String,
     // What's being dragged on the bar's layout, and on the quick settings button's.
-    bar_held: Option<crate::board::Held>,
-    tray_held: Option<crate::board::Held>,
+    bar_held: Option<board::Held>,
+    tray_held: Option<board::Held>,
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
@@ -1144,9 +1145,12 @@ impl Settings {
                     held.at = at;
                 }
             }
-            Message::BarDrop(board) => {
-                self.bar_held = None;
-                if let Some(board) = board {
+            Message::BarDrop(at, width) => {
+                let (board, _) = self.boards();
+                let held = self.bar_held.take();
+                if let Some(board) =
+                    held.map(|h| board::dropped(&board, &h.name, at, piece_label, width))
+                {
                     let names = |zone: Option<&Vec<String>>| zone.cloned().unwrap_or_default();
                     let [left, center, right] = [0, 1, 2].map(|z| names(board.zones.get(z)));
                     self.edit(|e| {
@@ -1156,9 +1160,12 @@ impl Settings {
                     });
                 }
             }
-            Message::TrayDrop(board) => {
-                self.tray_held = None;
-                if let Some(board) = board {
+            Message::TrayDrop(at, width) => {
+                let (_, board) = self.boards();
+                let held = self.tray_held.take();
+                if let Some(board) =
+                    held.map(|h| board::dropped(&board, &h.name, at, tray_label, width))
+                {
                     let tray = board.zones.first().cloned().unwrap_or_default();
                     self.edit(|e| e.set_list("bar", "tray", &tray));
                 }
@@ -3614,7 +3621,8 @@ impl Settings {
     }
 
     // The bar's pieces and the quick settings button's icons, arranged by dragging.
-    fn layout_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+    // What the bar shows where and what's off it, and the quick settings button's icons.
+    fn boards(&self) -> (board::Board, board::Board) {
         let bar = &self.config.bar;
         let placed: Vec<String> = [&bar.left, &bar.center, &bar.right]
             .iter()
@@ -3628,11 +3636,11 @@ impl Settings {
             .filter(|name| !placed.contains(name))
             .collect();
         let zone = |pieces: &[Piece]| pieces.iter().map(|p| p.name().to_owned()).collect();
-        let pieces = crate::board::Board {
+        let pieces = board::Board {
             zones: vec![zone(&bar.left), zone(&bar.center), zone(&bar.right)],
             spare,
         };
-        let tray = crate::board::Board {
+        let tray = board::Board {
             zones: vec![bar.tray.iter().map(|i| i.name().to_owned()).collect()],
             spare: TrayItem::ALL
                 .iter()
@@ -3640,12 +3648,17 @@ impl Settings {
                 .map(|(name, _)| (*name).to_owned())
                 .collect(),
         };
+        (pieces, tray)
+    }
+
+    fn layout_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let (pieces, tray) = self.boards();
         vec![
             column![
                 text("What the bar shows, and where")
                     .size(13)
                     .font(style::medium()),
-                crate::board::view(
+                board::view(
                     pieces,
                     &["Left", "Center", "Right"],
                     piece_label,
@@ -3663,7 +3676,7 @@ impl Settings {
                 text("The quick settings button")
                     .size(13)
                     .font(style::medium()),
-                crate::board::view(
+                board::view(
                     tray,
                     &["Shown"],
                     tray_label,

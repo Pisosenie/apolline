@@ -355,9 +355,11 @@ window-rule {{
         if config.bar.blur {
             let mut lines = vec!["match namespace=\"^apolline-bar$\"".to_owned()];
             if config.bar.floating {
+                // The bar is drawn bigger with its size, its corners too.
+                let scale = config.style.bar.size.unwrap_or(1.0);
                 lines.push(format!(
                     "geometry-corner-radius {}",
-                    crate::style::bar_size(&config.style).1
+                    (crate::style::bar_size(&config.style).1 * scale).round()
                 ));
             }
             lines.push(block("background-effect", &["blur true".to_owned()]));

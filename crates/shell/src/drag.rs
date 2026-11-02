@@ -98,20 +98,26 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Drag<'_, Message> {
         let state = tree.state.downcast_mut::<State>();
         let origin = layout.bounds().position();
         let inside = |p: Point| Point::new(p.x - origin.x, p.y - origin.y);
+        // The cursor, not the event's own position, so a scrolled parent's offset counts too.
+        let at = cursor.land().position();
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                // A press while still dragging means the release was lost: let it go there.
+                if state.dragging {
+                    shell.publish((self.on_drop)(inside(state.last)));
+                }
                 state.pressed = cursor.position_over(layout.bounds());
                 state.dragging = false;
             }
-            Event::Mouse(mouse::Event::CursorMoved { position }) => {
-                if let Some(from) = state.pressed {
-                    state.last = *position;
-                    if !state.dragging && from.distance(*position) > THRESHOLD {
+            Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                if let (Some(from), Some(at)) = (state.pressed, at) {
+                    state.last = at;
+                    if !state.dragging && from.distance(at) > THRESHOLD {
                         state.dragging = true;
                         shell.publish((self.on_start)(inside(from)));
                     }
                     if state.dragging {
-                        shell.publish((self.on_move)(inside(*position)));
+                        shell.publish((self.on_move)(inside(at)));
                         shell.capture_event();
                         shell.request_redraw();
                         return;
@@ -123,6 +129,21 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Drag<'_, Message> {
                 state.pressed = None;
                 state.dragging = false;
                 if dragging {
+                    if let Some(at) = at {
+                        state.last = at;
+                    }
+                    // The content saw the press; it hears the release away from it, so a button
+                    // lets go without being clicked.
+                    self.content.as_widget_mut().update(
+                        &mut tree.children[0],
+                        event,
+                        layout,
+                        mouse::Cursor::Unavailable,
+                        renderer,
+                        clipboard,
+                        shell,
+                        viewport,
+                    );
                     shell.publish((self.on_drop)(inside(state.last)));
                     shell.capture_event();
                     return;

@@ -103,7 +103,19 @@ impl Theme {
                 && self.appear == now.appear,
         );
         differ("blur", self.blur == now.blur);
-        differ("surfaces", self.style == now.style);
+        let set = |theirs: Surface, mine: Surface| {
+            theirs.radius.is_none_or(|r| Some(r) == mine.radius)
+                && theirs.opacity.is_none_or(|o| Some(o) == mine.opacity)
+                && theirs.size.is_none_or(|z| Some(z) == mine.size)
+        };
+        differ(
+            "surfaces",
+            set(self.style.bar, now.style.bar)
+                && set(self.style.launcher, now.style.launcher)
+                && set(self.style.panel, now.style.panel)
+                && set(self.style.cards, now.style.cards)
+                && set(self.style.osd, now.style.osd),
+        );
         changed
     }
 
@@ -122,7 +134,16 @@ impl Theme {
         config.windows.motion = self.motion;
         config.windows.appear = self.appear;
         config.windows.blur = self.blur;
-        config.style = self.style;
+        let fill = |mine: &mut Surface, theirs: Surface| {
+            mine.radius = theirs.radius.or(mine.radius);
+            mine.opacity = theirs.opacity.or(mine.opacity);
+            mine.size = theirs.size.or(mine.size);
+        };
+        fill(&mut config.style.bar, self.style.bar);
+        fill(&mut config.style.launcher, self.style.launcher);
+        fill(&mut config.style.panel, self.style.panel);
+        fill(&mut config.style.cards, self.style.cards);
+        fill(&mut config.style.osd, self.style.osd);
     }
 
     fn write(&self, editor: &mut Editor) {
@@ -164,6 +185,7 @@ impl Theme {
                 None => editor.unset("windows", key),
             }
         }
+        // Only what the theme sets; a size or a list layout of your own stays.
         let surfaces: [(&str, Surface); 5] = [
             ("bar", self.style.bar),
             ("launcher", self.style.launcher),
@@ -173,21 +195,14 @@ impl Theme {
         ];
         for (name, surface) in surfaces {
             let path = ["style", name];
-            match surface.radius {
-                Some(radius) => editor.set_in(&path, "radius", i64::from(radius)),
-                None => editor.unset_in(&path, "radius"),
+            if let Some(radius) = surface.radius {
+                editor.set_in(&path, "radius", i64::from(radius));
             }
             for (key, value) in [("opacity", surface.opacity), ("size", surface.size)] {
-                match value {
-                    Some(value) => editor.set_in(&path, key, round(value)),
-                    None => editor.unset_in(&path, key),
+                if let Some(value) = value {
+                    editor.set_in(&path, key, round(value));
                 }
             }
-        }
-        if self.style.grid {
-            editor.set_in(&["style", "launcher"], "grid", true);
-        } else {
-            editor.unset_in(&["style", "launcher"], "grid");
         }
         for (key, value) in [
             ("motion", self.motion.map(Motion::key)),
@@ -254,12 +269,16 @@ mod tests {
         assert_eq!(config.style.bar.size, Some(0.9));
         assert_eq!(config.style.cards.radius, Some(2));
         assert_eq!(
-            config.style.launcher.radius, None,
-            "the theme's look, not what was there"
+            config.style.launcher.radius,
+            Some(30),
+            "what the theme doesn't set stays"
         );
+        assert_eq!(config.style.osd.opacity, Some(0.5));
+        let plain = Theme::parse("[theme]\nname = \"Plain\"\n").unwrap();
+        let mine = Theme::of(&config, "mine", None);
         assert!(
-            !editor.text().contains("[style.osd]"),
-            "an emptied table goes"
+            !plain.tweaks(&mine).contains(&"surfaces"),
+            "a theme without styles has none to differ"
         );
     }
 

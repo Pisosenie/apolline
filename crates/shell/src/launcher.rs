@@ -427,7 +427,10 @@ impl Launcher {
         }
         ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
         let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
-        entries.extend(fallbacks(query));
+        // Nothing found by name: run it, or look it up.
+        if entries.iter().all(|entry| entry.title.starts_with('=')) {
+            entries.extend(fallbacks(query));
+        }
         entries
     }
 
@@ -694,6 +697,22 @@ fn runnable(program: &str) -> bool {
     if program.is_empty() || program.contains('/') {
         return false;
     }
+    // Asked on every keystroke and every redraw, so the last answer is kept.
+    static LAST: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
+    if let Ok(last) = LAST.lock()
+        && let Some((asked, found)) = last.as_ref()
+        && asked == program
+    {
+        return *found;
+    }
+    let found = on_path(program);
+    if let Ok(mut last) = LAST.lock() {
+        *last = Some((program.to_owned(), found));
+    }
+    found
+}
+
+fn on_path(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|path| {
         std::env::split_paths(&path).any(|dir| {
             std::fs::metadata(dir.join(program)).is_ok_and(|meta| {
@@ -917,6 +936,14 @@ mod tests {
         let targets: Vec<Target> = launcher.entries().into_iter().map(|e| e.target).collect();
         assert!(targets.contains(&Target::Run("sh -c true".into())));
         assert_eq!(targets.last(), Some(&Target::Web("sh -c true".into())));
+        let _ = launcher.search("fire".into());
+        assert!(
+            launcher
+                .entries()
+                .iter()
+                .all(|e| !matches!(e.target, Target::Web(_))),
+            "something found by name, so no fallbacks"
+        );
     }
 
     #[test]

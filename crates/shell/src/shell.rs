@@ -1072,9 +1072,18 @@ impl Shell {
                 return Task::future(profile::restore(previous)).discard();
             }
             Message::Notify(mut notification) => {
-                // A new version of a card being answered keeps what's typed.
+                // A new version of a card being answered keeps what's typed, if it can still be
+                // answered.
                 self.popups.retain(|(n, _)| n.id != notification.id);
                 self.held.retain(|n| n.id != notification.id);
+                if notification.reply.is_none()
+                    && self
+                        .replying
+                        .as_ref()
+                        .is_some_and(|(id, _)| *id == notification.id)
+                {
+                    self.replying = None;
+                }
                 if notification.timeout == Some(notify::SHOWN_FOR) {
                     let seconds = u64::from(self.config.alerts.seconds);
                     notification.timeout = Some(Duration::from_secs(seconds));
@@ -1410,7 +1419,9 @@ impl Shell {
     }
 
     fn key(&mut self, key: Key, text: Option<&str>, captured: bool) -> Task<Message> {
-        if self.replying.is_some() && key == Key::Named(Named::Escape) {
+        // Escape drops the answer only while it's being typed; one kept as a draft while an
+        // overlay is open is the overlay's to close.
+        if self.replying.is_some() && self.overlay.is_none() && key == Key::Named(Named::Escape) {
             self.replying = None;
             return Task::none();
         }

@@ -150,8 +150,9 @@ pub struct Held {
     pub at: Point,
 }
 
-// Drawn with plain widgets; where things are is worked out here, so a press, a move and a drop
-// each come back already resolved: what was taken, and the board it makes.
+// Drawn with plain widgets. A press comes back as what was taken; the drop as where it was let go
+// and how wide the board was, for `dropped` to settle, since the press may not have been heard yet
+// when this view was made.
 #[allow(clippy::too_many_arguments)]
 pub fn view<'a, M: Clone + 'a>(
     board: Board,
@@ -161,7 +162,7 @@ pub fn view<'a, M: Clone + 'a>(
     held: Option<Held>,
     on_hold: fn(Option<Held>) -> M,
     on_move: fn(Point) -> M,
-    on_drop: fn(Option<Board>) -> M,
+    on_drop: fn(Point, f32) -> M,
 ) -> Element<'a, M> {
     responsive(move |size| {
         let width = size.width;
@@ -233,8 +234,6 @@ pub fn view<'a, M: Clone + 'a>(
             );
         }
         let before = chips(&board, label, width);
-        let taken = held.clone();
-        let original = board.clone();
         drag(
             stack(layers).width(Fill).height(tall),
             move |at| {
@@ -250,14 +249,7 @@ pub fn view<'a, M: Clone + 'a>(
                 )
             },
             on_move,
-            move |at| {
-                on_drop(
-                    taken
-                        .as_ref()
-                        .map(|holding| dropped(&original, &holding.name, at, label, width))
-                        .filter(|next| *next != original),
-                )
-            },
+            move |at| on_drop(at, width),
         )
         .into()
     })

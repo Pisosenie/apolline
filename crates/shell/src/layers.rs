@@ -85,6 +85,22 @@ impl Layers {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         let message = match message {
+            // The keyboard leaving is told to whichever surface was last clicked or opened, so
+            // while an answer holds it any window's word counts.
+            Message::LayerEvent(_, iced::Event::Window(window::Event::Unfocused))
+                if self.popups_hold.holds() =>
+            {
+                let Some((id, _)) = self.popups else {
+                    return Task::none();
+                };
+                let (held, nudge) =
+                    self.popups_felt(id, &iced::Event::Window(window::Event::Unfocused));
+                let next = match nudge {
+                    Some(Nudge::Unfocused) => self.update(Message::ReplyUnfocused),
+                    _ => self.fit_popups(),
+                };
+                return Task::batch([held, next]);
+            }
             Message::LayerEvent(id, event) if self.popups.is_some_and(|(p, _)| p == id) => {
                 let (held, nudge) = self.popups_felt(id, &event);
                 let next = match nudge {
