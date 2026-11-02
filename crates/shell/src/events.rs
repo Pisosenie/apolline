@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::{
-    DateTime, Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, TimeZone,
-    Utc, Weekday,
+    DateTime, Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime, Offset, TimeDelta,
+    TimeZone, Utc, Weekday,
 };
 use iced::Subscription;
 use iced::futures::{SinkExt, Stream};
@@ -334,6 +334,146 @@ const WINDOWS: [(&str, &str); 36] = [
     ("New Zealand Standard Time", "Pacific/Auckland"),
 ];
 
+// One STANDARD or DAYLIGHT part of a VTIMEZONE: from when, and the offsets either side of it.
+struct Observance {
+    start: NaiveDateTime,
+    from: i32,
+    to: i32,
+    rule: Option<Rule>,
+}
+
+// Outlook names its zones as it likes ("Customized Time Zone") and describes them in a VTIMEZONE.
+// Each such zone is matched to the IANA zone that keeps the same offsets through the year.
+fn zones(text: &str, year: i32) -> Vec<(String, chrono_tz::Tz)> {
+    let mut found = Vec::new();
+    let mut tzid: Option<String> = None;
+    let mut parts: Vec<Observance> = Vec::new();
+    let mut part: Option<Observance> = None;
+    for line in unfold(text) {
+        let Some((name, _, value)) = property(&line) else {
+            continue;
+        };
+        let value = value.trim();
+        let observance = ["STANDARD", "DAYLIGHT"]
+            .iter()
+            .any(|kind| value.eq_ignore_ascii_case(kind));
+        match (name.as_str(), part.as_mut()) {
+            ("BEGIN", _) if value.eq_ignore_ascii_case("VTIMEZONE") => {
+                tzid = None;
+                parts.clear();
+            }
+            ("BEGIN", None) if observance => {
+                part = Some(Observance {
+                    start: NaiveDateTime::MIN,
+                    from: 0,
+                    to: 0,
+                    rule: None,
+                });
+            }
+            ("END", Some(_)) if observance => parts.extend(part.take()),
+            ("END", None) if value.eq_ignore_ascii_case("VTIMEZONE") => {
+                if let Some(id) = tzid.take()
+                    && Zone::named(&id) == Zone::Floating
+                    && let Some(tz) = matching(&parts, year)
+                {
+                    found.push((id, tz));
+                }
+            }
+            ("TZID", None) => tzid = Some(value.to_owned()),
+            ("DTSTART", Some(part)) => {
+                if let Ok(start) = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S") {
+                    part.start = start;
+                }
+            }
+            ("TZOFFSETFROM", Some(part)) => part.from = utc_offset(value).unwrap_or(part.from),
+            ("TZOFFSETTO", Some(part)) => part.to = utc_offset(value).unwrap_or(part.to),
+            ("RRULE", Some(part)) => part.rule = rule(value),
+            _ => {}
+        }
+    }
+    found
+}
+
+// "+0100", "-0530", "+013045".
+fn utc_offset(value: &str) -> Option<i32> {
+    let (sign, digits) = match value.split_at_checked(1)? {
+        ("+", digits) => (1, digits),
+        ("-", digits) => (-1, digits),
+        _ => return None,
+    };
+    if !matches!(digits.len(), 4 | 6) || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let field = |at: usize| digits.get(at..at + 2).and_then(|d| d.parse::<i32>().ok());
+    Some(sign * (field(0)? * 3600 + field(2)? * 60 + field(4).unwrap_or(0)))
+}
+
+fn matching(parts: &[Observance], year: i32) -> Option<chrono_tz::Tz> {
+    let days: Vec<NaiveDateTime> = NaiveDate::from_ymd_opt(year, 1, 1)?
+        .iter_days()
+        .take_while(|day| day.year() == year)
+        .filter_map(|day| day.and_hms_opt(12, 0, 0))
+        .collect();
+    let ours: Vec<i32> = days
+        .iter()
+        .map(|at| offset_at(parts, *at))
+        .collect::<Option<_>>()?;
+    let theirs = |tz: &chrono_tz::Tz, at: &NaiveDateTime| {
+        tz.offset_from_utc_datetime(at).fix().local_minus_utc()
+    };
+    chrono_tz::TZ_VARIANTS
+        .iter()
+        .filter(|tz| theirs(tz, &days[14]) == ours[14] && theirs(tz, &days[195]) == ours[195])
+        .find(|tz| {
+            days.iter()
+                .zip(&ours)
+                .all(|(at, ours)| theirs(tz, at) == *ours)
+        })
+        .copied()
+}
+
+// The offset in force at a UTC time: the latest onset before it wins.
+fn offset_at(parts: &[Observance], at: NaiveDateTime) -> Option<i32> {
+    let mut latest: Option<(NaiveDateTime, i32)> = None;
+    for part in parts {
+        let onsets: Vec<NaiveDateTime> = match &part.rule {
+            Some(rule) => (at.year() - 1..=at.year())
+                .filter_map(|year| onset(part, rule, year))
+                .collect(),
+            None => vec![part.start],
+        };
+        for local in onsets {
+            let onset = local - TimeDelta::seconds(part.from.into());
+            if onset <= at && latest.is_none_or(|(seen, _)| onset > seen) {
+                latest = Some((onset, part.to));
+            }
+        }
+    }
+    latest
+        .map(|(_, to)| to)
+        .or_else(|| parts.iter().min_by_key(|p| p.start).map(|p| p.from))
+}
+
+// When a yearly change happens in a given year: "the last Sunday of October at 03:00".
+fn onset(part: &Observance, rule: &Rule, year: i32) -> Option<NaiveDateTime> {
+    if year < part.start.year() {
+        return None;
+    }
+    let month = rule.by_month.first().copied().unwrap_or(part.start.month());
+    let first = NaiveDate::from_ymd_opt(year, month, 1)?;
+    let day = match (rule.by_day.first(), rule.by_month_day.is_empty()) {
+        (Some((0, weekday)), false) => rule
+            .by_month_day
+            .iter()
+            .filter_map(|d| month_day(first, *d))
+            .find(|d| d.weekday() == *weekday)?,
+        (Some((nth, weekday)), _) => *nth_weekdays(first, *nth, *weekday).first()?,
+        (None, false) => month_day(first, rule.by_month_day[0])?,
+        (None, true) => first.with_day(part.start.day())?,
+    };
+    Some(day.and_time(part.start.time()))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Moment {
     at: NaiveDateTime,
@@ -391,7 +531,10 @@ struct Event {
 }
 
 pub fn agenda(texts: &[String], today: NaiveDate) -> Agenda {
-    let mut events: Vec<Event> = texts.iter().flat_map(|text| parse(text)).collect();
+    let mut events: Vec<Event> = texts
+        .iter()
+        .flat_map(|text| parse(text, today.year()))
+        .collect();
     // A moved or cancelled meeting replaces that one day of its series.
     let moved: Vec<(String, Moment)> = events
         .iter()
@@ -861,15 +1004,23 @@ fn month_day(any: NaiveDate, day: i32) -> Option<NaiveDate> {
     last.with_day((last.day() as i32 + day + 1).try_into().ok()?)
 }
 
-fn parse(text: &str) -> Vec<Event> {
+fn parse(text: &str, year: i32) -> Vec<Event> {
+    let zones = zones(text, year);
     let mut events = Vec::new();
     let mut current: Option<Event> = None;
     // Alarms and other parts nested in an event carry their own SUMMARY and UID.
     let mut inner = 0usize;
     for line in unfold(text) {
-        let Some((name, params, value)) = property(&line) else {
+        let Some((name, mut params, value)) = property(&line) else {
             continue;
         };
+        for (key, value) in &mut params {
+            if key == "TZID"
+                && let Some((_, tz)) = zones.iter().find(|(id, _)| id == value)
+            {
+                *value = tz.name().to_owned();
+            }
+        }
         let component = value.trim();
         match (name.as_str(), current.as_mut()) {
             ("BEGIN", None) if component.eq_ignore_ascii_case("VEVENT") => {
@@ -905,6 +1056,72 @@ fn parse(text: &str) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_outlook_zone_reads_as_the_zone_it_describes() {
+        let ics = "BEGIN:VCALENDAR\r
+BEGIN:VTIMEZONE\r
+TZID:Customized Time Zone\r
+BEGIN:STANDARD\r
+DTSTART:16010101T030000\r
+TZOFFSETFROM:+0200\r
+TZOFFSETTO:+0100\r
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10\r
+END:STANDARD\r
+BEGIN:DAYLIGHT\r
+DTSTART:16010101T020000\r
+TZOFFSETFROM:+0100\r
+TZOFFSETTO:+0200\r
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3\r
+END:DAYLIGHT\r
+END:VTIMEZONE\r
+BEGIN:VTIMEZONE\r
+TZID:(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi\r
+BEGIN:STANDARD\r
+DTSTART:16010101T000000\r
+TZOFFSETFROM:+0530\r
+TZOFFSETTO:+0530\r
+END:STANDARD\r
+END:VTIMEZONE\r
+BEGIN:VEVENT\r
+UID:summer\r
+DTSTART;TZID=Customized Time Zone:20260715T100000\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:winter\r
+DTSTART;TZID=Customized Time Zone:20261215T100000\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:delhi\r
+DTSTART;TZID=\"(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi\":20261105T150000\r
+END:VEVENT\r
+END:VCALENDAR\r
+";
+        let utc = |uid: &str| {
+            parse(ics, 2026)
+                .into_iter()
+                .find(|e| e.uid == uid)
+                .and_then(|e| e.start)
+                .map(|start| start.in_zone(Zone::Utc).format("%H:%M").to_string())
+        };
+        assert_eq!(utc("summer").as_deref(), Some("08:00"), "summer time");
+        assert_eq!(utc("winter").as_deref(), Some("09:00"));
+        assert_eq!(utc("delhi").as_deref(), Some("09:30"));
+
+        let zone = zones(ics, 2026)[0].1;
+        let berlin: chrono_tz::Tz = "Europe/Berlin".parse().unwrap();
+        for day in day(2026, 1, 1).iter_days().take(365) {
+            let noon = day.and_hms_opt(12, 0, 0).unwrap();
+            assert_eq!(
+                zone.offset_from_utc_datetime(&noon).fix(),
+                berlin.offset_from_utc_datetime(&noon).fix(),
+                "changes on the same days as Berlin: {day}"
+            );
+        }
+        assert_eq!(utc_offset("-0330"), Some(-12600));
+        assert_eq!(utc_offset("+013045"), Some(5445));
+        assert_eq!(utc_offset("0100"), None);
+    }
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
