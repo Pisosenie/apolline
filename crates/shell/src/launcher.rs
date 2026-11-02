@@ -66,7 +66,8 @@ struct Entry<'a> {
 }
 
 enum Pic<'a> {
-    App(Option<&'a Picture>),
+    // The app's icon, else the first letter of its name.
+    App(Option<&'a Picture>, Option<&'a str>),
     Icon(Icon),
     Glyph(&'a str),
 }
@@ -318,7 +319,10 @@ impl Launcher {
                         Entry {
                             title: window.title.clone(),
                             about: format!("Open window · {name}"),
-                            picture: Pic::App(app.and_then(|app| app.icon.as_ref())),
+                            picture: Pic::App(
+                                app.and_then(|app| app.icon.as_ref()),
+                                app.map(|app| app.name.as_str()),
+                            ),
                             target: Target::Window(window.id),
                             game: false,
                         },
@@ -374,6 +378,20 @@ impl Launcher {
             }
         }
         for app in &self.apps {
+            for (name, exec) in &app.actions {
+                if let Some(score) = apps::action_score(query, app, name) {
+                    ranked.push((
+                        score,
+                        Entry {
+                            title: name.clone(),
+                            about: app.name.clone(),
+                            picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
+                            target: Target::App(exec.clone()),
+                            game: false,
+                        },
+                    ));
+                }
+            }
             if let Some(score) = apps::score(query, app) {
                 let bonus = if query.is_empty() && app.game { 1 } else { 0 };
                 ranked.push((
@@ -381,7 +399,7 @@ impl Launcher {
                     Entry {
                         title: app.name.clone(),
                         about: app.about.clone(),
-                        picture: Pic::App(app.icon.as_ref()),
+                        picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
                         target: Target::App(app.exec.clone()),
                         game: app.game,
                     },
@@ -531,15 +549,17 @@ impl Launcher {
     fn tile<'a>(&self, index: usize, entry: &Entry<'a>, palette: Palette) -> Element<'a, Message> {
         let selected = index == self.selected;
         let picture: Element<'a, Message> = match entry.picture {
-            Pic::App(Some(Picture::Raster(path))) => image(image::Handle::from_path(path))
+            Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(44)
                 .height(44)
                 .into(),
-            Pic::App(Some(Picture::Vector(path))) => svg(svg::Handle::from_path(path))
+            Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
                 .width(44)
                 .height(44)
                 .into(),
-            Pic::App(None) => container(letter(&entry.title, palette)).center(44).into(),
+            Pic::App(None, name) => container(letter(name.unwrap_or(&entry.title), palette))
+                .center(44)
+                .into(),
             Pic::Glyph(glyph) => container(text(glyph).size(30)).center(44).into(),
             Pic::Icon(glyph) => container(icon(glyph, 22.0, neutral::TEXT))
                 .center(44)
@@ -569,15 +589,15 @@ impl Launcher {
     fn row<'a>(&self, index: usize, entry: &Entry<'a>, palette: Palette) -> Element<'a, Message> {
         let selected = index == self.selected;
         let picture: Element<'a, Message> = match entry.picture {
-            Pic::App(Some(Picture::Raster(path))) => image(image::Handle::from_path(path))
+            Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(32)
                 .height(32)
                 .into(),
-            Pic::App(Some(Picture::Vector(path))) => svg(svg::Handle::from_path(path))
+            Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
                 .width(32)
                 .height(32)
                 .into(),
-            Pic::App(None) => letter(&entry.title, palette),
+            Pic::App(None, name) => letter(name.unwrap_or(&entry.title), palette),
             Pic::Glyph(glyph) => container(text(glyph).size(22)).center(32).into(),
             Pic::Icon(glyph) => container(icon(glyph, 17.0, neutral::TEXT))
                 .center(32)
@@ -738,6 +758,27 @@ mod tests {
     }
 
     #[test]
+    fn an_apps_actions_show_when_asked_for() {
+        let mut launcher = launcher();
+        launcher.set_apps(apps::sample());
+        let private = Some(Target::App("firefox --private-window".into()));
+        let _ = launcher.search("private".into());
+        assert_eq!(launcher.chosen(), private);
+        let _ = launcher.search("firefox priv".into());
+        assert_eq!(launcher.chosen(), private);
+        let _ = launcher.search("firefox".into());
+        assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
+        let _ = launcher.search(String::new());
+        assert!(
+            launcher
+                .entries()
+                .iter()
+                .all(|e| !e.title.contains("Window")),
+            "not in the list before typing"
+        );
+    }
+
+    #[test]
     fn installed_settings_replace_the_built_in_action() {
         let mut launcher = launcher();
         let mut apps = apps::sample();
@@ -750,6 +791,7 @@ mod tests {
             game: false,
             keywords: String::new(),
             class: None,
+            actions: Vec::new(),
         });
         launcher.set_apps(apps);
         let _ = launcher.search("sett".into());

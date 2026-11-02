@@ -11,6 +11,8 @@ pub struct App {
     pub game: bool,
     pub keywords: String,
     pub class: Option<String>,
+    // What the entry offers besides starting it, like a private window: (name, command).
+    pub actions: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,13 +73,24 @@ pub fn sample() -> Vec<App> {
         game,
         keywords: String::new(),
         class: None,
+        actions: Vec::new(),
+    };
+    let firefox = App {
+        actions: vec![
+            ("New Window".into(), "firefox --new-window".into()),
+            (
+                "New Private Window".into(),
+                "firefox --private-window".into(),
+            ),
+        ],
+        ..app("Firefox", "Web Browser", false)
     };
     vec![
         app("Baldur's Gate 3", "Game", true),
         app("Counter-Strike 2", "Game", true),
         app("Hades II", "Game", true),
         app("Discord", "Internet Messenger", false),
-        app("Firefox", "Web Browser", false),
+        firefox,
         app("Files", "File Manager", false),
         app("Foot", "Terminal", false),
         app("Obsidian", "Notes", false),
@@ -89,25 +102,7 @@ pub fn sample() -> Vec<App> {
 }
 
 fn parse(id: &str, text: &str) -> Option<App> {
-    let field = |want: &str| -> Option<String> {
-        let mut in_entry = false;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.starts_with('[') {
-                in_entry = line == "[Desktop Entry]";
-                continue;
-            }
-            if !in_entry {
-                continue;
-            }
-            if let Some((key, value)) = line.split_once('=')
-                && key.trim() == want
-            {
-                return Some(value.trim().to_owned());
-            }
-        }
-        None
-    };
+    let field = |want: &str| section(text, "[Desktop Entry]", want);
     let flag = |value: Option<String>| value.as_deref() == Some("true");
 
     if field("Type").as_deref() != Some("Application")
@@ -144,7 +139,38 @@ fn parse(id: &str, text: &str) -> Option<App> {
         game,
         keywords: field("Keywords").unwrap_or_default().replace(';', " "),
         class: field("StartupWMClass"),
+        actions: field("Actions")
+            .unwrap_or_default()
+            .split(';')
+            .filter(|action| !action.trim().is_empty())
+            .filter_map(|action| {
+                let header = format!("[Desktop Action {}]", action.trim());
+                let exec = clean_exec(&section(text, &header, "Exec")?);
+                Some((section(text, &header, "Name")?, exec)).filter(|(_, e)| !e.is_empty())
+            })
+            .collect(),
     })
+}
+
+// A key's value in one [section] of a desktop file.
+fn section(text: &str, header: &str, want: &str) -> Option<String> {
+    let mut inside = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            inside = line == header;
+            continue;
+        }
+        if !inside {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=')
+            && key.trim() == want
+        {
+            return Some(value.trim().to_owned());
+        }
+    }
+    None
 }
 
 fn clean_exec(exec: &str) -> String {
@@ -267,6 +293,30 @@ pub fn score(query: &str, app: &App) -> Option<u32> {
     rank(query, &app.name, &extra)
 }
 
+// An app's action shows only when asked for: by its own name ("private"), below the apps, or
+// after the app's ("firefox priv"), first.
+pub fn action_score(query: &str, app: &App, action: &str) -> Option<u32> {
+    let query = query.trim().to_lowercase();
+    if query.len() < 3 {
+        return None;
+    }
+    let app_name = app.name.to_lowercase();
+    let after_app = app_name
+        .split_whitespace()
+        .chain([app.id.as_str()])
+        .find_map(|word| query.strip_prefix(&word.to_lowercase()))
+        .map(str::trim)
+        .filter(|rest| !rest.is_empty());
+    if let Some(rest) = after_app
+        && rank(rest, action, "").is_some_and(|score| score >= 300)
+    {
+        return Some(1100);
+    }
+    rank(&query, action, "")
+        .filter(|score| *score >= 300)
+        .map(|score| score - 200)
+}
+
 pub fn rank(query: &str, name: &str, extra: &str) -> Option<u32> {
     let query = query.trim().to_lowercase();
     if query.is_empty() {
@@ -335,10 +385,21 @@ Categories=Game;
 
     #[test]
     fn actions_do_not_override_the_main_entry() {
-        let text = "[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox %u\n\n[Desktop Action new-window]\nName=New Window\nExec=firefox --new-window %u\n";
+        let text = "[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox %u\nActions=new-window;private;\n\n[Desktop Action new-window]\nName=New Window\nExec=firefox --new-window %u\n\n[Desktop Action private]\nName=New Private Window\nExec=firefox --private-window %u\n\n[Desktop Action unlisted]\nName=Hidden\nExec=firefox --x\n";
         let app = parse("firefox", text).unwrap();
         assert_eq!(app.name, "Firefox");
         assert_eq!(app.exec, "firefox");
+        assert_eq!(
+            app.actions,
+            [
+                ("New Window".to_owned(), "firefox --new-window".to_owned()),
+                (
+                    "New Private Window".to_owned(),
+                    "firefox --private-window".to_owned()
+                ),
+            ],
+            "only the ones the entry lists"
+        );
     }
 
     #[test]
