@@ -34,6 +34,19 @@ pub struct Occurrence {
     pub call: Option<Arc<str>>,
     // When a timed event begins and ends, in local time.
     span: Option<(NaiveDateTime, NaiveDateTime)>,
+    // How long before it starts its own alarm goes off.
+    alarm: Option<TimeDelta>,
+}
+
+// A meeting with a call and no alarm of its own is still worth a word this long before.
+const MEETING_LEAD: TimeDelta = TimeDelta::minutes(5);
+// Alarms further ahead than this are the calendar's business, not a card's.
+const LONGEST_LEAD: TimeDelta = TimeDelta::hours(2);
+
+impl Occurrence {
+    pub fn begins(&self) -> Option<NaiveDateTime> {
+        self.span.map(|(begins, _)| begins)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,6 +62,23 @@ impl Agenda {
 
     pub fn busy(&self, day: NaiveDate) -> bool {
         self.days.contains_key(&day)
+    }
+
+    // What to remind about: at its own alarm, or a few minutes before a meeting with a call.
+    pub fn due(&self, now: NaiveDateTime) -> impl Iterator<Item = &Occurrence> {
+        let tomorrow = now.date().succ_opt().unwrap_or(now.date());
+        self.on(now.date())
+            .iter()
+            .chain(self.on(tomorrow))
+            .filter(move |o| {
+                let (Some(begins), Some(lead)) = (
+                    o.begins(),
+                    o.alarm.or(o.call.is_some().then_some(MEETING_LEAD)),
+                ) else {
+                    return false;
+                };
+                begins - lead <= now && now < begins
+            })
     }
 
     // What's on now, or what starts within half an hour, for the bar.
@@ -641,6 +671,7 @@ struct Event {
     summary: Arc<str>,
     location: Option<Arc<str>>,
     call: Option<Arc<str>>,
+    alarm: Option<TimeDelta>,
     start: Option<Moment>,
     end: Option<Moment>,
     // How long it lasts, for events that give a length instead of an end.
@@ -748,6 +779,7 @@ fn occurrence(
         location: event.location.clone(),
         call: event.call.clone(),
         span,
+        alarm: event.alarm,
     }
 }
 
@@ -841,6 +873,26 @@ fn moment(params: &[(String, String)], value: &str) -> Option<Moment> {
         zone,
         whole_day: false,
     })
+}
+
+// How long before the start an alarm's trigger goes off: "-PT15M" is fifteen minutes. Triggers
+// at a set time, after the start or from the end aren't reminders of a start.
+fn lead(params: &[(String, String)], value: &str) -> Option<TimeDelta> {
+    let param = |key: &str| {
+        params
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+    if param("VALUE") == Some("DATE-TIME") || param("RELATED") == Some("END") {
+        return None;
+    }
+    let value = value.trim();
+    let lead = match value.strip_prefix('-') {
+        Some(before) => duration(before)?,
+        None => duration(value).filter(|d| d.is_zero())?,
+    };
+    (lead <= LONGEST_LEAD).then_some(lead)
 }
 
 // "PT1H30M", "P3D", "P1W": a length as RFC 5545 writes it.
@@ -1132,6 +1184,7 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
     let mut current: Option<Event> = None;
     // Alarms and other parts nested in an event carry their own SUMMARY and UID.
     let mut inner = 0usize;
+    let mut in_alarm = false;
     for line in unfold(text) {
         let Some((name, mut params, value)) = property(&line) else {
             continue;
@@ -1149,8 +1202,19 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
                 current = Some(Event::default());
                 inner = 0;
             }
-            ("BEGIN", Some(_)) => inner += 1,
-            ("END", Some(_)) if inner > 0 => inner -= 1,
+            ("BEGIN", Some(_)) => {
+                in_alarm = inner == 0 && component.eq_ignore_ascii_case("VALARM");
+                inner += 1;
+            }
+            ("END", Some(_)) if inner > 0 => {
+                inner -= 1;
+                in_alarm = in_alarm && inner > 0;
+            }
+            ("TRIGGER", Some(event)) if in_alarm && inner == 1 => {
+                if let Some(lead) = lead(&params, value) {
+                    event.alarm = Some(event.alarm.map_or(lead, |known| known.min(lead)));
+                }
+            }
             ("END", Some(_)) if component.eq_ignore_ascii_case("VEVENT") => {
                 events.extend(current.take());
             }
@@ -1190,6 +1254,52 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reminders_come_at_the_alarm_or_just_before_a_call() {
+        assert_eq!(lead(&[], "-PT15M"), Some(TimeDelta::minutes(15)));
+        assert_eq!(lead(&[], "PT0S"), Some(TimeDelta::zero()), "at the start");
+        assert_eq!(lead(&[], "PT5M"), None, "after it started");
+        assert_eq!(lead(&[], "-P1D"), None, "a day ahead is the calendar's");
+        let at = [("VALUE".to_owned(), "DATE-TIME".to_owned())];
+        assert_eq!(lead(&at, "20261102T090000Z"), None);
+
+        let ics = "BEGIN:VEVENT\r
+UID:dentist\r
+SUMMARY:Dentist\r
+DTSTART:20261102T100000\r
+BEGIN:VALARM\r
+ACTION:DISPLAY\r
+TRIGGER:-PT30M\r
+END:VALARM\r
+BEGIN:VALARM\r
+TRIGGER:-PT10M\r
+END:VALARM\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:review\r
+SUMMARY:Design review\r
+DTSTART:20261102T110000\r
+LOCATION:https://meet.google.com/abc-defg-hij\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:lunch\r
+SUMMARY:Lunch\r
+DTSTART:20261102T120000\r
+END:VEVENT\r
+";
+        let agenda = agenda(&[ics.to_owned()], day(2026, 11, 2));
+        let due = |h, m| -> Vec<String> {
+            let now = day(2026, 11, 2).and_hms_opt(h, m, 0).unwrap();
+            agenda.due(now).map(|o| o.summary.to_string()).collect()
+        };
+        assert!(due(9, 45).is_empty(), "the nearer of its two alarms counts");
+        assert_eq!(due(9, 50), ["Dentist"]);
+        assert!(due(10, 0).is_empty(), "begun");
+        assert!(due(10, 54).is_empty());
+        assert_eq!(due(10, 55), ["Design review"], "five minutes before a call");
+        assert!(due(11, 58).is_empty(), "no alarm, no call, no card");
+    }
 
     #[test]
     fn a_video_call_is_found_where_calendars_put_it() {

@@ -21,6 +21,7 @@ const CONFIG_SHOWN_FOR: Duration = Duration::from_secs(12);
 pub const CONFIG_CARD: u32 = 1 << 31;
 pub const SHOT_CARD: u32 = CONFIG_CARD + 1;
 pub const BATTERY_CARD: u32 = CONFIG_CARD + 2;
+pub const REMINDER_CARD: u32 = CONFIG_CARD + 3;
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
 
@@ -170,6 +171,53 @@ pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
         body: format!("{}% left{left}. Time to plug in.", battery.percent),
         urgency: Urgency::Critical,
         timeout: None,
+        received: Instant::now(),
+    }
+}
+
+// Something from the calendar about to start; a Join button when it has a call. The button's key
+// is the link itself.
+pub fn reminder_card(
+    occurrence: &crate::events::Occurrence,
+    now: chrono::NaiveDateTime,
+) -> Notification {
+    let begins = occurrence.begins().unwrap_or(now);
+    let wait = ((begins - now).num_seconds() + 59) / 60;
+    let mut said = vec![if wait > 0 {
+        format!("In {wait} min")
+    } else {
+        "Now".to_owned()
+    }];
+    if let (Some(start), Some(end)) = (occurrence.start, occurrence.end) {
+        said.push(format!(
+            "{} – {}",
+            start.format("%H:%M"),
+            end.format("%H:%M")
+        ));
+    }
+    said.extend(occurrence.location.as_deref().map(str::to_owned));
+    // Gone ten minutes into the meeting, by when it's been answered or missed.
+    let shown_for = (begins - now + chrono::TimeDelta::minutes(10))
+        .to_std()
+        .unwrap_or(Duration::from_secs(60));
+    Notification {
+        id: REMINDER_CARD,
+        app: "Calendar".into(),
+        desktop: None,
+        actions: occurrence
+            .call
+            .iter()
+            .map(|link| (link.to_string(), "Join".to_owned()))
+            .collect(),
+        image: None,
+        progress: None,
+        transient: false,
+        resident: false,
+        reply: None,
+        summary: occurrence.summary.to_string(),
+        body: said.join(" · "),
+        urgency: Urgency::Normal,
+        timeout: Some(shown_for),
         received: Instant::now(),
     }
 }

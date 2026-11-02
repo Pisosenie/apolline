@@ -66,8 +66,14 @@ pub fn face<'a>(
     palette: Palette,
     size: f32,
 ) -> Element<'a, Message> {
-    if notification.id == crate::notify::BATTERY_CARD {
-        return container(icon(Icon::BatteryWarning, size * 0.5, palette.accent))
+    let glyph = match notification.id {
+        crate::notify::BATTERY_CARD => Some(Icon::BatteryWarning),
+        crate::notify::REMINDER_CARD if notification.actions.is_empty() => Some(Icon::Bell),
+        crate::notify::REMINDER_CARD => Some(Icon::Video),
+        _ => None,
+    };
+    if let Some(glyph) = glyph {
+        return container(icon(glyph, size * 0.5, palette.accent))
             .center(size)
             .style(style::pill(palette.accent_soft))
             .into();

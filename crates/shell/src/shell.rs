@@ -212,6 +212,8 @@ pub struct Shell {
     replying: Option<(u32, String)>,
     // The low battery mark already warned about, until the charger goes in.
     warned: Option<u8>,
+    // Calendar reminders already shown, by when and what, so each comes once.
+    reminded: Vec<(chrono::NaiveDateTime, std::sync::Arc<str>)>,
     net_note: Option<String>,
     net_busy: bool,
     apps: Vec<App>,
@@ -301,6 +303,7 @@ impl Shell {
             pin: String::new(),
             replying: None,
             warned: None,
+            reminded: Vec::new(),
             joining: None,
             net_note: None,
             net_busy: false,
@@ -550,8 +553,9 @@ impl Shell {
                 }
                 let triggers = self.triggers();
                 let rotate = self.rotate();
+                let remind = self.remind();
                 self.publish();
-                return Task::batch([self.expire(), controls, triggers, rotate]);
+                return Task::batch([self.expire(), controls, triggers, rotate, remind]);
             }
             Message::CalendarMonth(month) => {
                 self.month = month;
@@ -1132,6 +1136,12 @@ impl Shell {
                     self.history.retain(|n| n.id != id);
                     return notify::replied(id, typed);
                 }
+            }
+            // A calendar reminder's Join button carries its link as the key.
+            Message::Invoke(notify::REMINDER_CARD, key) => {
+                self.forget(notify::REMINDER_CARD);
+                self.history.retain(|n| n.id != notify::REMINDER_CARD);
+                return self.update(Message::OpenLink(key));
             }
             Message::Invoke(id, key) => {
                 let resident = self.popups.iter().any(|(n, _)| n.id == id && n.resident);
@@ -2076,6 +2086,28 @@ impl Shell {
                 })
             })
             .map(|window| window.id)
+    }
+
+    fn remind(&mut self) -> Task<Message> {
+        let now = self.now.naive_local();
+        self.reminded
+            .retain(|(begins, _)| *begins > now - chrono::TimeDelta::hours(1));
+        let Some(due) = self
+            .agenda
+            .due(now)
+            .find(|o| {
+                !self
+                    .reminded
+                    .iter()
+                    .any(|(begins, what)| Some(*begins) == o.begins() && *what == o.summary)
+            })
+            .cloned()
+        else {
+            return Task::none();
+        };
+        self.reminded
+            .push((due.begins().unwrap_or(now), due.summary.clone()));
+        self.update(Message::Notify(notify::reminder_card(&due, now)))
     }
 
     fn forget(&mut self, id: u32) {
