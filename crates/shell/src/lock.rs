@@ -163,6 +163,7 @@ impl Lock {
             battery: sample.then_some(Battery {
                 percent: 82,
                 charging: false,
+                left: Some(190),
             }),
             track: sample.then(|| Track::sample("Night Drive", "Low Tide")),
             niri: apolline_niri::State::default(),

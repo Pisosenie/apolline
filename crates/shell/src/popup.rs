@@ -66,6 +66,12 @@ pub fn face<'a>(
     palette: Palette,
     size: f32,
 ) -> Element<'a, Message> {
+    if notification.id == crate::notify::BATTERY_CARD {
+        return container(icon(Icon::BatteryWarning, size * 0.5, palette.accent))
+            .center(size)
+            .style(style::pill(palette.accent_soft))
+            .into();
+    }
     match &notification.image {
         Some(picture) => image(picture.clone())
             .width(size)

@@ -20,6 +20,7 @@ const CONFIG_SHOWN_FOR: Duration = Duration::from_secs(12);
 
 pub const CONFIG_CARD: u32 = 1 << 31;
 pub const SHOT_CARD: u32 = CONFIG_CARD + 1;
+pub const BATTERY_CARD: u32 = CONFIG_CARD + 2;
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
 
@@ -144,6 +145,33 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         timeout: Some(CONFIG_SHOWN_FOR),
         received: Instant::now(),
     })
+}
+
+// Running low on battery; it stays until it's dismissed or the charger goes in.
+pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
+    let left = battery
+        .time_left()
+        .map_or_else(String::new, |left| format!(", about {left}"));
+    Notification {
+        id: BATTERY_CARD,
+        app: "Battery".into(),
+        desktop: None,
+        actions: Vec::new(),
+        image: None,
+        progress: None,
+        transient: false,
+        resident: false,
+        reply: None,
+        summary: if mark <= 5 {
+            "Battery almost empty".into()
+        } else {
+            "Battery low".into()
+        },
+        body: format!("{}% left{left}. Time to plug in.", battery.percent),
+        urgency: Urgency::Critical,
+        timeout: None,
+        received: Instant::now(),
+    }
 }
 
 pub fn shot_card(path: &str) -> Notification {

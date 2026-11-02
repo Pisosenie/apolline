@@ -243,8 +243,14 @@ fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
             ]
             .spacing(8)
             .align_y(Alignment::Center);
-            if battery.charging {
-                line = line.push(text("charging").size(12).color(style::color(style::FAINT)));
+            let said = match (battery.charging, battery.time_left()) {
+                (true, Some(left)) => Some(format!("charging, full in {left}")),
+                (true, None) => Some("charging".to_owned()),
+                (false, Some(left)) => Some(format!("{left} left")),
+                (false, None) => None,
+            };
+            if let Some(said) = said {
+                line = line.push(text(said).size(12).color(style::color(style::FAINT)));
             }
             line.into()
         }

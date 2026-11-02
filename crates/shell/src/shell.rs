@@ -209,6 +209,8 @@ pub struct Shell {
     pin: String,
     // An answer being typed on a notification card, and to which.
     replying: Option<(u32, String)>,
+    // The low battery mark already warned about, until the charger goes in.
+    warned: Option<u8>,
     net_note: Option<String>,
     net_busy: bool,
     apps: Vec<App>,
@@ -297,6 +299,7 @@ impl Shell {
             asking: None,
             pin: String::new(),
             replying: None,
+            warned: None,
             joining: None,
             net_note: None,
             net_busy: false,
@@ -957,7 +960,20 @@ impl Shell {
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
             Message::Battery(battery) => {
                 self.system.get_or_insert_default().battery = battery;
-                return self.triggers();
+                let low = power::low(battery);
+                let warn = match (low, battery) {
+                    (Some(mark), Some(battery)) if self.warned.is_none_or(|w| mark < w) => {
+                        self.update(Message::Notify(notify::battery_card(mark, battery)))
+                    }
+                    _ => Task::none(),
+                };
+                // Plugged in: the warning goes, and comes back on the next way down.
+                if low.is_none() && self.warned.is_some() {
+                    self.forget(notify::BATTERY_CARD);
+                    self.history.retain(|n| n.id != notify::BATTERY_CARD);
+                }
+                self.warned = low;
+                return Task::batch([warn, self.triggers()]);
             }
             Message::Media(media) => self.system.get_or_insert_default().media = media,
             Message::Boosted(previous) if self.current().is_some_and(|m| m.performance) => {

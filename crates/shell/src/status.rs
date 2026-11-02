@@ -30,6 +30,7 @@ impl Status {
             battery: Some(Battery {
                 percent: 82,
                 charging: false,
+                left: Some(190),
             }),
             media: media.map(|(title, artist)| Track::sample(title, artist)),
         }
