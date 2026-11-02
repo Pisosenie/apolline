@@ -126,7 +126,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   ones, headphone battery. They follow NetworkManager's and BlueZ's signals instead of asking every few
   seconds. Tried against fakes (`tools/fake-bus.sh`); a run with real radios is still to come.
 - A click on the clock: the month, today's weather from Open-Meteo, events from ICS files and
-  https/webcal links — done, no account sign-in. CalDAV is next.
+  https/webcal links, and CalDAV with the password in the Secret Service — done. Tried against
+  Radicale and GNOME Keyring; Nextcloud and Fastmail are still to come.
 - Capture: screenshots, a color picker, screen recording and marks on a screenshot (arrows, boxes, pen,
   marker, text, numbered steps, hidden parts) are done; "save the last 30 seconds" is next.
 - A bar module of your own — done (`[[module]]`: command, every, click).
