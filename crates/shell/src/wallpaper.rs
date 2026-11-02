@@ -141,6 +141,27 @@ pub async fn load(name: String) -> Result<Handle, String> {
         .map_err(|err| err.to_string())?
 }
 
+// Soft and blurred, for behind the lock screen: blurred small, since it's scaled up anyway.
+pub async fn load_blurred(name: String) -> Result<Handle, String> {
+    let decode = move || {
+        let source = resolve(&name);
+        let image = match &source {
+            Source::File(path) => {
+                ::image::open(path).map_err(|err| format!("{}: {err}", path.display()))
+            }
+            Source::Bundled(name, bytes) => {
+                ::image::load_from_memory(bytes).map_err(|err| format!("{name}: {err}"))
+            }
+        }?;
+        let small = image.thumbnail(960, 960).fast_blur(14.0).to_rgba8();
+        let (width, height) = small.dimensions();
+        Ok(Handle::from_rgba(width, height, small.into_raw()))
+    };
+    tokio::task::spawn_blocking(decode)
+        .await
+        .map_err(|err| err.to_string())?
+}
+
 pub async fn thumbnail(name: String) -> Option<Handle> {
     let decode = move || {
         let source = resolve(&name);

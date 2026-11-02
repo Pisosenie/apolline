@@ -188,7 +188,11 @@ impl Lock {
             config,
         };
         let name = lock.config.wallpaper(mode).to_owned();
-        let load = Task::perform(wallpaper::load(name), Message::Wallpaper);
+        let load = if lock.config.lock.blur {
+            Task::perform(wallpaper::load_blurred(name), Message::Wallpaper)
+        } else {
+            Task::perform(wallpaper::load(name), Message::Wallpaper)
+        };
         let network = if sample { Task::none() } else { read_network() };
         (lock, Task::batch([load, network, focus(FIELD)]))
     }
@@ -386,9 +390,20 @@ impl Lock {
         ]
         .spacing(4);
 
+        let centered = self.config.lock.centered;
+        let clock = if centered {
+            clock.align_x(Alignment::Center)
+        } else {
+            clock
+        };
         let left = column![clock, space().height(36), self.field(palette), self.hint()]
             .spacing(12)
             .max_width(560);
+        let left = if centered {
+            left.align_x(Alignment::Center)
+        } else {
+            left
+        };
 
         let mut right = column![].spacing(14).align_x(Alignment::End);
         let line = |glyph: Option<Icon>, words: &str| {
@@ -430,19 +445,31 @@ impl Lock {
             );
         }
 
-        let bottom = row![left, space::horizontal(), right]
-            .align_y(Alignment::End)
-            .padding(iced::Padding::new(88.0).top(0.0));
-
-        container(stack![
-            picture,
-            shade,
+        // In the middle: the clock and the password at the centre, the rest along the bottom.
+        let body: Element<'_, Message> = if centered {
+            column![
+                top,
+                space::vertical(),
+                container(left).center_x(Fill),
+                space::vertical(),
+                row![space::horizontal(), right].padding(iced::Padding::new(40.0).top(0.0)),
+            ]
+            .width(Fill)
+            .height(Fill)
+            .into()
+        } else {
+            let bottom = row![left, space::horizontal(), right]
+                .align_y(Alignment::End)
+                .padding(iced::Padding::new(88.0).top(0.0));
             column![top, space::vertical(), bottom]
                 .width(Fill)
-                .height(Fill),
-        ])
-        .style(|_| container::background(style::color(neutral::ink())))
-        .into()
+                .height(Fill)
+                .into()
+        };
+
+        container(stack![picture, shade, body])
+            .style(|_| container::background(style::color(neutral::ink())))
+            .into()
     }
 
     fn mode_pill(&self, palette: Palette) -> Option<Element<'_, Message>> {

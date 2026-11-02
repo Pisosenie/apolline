@@ -1,5 +1,7 @@
 use crate::edit::accent_text;
-use crate::{Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Motion, Styles, Surface};
+use crate::{
+    Accent, Appear, Bar, Blur, Config, Edge, Editor, Layout, Lock, Motion, Styles, Surface,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
@@ -18,6 +20,7 @@ pub struct Theme {
     pub blur: Option<Blur>,
     // Each surface's size, corners and glass, and the launcher as a list or a grid.
     pub style: Styles,
+    pub lock: Lock,
 }
 
 impl Theme {
@@ -49,6 +52,7 @@ impl Theme {
             appear: config.windows.appear,
             blur: config.windows.blur,
             style: config.style,
+            lock: config.lock,
         }
     }
 
@@ -105,6 +109,10 @@ impl Theme {
                 && self.appear == now.appear,
         );
         differ("blur", self.blur == now.blur);
+        differ(
+            "lock screen",
+            self.lock.centered == now.lock.centered && self.lock.blur == now.lock.blur,
+        );
         let set = |theirs: Surface, mine: Surface| {
             theirs.radius.is_none_or(|r| Some(r) == mine.radius)
                 && theirs.opacity.is_none_or(|o| Some(o) == mine.opacity)
@@ -147,6 +155,8 @@ impl Theme {
         fill(&mut config.style.panel, self.style.panel);
         fill(&mut config.style.cards, self.style.cards);
         fill(&mut config.style.osd, self.style.osd);
+        config.lock.centered = self.lock.centered;
+        config.lock.blur = self.lock.blur;
     }
 
     fn write(&self, editor: &mut Editor) {
@@ -200,6 +210,16 @@ impl Theme {
                 Some(value) => editor.set("windows", key, round(value)),
                 None => editor.unset("windows", key),
             }
+        }
+        if self.lock.centered {
+            editor.set("lock", "layout", "center");
+        } else {
+            editor.unset("lock", "layout");
+        }
+        if self.lock.blur {
+            editor.set("lock", "blur", true);
+        } else {
+            editor.unset("lock", "blur");
         }
         // Only what the theme sets; a size or a list layout of your own stays.
         let surfaces: [(&str, Surface); 5] = [

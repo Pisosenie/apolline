@@ -631,10 +631,27 @@ impl Reader<'_> {
                         lock.fingerprint = v
                     }
                 }
+                "layout" => {
+                    let layouts = [("corner", false), ("center", true)];
+                    if let Some(v) = self.choice(key, value, &layouts) {
+                        lock.centered = v
+                    }
+                }
+                "blur" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.blur = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
-                    &["before_sleep", "show_media", "fingerprint"],
+                    &[
+                        "before_sleep",
+                        "show_media",
+                        "fingerprint",
+                        "layout",
+                        "blur",
+                    ],
                 ),
             }
         }

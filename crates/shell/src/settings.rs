@@ -353,6 +353,8 @@ enum Message {
     ResetShortcut(Shortcut),
     LockBeforeSleep(bool),
     LockMedia(bool),
+    LockCentered(bool),
+    LockBlur(bool),
     LockFingerprint(bool),
     LockNow,
     IdleLock(u16),
@@ -1284,6 +1286,14 @@ impl Settings {
             }
             Message::LockBeforeSleep(on) => self.edit(|e| e.set("lock", "before_sleep", on)),
             Message::LockMedia(on) => self.edit(|e| e.set("lock", "show_media", on)),
+            Message::LockCentered(on) => self.edit(|e| {
+                if on {
+                    e.set("lock", "layout", "center");
+                } else {
+                    e.unset("lock", "layout");
+                }
+            }),
+            Message::LockBlur(on) => self.edit(|e| e.set("lock", "blur", on)),
             Message::LockFingerprint(on) => self.edit(|e| e.set("lock", "fingerprint", on)),
             Message::IdleLock(v) => self.stage(|e| e.set("idle", "lock_after", i64::from(v))),
             Message::IdleScreen(v) => {
@@ -4052,6 +4062,25 @@ impl Settings {
                         minutes(self.config.idle.suspend_after, Message::IdleSuspend, palette),
                     ),
                     note("Modes with “keep the screen awake” on skip all of this."),
+                ]
+            ),
+            group(
+                "Look",
+                vec![
+                    setting(
+                        "Clock and password",
+                        "In the bottom left, or both in the middle",
+                        segmented(
+                            [(false, "Corner", None), (true, "Center", None)],
+                            lock.centered,
+                            Message::LockCentered,
+                        ),
+                    ),
+                    setting(
+                        "Blur the wallpaper",
+                        "Soft behind the clock, like frosted glass",
+                        switch(lock.blur, Message::LockBlur, palette),
+                    ),
                 ]
             ),
             group(

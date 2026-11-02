@@ -141,7 +141,11 @@ fn main() -> ExitCode {
         }
         Some("theme") => return theme(args.get(1).map(String::as_str)),
         Some("pick") => return pick::main(&args[1..]),
-        Some("greet") => return greet::main(&args[1..]),
+        // Over a dimmed wallpaper, so always light text, whatever the palette.
+        Some("greet") => {
+            apolline_theme::set_scheme(apolline_theme::Scheme::DARK);
+            return greet::main(&args[1..]);
+        }
         Some("setup") => return setup(),
         Some("fragment") => {
             let path = args
@@ -167,7 +171,10 @@ fn main() -> ExitCode {
             };
         }
         Some("settings") => return open_settings(&args[1..]),
-        Some("lock") => return lock_screen(&args[1..]),
+        Some("lock") => {
+            apolline_theme::set_scheme(apolline_theme::Scheme::DARK);
+            return lock_screen(&args[1..]);
+        }
         _ => {}
     }
 

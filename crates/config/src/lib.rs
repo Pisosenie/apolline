@@ -471,6 +471,9 @@ pub struct Lock {
     pub before_sleep: bool,
     pub show_media: bool,
     pub fingerprint: bool,
+    // The clock and the password in the bottom left, or both in the middle.
+    pub centered: bool,
+    pub blur: bool,
 }
 
 impl Shortcuts {
@@ -773,6 +776,8 @@ impl Default for Config {
                 before_sleep: true,
                 show_media: true,
                 fingerprint: false,
+                centered: false,
+                blur: false,
             },
             idle: Idle {
                 lock_after: 5,
