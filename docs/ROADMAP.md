@@ -118,6 +118,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   It still needs a run on real hardware.
 
 ### 5. Displays and comfort
+- The apps' tray (StatusNotifierItem with DBusMenu menus) on the bar — done, tried against a fake app
+  (`tools/fake-tray-app.py`); Steam, Discord and Telegram themselves are still to be seen.
 - Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,
   validated with `niri validate` before it applies — done. Screens are arranged by dragging them on
   a map, where they settle against a neighbour's edge (tried on sample screens: nested niri has one).

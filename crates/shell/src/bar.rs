@@ -36,6 +36,9 @@ pub struct Bar<'a> {
     pub pinned: Vec<Pinned>,
     // An app being dragged on the row of pinned apps: whether it was pinned, and where it is.
     pub dragging: Option<(&'a str, bool, f32)>,
+    // What apps keep in the tray, and the icon theme to draw them from.
+    pub tray: &'a [crate::tray::Item],
+    pub icons: Option<&'a str>,
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
     pub stats: crate::stats::Stats,
@@ -100,6 +103,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
         Piece::Recording => recording(bar),
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
+        Piece::Apps => apps_tray(bar),
         // The ones placed by name elsewhere stay there.
         Piece::Modules => {
             // A named one stands only where it's placed; left off, it's off.
@@ -579,4 +583,82 @@ fn tray_item<'a>(bar: &Bar<'a>, item: TrayItem) -> Option<Element<'a, Message>> 
             level.into()
         }),
     }
+}
+
+// Each app's tray icon: a click is the app's own, a right click its menu.
+fn apps_tray<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
+    if bar.tray.is_empty() {
+        return None;
+    }
+    let palette = bar.palette;
+    let icons = bar.tray.iter().enumerate().map(|(index, item)| {
+        let glyph: Element<'a, Message> = match &item.icon {
+            crate::tray::Icon::Pixels(w, h, rgba) => {
+                iced::widget::image(iced::widget::image::Handle::from_rgba(*w, *h, rgba.clone()))
+                    .width(16)
+                    .height(16)
+                    .into()
+            }
+            crate::tray::Icon::Named(name, folder) => {
+                match crate::apps::icon_named(name, bar.icons, folder.as_deref()) {
+                    Some(apps::Picture::Vector(path)) => {
+                        iced::widget::svg(iced::widget::svg::Handle::from_path(path))
+                            .width(16)
+                            .height(16)
+                            .into()
+                    }
+                    Some(apps::Picture::Raster(path)) => {
+                        iced::widget::image(iced::widget::image::Handle::from_path(path))
+                            .width(16)
+                            .height(16)
+                            .into()
+                    }
+                    None => crate::windows::picture(bar.apps, name, 16.0, palette),
+                }
+            }
+            crate::tray::Icon::None => {
+                crate::windows::picture(bar.apps, &item.title, 16.0, palette)
+            }
+        };
+        let attention = item.attention;
+        let glyph = container(glyph).padding(1).style(move |_| {
+            if attention {
+                container::Style {
+                    border: iced::Border {
+                        color: style::color(palette.accent),
+                        width: 1.0,
+                        radius: 5.0.into(),
+                    },
+                    ..container::Style::default()
+                }
+            } else {
+                container::Style::default()
+            }
+        });
+        let press = if item.menu_only {
+            Message::TrayMenu(index)
+        } else {
+            Message::TrayPress(index, crate::tray::Press::Activate)
+        };
+        let button = button(glyph)
+            .padding(4)
+            .style(style::ghost(7.0))
+            .on_press(press);
+        iced::widget::tooltip(
+            mouse_area(button)
+                .on_right_press(Message::TrayMenu(index))
+                .on_middle_press(Message::TrayPress(index, crate::tray::Press::Secondary)),
+            container(text(item.title.clone()).size(12))
+                .padding([4, 8])
+                .style(style::surface),
+            iced::widget::tooltip::Position::Bottom,
+        )
+        .into()
+    });
+    Some(
+        Row::with_children(icons)
+            .spacing(0)
+            .align_y(Alignment::Center)
+            .into(),
+    )
 }

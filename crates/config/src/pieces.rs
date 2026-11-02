@@ -10,6 +10,8 @@ pub enum Piece {
     Recording,
     Stats,
     Tray,
+    // The icons apps keep in the tray.
+    Apps,
     // Every [[module]] not placed by its name.
     Modules,
     // A [[module]] by its name.
@@ -17,7 +19,7 @@ pub enum Piece {
 }
 
 impl Piece {
-    pub const NAMED: [(&'static str, Piece); 10] = [
+    pub const NAMED: [(&'static str, Piece); 11] = [
         ("mode", Piece::Mode),
         ("workspaces", Piece::Workspaces),
         ("windows", Piece::Windows),
@@ -27,6 +29,7 @@ impl Piece {
         ("recording", Piece::Recording),
         ("stats", Piece::Stats),
         ("tray", Piece::Tray),
+        ("apps", Piece::Apps),
         ("modules", Piece::Modules),
     ];
 
@@ -65,6 +68,7 @@ impl Piece {
             Piece::Recording,
             Piece::Modules,
             Piece::Stats,
+            Piece::Apps,
             Piece::Tray,
         ]
     }
@@ -133,6 +137,7 @@ mod tests {
                 "recording",
                 "modules",
                 "stats",
+                "apps",
                 "tray"
             ]
         );

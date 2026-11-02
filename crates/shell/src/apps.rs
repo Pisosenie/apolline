@@ -232,6 +232,21 @@ pub fn icon_themes() -> Vec<String> {
     found
 }
 
+// A named icon from the chosen theme or the usual ones, for things that aren't apps, like the
+// icons in the tray; `extra` is a folder of the app's own to look in first.
+pub fn icon_named(name: &str, theme: Option<&str>, extra: Option<&Path>) -> Option<Picture> {
+    let mut roots: Vec<PathBuf> = extra.into_iter().map(Path::to_path_buf).collect();
+    roots.extend(icon_roots(&data_dirs(), theme));
+    find_icon(Path::new(name), &roots).or_else(|| {
+        let flat = extra?;
+        ["svg", "png"]
+            .iter()
+            .map(|ext| flat.join(format!("{name}.{ext}")))
+            .find(|file| file.exists())
+            .map(picture)
+    })
+}
+
 fn find_icon(name: &Path, roots: &[PathBuf]) -> Option<Picture> {
     if name.is_absolute() {
         return name.exists().then(|| Picture::Raster(name.to_path_buf()));
@@ -251,10 +266,12 @@ fn find_icon(name: &Path, roots: &[PathBuf]) -> Option<Picture> {
             continue;
         }
         for size in SIZES {
-            for ext in ["svg", "png"] {
-                let file = root.join(size).join("apps").join(format!("{name}.{ext}"));
-                if file.exists() {
-                    return Some(picture(file));
+            for kind in ["apps", "status"] {
+                for ext in ["svg", "png"] {
+                    let file = root.join(size).join(kind).join(format!("{name}.{ext}"));
+                    if file.exists() {
+                        return Some(picture(file));
+                    }
                 }
             }
         }

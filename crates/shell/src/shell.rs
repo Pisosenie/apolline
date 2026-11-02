@@ -101,6 +101,11 @@ pub enum Message {
     OpenLink(String),
     HistoryGroup(String),
     Quiet(panel::Quiet),
+    Tray(crate::tray::Event),
+    TrayPress(usize, crate::tray::Press),
+    TrayMenu(usize),
+    TrayMenuRead(usize, Vec<crate::tray::MenuEntry>),
+    TrayChoose(i32),
     // A drag on the bar's pinned apps: what was picked up (the app, and whether it's pinned).
     StripStart(Option<(String, bool)>, f32),
     StripMove(f32),
@@ -166,6 +171,8 @@ pub enum Overlay {
     Polkit,
     Calendar,
     Marks,
+    // An app's tray menu.
+    TrayMenu,
 }
 
 struct Shown {
@@ -252,6 +259,9 @@ pub struct Shell {
     wallpapers: Vec<(String, image::Handle)>,
     shown: Vec<Shown>,
     usage: crate::usage::Usage,
+    tray: Vec<crate::tray::Item>,
+    // The open tray menu: whose, and its entries.
+    tray_menu: Option<(crate::tray::Item, Vec<crate::tray::MenuEntry>)>,
     // An app being dragged on the bar: which, whether it was pinned, and where it is now.
     dragging: Option<(String, bool, f32)>,
     night: (bool, Option<bool>),
@@ -354,6 +364,8 @@ impl Shell {
             config,
             wallpapers: Vec::new(),
             shown: Vec::new(),
+            tray: Vec::new(),
+            tray_menu: None,
             usage: if demo {
                 crate::usage::Usage::default()
             } else {
@@ -802,6 +814,40 @@ impl Shell {
                 }
             }
             Message::OpenPinned(id) => return self.open_pinned(&id),
+            Message::Tray(crate::tray::Event::Items(items)) => self.tray = items,
+            Message::TrayPress(index, press) => {
+                if let Some(item) = self.tray.get(index).cloned() {
+                    return Task::future(crate::tray::press(item, press, (0, 0))).discard();
+                }
+            }
+            Message::TrayMenu(index) => {
+                let Some(item) = self.tray.get(index).cloned() else {
+                    return Task::none();
+                };
+                // Without a menu of its own, the right click is the app's to handle.
+                if item.menu.is_none() {
+                    return self.update(Message::TrayPress(index, crate::tray::Press::Secondary));
+                }
+                return Task::perform(crate::tray::menu(item), move |entries| {
+                    Message::TrayMenuRead(index, entries)
+                });
+            }
+            Message::TrayMenuRead(index, entries) => {
+                if let Some(item) = self.tray.get(index).cloned()
+                    && !entries.is_empty()
+                {
+                    self.tray_menu = Some((item, entries));
+                    return self.set_overlay(Some(Overlay::TrayMenu));
+                }
+            }
+            Message::TrayChoose(id) => {
+                let close = self.set_overlay(None);
+                if let Some((item, _)) = self.tray_menu.take() {
+                    let press = crate::tray::press(item, crate::tray::Press::Menu(id), (0, 0));
+                    return Task::batch([close, Task::future(press).discard()]);
+                }
+                return close;
+            }
             Message::StripStart(picked, x) => {
                 self.dragging = picked.map(|(app, was_pinned)| (app, was_pinned, x));
             }
@@ -2356,6 +2402,16 @@ impl Shell {
                 Some(marks) => crate::marks::view(marks, palette),
                 None => space().into(),
             },
+            Some(Overlay::TrayMenu) => match &self.tray_menu {
+                Some((item, entries)) => crate::tray_menu::view(
+                    item,
+                    entries,
+                    palette,
+                    self.config.bar.position == Edge::Bottom,
+                    style::under_bar(&self.config.bar, &self.config.style, 1.0),
+                ),
+                None => space().into(),
+            },
             Some(Overlay::Calendar) => crate::calendar::view(
                 self.now,
                 self.month,
@@ -2599,6 +2655,8 @@ impl Shell {
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
+            tray: &self.tray,
+            icons: self.config.desktop.icons.as_deref(),
             dragging: self
                 .dragging
                 .as_ref()
@@ -2680,6 +2738,7 @@ impl Shell {
                 crate::profile::subscription().map(Message::Profiles),
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
+                crate::tray::subscription().map(Message::Tray),
             ])
         };
         iced::Subscription::batch([

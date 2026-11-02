@@ -55,6 +55,8 @@ mod strip;
 mod style;
 mod switcher;
 mod themes;
+mod tray;
+mod tray_menu;
 mod usage;
 mod wallpaper;
 mod weather;

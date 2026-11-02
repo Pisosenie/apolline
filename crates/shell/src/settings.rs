@@ -3729,6 +3729,8 @@ impl Settings {
                     })
                     .collect(),
                 dragging: None,
+                tray: &[],
+                icons: None,
                 modules: Vec::new(),
                 recording: None,
                 next: None,
@@ -6005,6 +6007,7 @@ fn piece_label(name: &str) -> String {
         "recording" => "Recording",
         "stats" => "CPU and memory",
         "tray" => "Quick settings",
+        "apps" => "App icons",
         "modules" => "Your modules",
         name => return name.to_owned(),
     }

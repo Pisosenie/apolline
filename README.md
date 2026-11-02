@@ -107,11 +107,11 @@ The bar has three places, and each takes a list of what goes there, in order:
 [bar]
 left = ["mode", "workspaces", "windows"]
 center = ["clock"]
-right = ["media", "notifications", "recording", "modules", "stats", "tray"]
+right = ["media", "notifications", "recording", "modules", "stats", "apps", "tray"]
 tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
 ```
 
-That is the bar as it comes; Settings → Bar shows it as rows of pieces to drag along a row, from one side to another, or below them to take a piece off the bar, and the quick settings button's icons the same way. `mode` shows only once you have modes, `media` while something plays, `notifications` while some wait or do not disturb is on, and `recording` while the screen is recorded. `tray` is the quick settings button, and `[bar] tray` picks what it shows and in which order. A module with a `name` can stand anywhere by that name (`left = ["weather", "workspaces"]`); `modules` is all the others. A name nothing answers to is reported by `apolline check` with the closest match, and something placed twice stays where it's first.
+`apps` is the icons apps keep in the tray (Steam, Discord, Telegram, VPN clients and anything else that speaks StatusNotifierItem): a click is the app's own, a right click opens its menu, a middle click its second action, and an icon asking for attention gets a ring in the accent. Apolline is the tray watcher apps register with, unless another one already runs. That is the bar as it comes; Settings → Bar shows it as rows of pieces to drag along a row, from one side to another, or below them to take a piece off the bar, and the quick settings button's icons the same way. `mode` shows only once you have modes, `media` while something plays, `notifications` while some wait or do not disturb is on, and `recording` while the screen is recorded. `tray` is the quick settings button, and `[bar] tray` picks what it shows and in which order. A module with a `name` can stand anywhere by that name (`left = ["weather", "workspaces"]`); `modules` is all the others. A name nothing answers to is reported by `apolline check` with the closest match, and something placed twice stays where it's first.
 
 ## Themes
 
