@@ -7,7 +7,7 @@ pkgdesc='A desktop shell for niri built around modes: Work, Play and Evening'
 arch=('x86_64' 'aarch64')
 url='https://github.com/Pisosenie/apolline'
 license=('MIT OR Apache-2.0')
-depends=('niri' 'pam' 'libxkbcommon' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+depends=('niri' 'pam' 'libxkbcommon' 'libgcc' 'glibc' 'hicolor-icon-theme')
 optdepends=(
   'wireplumber: volume in quick settings'
   'libpulse: the volume on the bar follows changes made elsewhere'
@@ -44,12 +44,14 @@ build() {
   cd "$_name"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
+  export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
   cargo build --frozen --release -p apolline-shell
 }
 
 check() {
   cd "$_name"
   export RUSTUP_TOOLCHAIN=stable
+  export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
   cargo test --frozen --release --workspace
 }
 
