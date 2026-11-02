@@ -98,6 +98,7 @@ pub enum Message {
     Profiles(Option<crate::profile::Profiles>),
     PickProfile(String),
     ProfileSet(String, Result<(), String>),
+    OpenLink(String),
     ReplyOpen(u32),
     ReplyTyped(String),
     ReplySend,
@@ -1089,6 +1090,30 @@ impl Shell {
                     (false, false) => notify::closed(id, Closed::Dismissed),
                 };
                 return Task::batch([close, focus, told]);
+            }
+            // A link from a calendar, so given to the opener as it is, never to a shell.
+            Message::OpenLink(link) => {
+                if !link.starts_with("https://") {
+                    return Task::none();
+                }
+                let opener = if cfg!(target_os = "macos") {
+                    "open"
+                } else {
+                    "xdg-open"
+                };
+                let open = Task::future(async move {
+                    let mut command = tokio::process::Command::new(opener);
+                    command
+                        .arg(link)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null());
+                    if let Ok(mut child) = command.spawn() {
+                        let _ = child.wait().await;
+                    }
+                })
+                .discard();
+                return Task::batch([self.set_overlay(None), open]);
             }
             Message::ReplyOpen(id) => {
                 self.replying = Some((id, String::new()));

@@ -210,14 +210,21 @@ fn day_list<'a>(
                     .color(style::color(style::FAINT)),
             );
         }
-        list = list.push(
-            row![
-                container(space().width(3).height(30)).style(style::pill(palette.accent)),
-                what,
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
-        );
+        let mut line = row![
+            container(space().width(3).height(30)).style(style::pill(palette.accent)),
+            what.width(Fill),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
+        if let Some(link) = &item.call {
+            line = line.push(
+                button(text("Join").size(12).font(style::medium()))
+                    .padding([5, 12])
+                    .style(style::primary(palette))
+                    .on_press(Message::OpenLink(link.to_string())),
+            );
+        }
+        list = list.push(line);
     }
     if items.len() > LISTED {
         list = list.push(

@@ -30,6 +30,8 @@ pub struct Occurrence {
     pub end: Option<NaiveTime>,
     pub summary: Arc<str>,
     pub location: Option<Arc<str>>,
+    // Where its video call is joined.
+    pub call: Option<Arc<str>>,
     // When a timed event begins and ends, in local time.
     span: Option<(NaiveDateTime, NaiveDateTime)>,
 }
@@ -248,6 +250,40 @@ pub fn name(source: &Calendar) -> String {
             }
         }
     }
+}
+
+// Where video calls are joined: a host (or one under it) and how the path starts.
+const CALLS: [(&str, &str); 9] = [
+    ("meet.google.com", "/"),
+    ("zoom.us", "/j/"),
+    ("zoom.us", "/my/"),
+    ("zoom.us", "/w/"),
+    ("teams.microsoft.com", "/l/meetup-join"),
+    ("teams.live.com", "/meet"),
+    ("meet.jit.si", "/"),
+    ("webex.com", "/"),
+    ("whereby.com", "/"),
+];
+
+// The first video call link in some calendar text, escaped or not.
+fn call(text: &str) -> Option<String> {
+    text.match_indices("https://").find_map(|(at, _)| {
+        let link: String = text[at..]
+            .chars()
+            .take_while(|c| !c.is_whitespace() && !matches!(c, '<' | '>' | '"' | '\\' | ')'))
+            .collect();
+        let rest = &link["https://".len()..];
+        let (host, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+        let host = host.to_ascii_lowercase();
+        CALLS
+            .iter()
+            .any(|(service, start)| {
+                (host == *service || host.ends_with(&format!(".{service}")))
+                    && path.starts_with(start)
+                    && path.len() > 1
+            })
+            .then_some(link)
+    })
 }
 
 // A link shows only its host: a calendar's secret address, or a login in it, is a password of sorts.
@@ -604,6 +640,7 @@ struct Event {
     uid: String,
     summary: Arc<str>,
     location: Option<Arc<str>>,
+    call: Option<Arc<str>>,
     start: Option<Moment>,
     end: Option<Moment>,
     // How long it lasts, for events that give a length instead of an end.
@@ -709,6 +746,7 @@ fn occurrence(
         end,
         summary: event.summary.clone(),
         location: event.location.clone(),
+        call: event.call.clone(),
         span,
     }
 }
@@ -1120,8 +1158,20 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
             ("UID", Some(event)) => event.uid = value.to_owned(),
             ("SUMMARY", Some(event)) => event.summary = unescape(value),
             ("LOCATION", Some(event)) => {
-                event.location = Some(unescape(value)).filter(|l| !l.is_empty())
+                let link = call(value);
+                // A place that is only the call's link shows as the Join button instead.
+                event.location = Some(unescape(value))
+                    .filter(|l| !l.is_empty() && link.as_deref() != Some(l.trim()));
+                event.call = event.call.take().or_else(|| link.map(Arc::from));
             }
+            (
+                "URL"
+                | "DESCRIPTION"
+                | "CONFERENCE"
+                | "X-GOOGLE-CONFERENCE"
+                | "X-MICROSOFT-SKYPETEAMSMEETINGURL",
+                Some(event),
+            ) => event.call = event.call.take().or_else(|| call(value).map(Arc::from)),
             ("DTSTART", Some(event)) => event.start = moment(&params, value),
             ("DTEND", Some(event)) => event.end = moment(&params, value),
             ("DURATION", Some(event)) => event.duration = duration(value),
@@ -1140,6 +1190,58 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_video_call_is_found_where_calendars_put_it() {
+        assert_eq!(
+            call("https://meet.google.com/abc-defg-hij").as_deref(),
+            Some("https://meet.google.com/abc-defg-hij")
+        );
+        assert_eq!(
+            call("Join: https://us02web.zoom.us/j/8812345678?pwd=xyz\\nMeeting ID: 881").as_deref(),
+            Some("https://us02web.zoom.us/j/8812345678?pwd=xyz"),
+            "ends where the escaped line break begins"
+        );
+        assert!(
+            call("<https://teams.microsoft.com/l/meetup-join/19%3ameeting_x/0?context=y>")
+                .is_some_and(|link| link.ends_with("context=y"))
+        );
+        assert_eq!(call("https://zoom.us/pricing"), None, "not a meeting");
+        assert_eq!(call("https://evil.example/meet.google.com/abc"), None);
+        assert_eq!(call("https://meet.google.com.evil.example/abc"), None);
+        assert_eq!(call("http://meet.google.com/abc"), None, "https only");
+
+        let ics = "BEGIN:VEVENT\r
+UID:review\r
+SUMMARY:Design review\r
+DTSTART:20261102T163000\r
+LOCATION:https://meet.google.com/abc-defg-hij\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:sync\r
+SUMMARY:Sync\r
+DTSTART:20261102T170000\r
+LOCATION:Room 4\r
+DESCRIPTION:Teams meeting\\n________________\\nJoin: https://teams.microsoft.com/l/meetup-join/19%3a\r
+ meeting_abc/0\\nMeeting ID: 123\r
+END:VEVENT\r
+";
+        let agenda = agenda(&[ics.to_owned()], day(2026, 11, 2));
+        let items = agenda.on(day(2026, 11, 2));
+        assert_eq!(
+            items[0].location, None,
+            "the link is the Join button instead"
+        );
+        assert_eq!(
+            items[0].call.as_deref(),
+            Some("https://meet.google.com/abc-defg-hij")
+        );
+        assert_eq!(items[1].location.as_deref(), Some("Room 4"));
+        assert_eq!(
+            items[1].call.as_deref(),
+            Some("https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc/0")
+        );
+    }
 
     #[test]
     fn an_outlook_zone_reads_as_the_zone_it_describes() {
