@@ -21,7 +21,13 @@ const CONFIG_SHOWN_FOR: Duration = Duration::from_secs(12);
 pub const CONFIG_CARD: u32 = 1 << 31;
 pub const SHOT_CARD: u32 = CONFIG_CARD + 1;
 pub const BATTERY_CARD: u32 = CONFIG_CARD + 2;
+// Calendar reminders each get their own card from here on, so one doesn't push out another.
 pub const REMINDER_CARD: u32 = CONFIG_CARD + 3;
+const REMINDERS: u32 = 1000;
+
+pub fn is_reminder(id: u32) -> bool {
+    (REMINDER_CARD..REMINDER_CARD + REMINDERS).contains(&id)
+}
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
 
@@ -180,6 +186,7 @@ pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
 pub fn reminder_card(
     occurrence: &crate::events::Occurrence,
     now: chrono::NaiveDateTime,
+    count: u32,
 ) -> Notification {
     let begins = occurrence.begins().unwrap_or(now);
     let wait = ((begins - now).num_seconds() + 59) / 60;
@@ -201,7 +208,7 @@ pub fn reminder_card(
         .to_std()
         .unwrap_or(Duration::from_secs(60));
     Notification {
-        id: REMINDER_CARD,
+        id: REMINDER_CARD + count % REMINDERS,
         app: "Calendar".into(),
         desktop: None,
         actions: occurrence

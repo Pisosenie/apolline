@@ -218,8 +218,14 @@ pub struct Shell {
     opened: Vec<String>,
     // When do not disturb, set for a while, turns itself off.
     quiet_until: Option<DateTime<Local>>,
-    // Calendar reminders already shown, by when and what, so each comes once.
-    reminded: Vec<(chrono::NaiveDateTime, std::sync::Arc<str>)>,
+    // Calendar reminders already shown, by when, what and which alarm, so each comes once.
+    reminded: Vec<(
+        chrono::NaiveDateTime,
+        std::sync::Arc<str>,
+        chrono::TimeDelta,
+    )>,
+    // How many reminders so far, for their cards' ids.
+    reminders: u32,
     net_note: Option<String>,
     net_busy: bool,
     apps: Vec<App>,
@@ -310,6 +316,7 @@ impl Shell {
             replying: None,
             warned: None,
             reminded: Vec::new(),
+            reminders: 0,
             opened: Vec::new(),
             quiet_until: None,
             joining: None,
@@ -1184,9 +1191,9 @@ impl Shell {
                 }
             }
             // A calendar reminder's Join button carries its link as the key.
-            Message::Invoke(notify::REMINDER_CARD, key) => {
-                self.forget(notify::REMINDER_CARD);
-                self.history.retain(|n| n.id != notify::REMINDER_CARD);
+            Message::Invoke(id, key) if notify::is_reminder(id) => {
+                self.forget(id);
+                self.history.retain(|n| n.id != id);
                 return self.update(Message::OpenLink(key));
             }
             Message::Invoke(id, key) => {
@@ -2140,23 +2147,29 @@ impl Shell {
     fn remind(&mut self) -> Task<Message> {
         let now = self.now.naive_local();
         self.reminded
-            .retain(|(begins, _)| *begins > now - chrono::TimeDelta::hours(1));
-        let Some(due) = self
+            .retain(|(begins, _, _)| *begins > now - chrono::TimeDelta::hours(1));
+        let due: Vec<(crate::events::Occurrence, chrono::TimeDelta)> = self
             .agenda
             .due(now)
-            .find(|o| {
-                !self
-                    .reminded
-                    .iter()
-                    .any(|(begins, what)| Some(*begins) == o.begins() && *what == o.summary)
+            .filter(|(o, lead)| {
+                !self.reminded.iter().any(|(begins, what, at)| {
+                    Some(*begins) == o.begins() && *what == o.summary && at == lead
+                })
             })
-            .cloned()
-        else {
-            return Task::none();
-        };
-        self.reminded
-            .push((due.begins().unwrap_or(now), due.summary.clone()));
-        self.update(Message::Notify(notify::reminder_card(&due, now)))
+            .map(|(o, lead)| (o.clone(), lead))
+            .collect();
+        let mut cards = Vec::new();
+        for (occurrence, lead) in due {
+            self.reminded.push((
+                occurrence.begins().unwrap_or(now),
+                occurrence.summary.clone(),
+                lead,
+            ));
+            self.reminders = self.reminders.wrapping_add(1);
+            let card = notify::reminder_card(&occurrence, now, self.reminders);
+            cards.push(self.update(Message::Notify(card)));
+        }
+        Task::batch(cards)
     }
 
     fn forget(&mut self, id: u32) {

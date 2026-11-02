@@ -68,8 +68,8 @@ pub fn face<'a>(
 ) -> Element<'a, Message> {
     let glyph = match notification.id {
         crate::notify::BATTERY_CARD => Some(Icon::BatteryWarning),
-        crate::notify::REMINDER_CARD if notification.actions.is_empty() => Some(Icon::Bell),
-        crate::notify::REMINDER_CARD => Some(Icon::Video),
+        id if crate::notify::is_reminder(id) && notification.actions.is_empty() => Some(Icon::Bell),
+        id if crate::notify::is_reminder(id) => Some(Icon::Video),
         _ => None,
     };
     if let Some(glyph) = glyph {

@@ -34,8 +34,8 @@ pub struct Occurrence {
     pub call: Option<Arc<str>>,
     // When a timed event begins and ends, in local time.
     span: Option<(NaiveDateTime, NaiveDateTime)>,
-    // How long before it starts its own alarm goes off.
-    alarm: Option<TimeDelta>,
+    // How long before it starts each of its own alarms goes off.
+    alarms: Vec<TimeDelta>,
 }
 
 // A meeting with a call and no alarm of its own is still worth a word this long before.
@@ -64,20 +64,25 @@ impl Agenda {
         self.days.contains_key(&day)
     }
 
-    // What to remind about: at its own alarm, or a few minutes before a meeting with a call.
-    pub fn due(&self, now: NaiveDateTime) -> impl Iterator<Item = &Occurrence> {
+    // What to remind about, with the alarm that's due: its own alarms each in turn, or a few
+    // minutes before a meeting with a call. A minute's grace after the start lets an alarm at the
+    // start itself be seen by a clock that ticks once a minute.
+    pub fn due(&self, now: NaiveDateTime) -> impl Iterator<Item = (&Occurrence, TimeDelta)> {
         let tomorrow = now.date().succ_opt().unwrap_or(now.date());
         self.on(now.date())
             .iter()
             .chain(self.on(tomorrow))
-            .filter(move |o| {
-                let (Some(begins), Some(lead)) = (
-                    o.begins(),
-                    o.alarm.or(o.call.is_some().then_some(MEETING_LEAD)),
-                ) else {
-                    return false;
-                };
-                begins - lead <= now && now < begins
+            .filter_map(move |o| {
+                let begins = o.begins()?;
+                let fallback = (o.alarms.is_empty() && o.call.is_some()).then_some(MEETING_LEAD);
+                let latest = o
+                    .alarms
+                    .iter()
+                    .copied()
+                    .chain(fallback)
+                    .filter(|lead| begins - *lead <= now)
+                    .min()?;
+                (now < begins + TimeDelta::minutes(1)).then_some((o, latest))
             })
     }
 
@@ -303,8 +308,16 @@ fn call(text: &str) -> Option<String> {
             .take_while(|c| !c.is_whitespace() && !matches!(c, '<' | '>' | '"' | '\\' | ')'))
             .collect();
         let rest = &link["https://".len()..];
-        let (host, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
-        let host = host.to_ascii_lowercase();
+        // The host ends at the first of these, so "evil.example?.zoom.us" isn't Zoom.
+        let (authority, path) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+        if authority.contains('@') {
+            return None;
+        }
+        let host = authority
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         CALLS
             .iter()
             .any(|(service, start)| {
@@ -671,7 +684,7 @@ struct Event {
     summary: Arc<str>,
     location: Option<Arc<str>>,
     call: Option<Arc<str>>,
-    alarm: Option<TimeDelta>,
+    alarms: Vec<TimeDelta>,
     start: Option<Moment>,
     end: Option<Moment>,
     // How long it lasts, for events that give a length instead of an end.
@@ -779,7 +792,7 @@ fn occurrence(
         location: event.location.clone(),
         call: event.call.clone(),
         span,
-        alarm: event.alarm,
+        alarms: event.alarms.clone(),
     }
 }
 
@@ -1211,9 +1224,7 @@ fn parse(text: &str, year: i32) -> Vec<Event> {
                 in_alarm = in_alarm && inner > 0;
             }
             ("TRIGGER", Some(event)) if in_alarm && inner == 1 => {
-                if let Some(lead) = lead(&params, value) {
-                    event.alarm = Some(event.alarm.map_or(lead, |known| known.min(lead)));
-                }
+                event.alarms.extend(lead(&params, value));
             }
             ("END", Some(_)) if component.eq_ignore_ascii_case("VEVENT") => {
                 events.extend(current.take());
@@ -1289,16 +1300,43 @@ DTSTART:20261102T120000\r
 END:VEVENT\r
 ";
         let agenda = agenda(&[ics.to_owned()], day(2026, 11, 2));
-        let due = |h, m| -> Vec<String> {
+        let due = |h, m| -> Vec<(String, i64)> {
             let now = day(2026, 11, 2).and_hms_opt(h, m, 0).unwrap();
-            agenda.due(now).map(|o| o.summary.to_string()).collect()
+            agenda
+                .due(now)
+                .map(|(o, lead)| (o.summary.to_string(), lead.num_minutes()))
+                .collect()
         };
-        assert!(due(9, 45).is_empty(), "the nearer of its two alarms counts");
-        assert_eq!(due(9, 50), ["Dentist"]);
-        assert!(due(10, 0).is_empty(), "begun");
+        let one = |what: &str, lead| vec![(what.to_owned(), lead)];
+        assert!(due(9, 29).is_empty());
+        assert_eq!(due(9, 30), one("Dentist", 30), "each alarm in turn");
+        assert_eq!(due(9, 50), one("Dentist", 10));
+        assert_eq!(due(10, 0), one("Dentist", 10), "a minute's grace");
+        assert!(due(10, 1).is_empty(), "begun");
         assert!(due(10, 54).is_empty());
-        assert_eq!(due(10, 55), ["Design review"], "five minutes before a call");
+        assert_eq!(
+            due(10, 55),
+            one("Design review", 5),
+            "five minutes before a call"
+        );
         assert!(due(11, 58).is_empty(), "no alarm, no call, no card");
+    }
+
+    #[test]
+    fn an_alarm_at_the_start_still_rings() {
+        let ics = "BEGIN:VEVENT\r
+UID:call\r
+SUMMARY:Call\r
+DTSTART:20261102T100000\r
+BEGIN:VALARM\r
+TRIGGER:PT0S\r
+END:VALARM\r
+END:VEVENT\r
+";
+        let agenda = agenda(&[ics.to_owned()], day(2026, 11, 2));
+        let at = |h, m| day(2026, 11, 2).and_hms_opt(h, m, 0).unwrap();
+        assert_eq!(agenda.due(at(9, 59)).count(), 0);
+        assert_eq!(agenda.due(at(10, 0)).count(), 1);
     }
 
     #[test]
@@ -1319,6 +1357,17 @@ END:VEVENT\r
         assert_eq!(call("https://zoom.us/pricing"), None, "not a meeting");
         assert_eq!(call("https://evil.example/meet.google.com/abc"), None);
         assert_eq!(call("https://meet.google.com.evil.example/abc"), None);
+        assert_eq!(
+            call("https://evil.example?.zoom.us/j/1"),
+            None,
+            "a query isn't a host"
+        );
+        assert_eq!(call("https://evil.example#.zoom.us/j/1"), None);
+        assert_eq!(
+            call("https://zoom.us@evil.example/j/1"),
+            None,
+            "nor a login"
+        );
         assert_eq!(call("http://meet.google.com/abc"), None, "https only");
 
         let ics = "BEGIN:VEVENT\r
