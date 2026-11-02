@@ -251,6 +251,7 @@ pub struct Shell {
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
     shown: Vec<Shown>,
+    usage: crate::usage::Usage,
     // An app being dragged on the bar: which, whether it was pinned, and where it is now.
     dragging: Option<(String, bool, f32)>,
     night: (bool, Option<bool>),
@@ -353,6 +354,11 @@ impl Shell {
             config,
             wallpapers: Vec::new(),
             shown: Vec::new(),
+            usage: if demo {
+                crate::usage::Usage::default()
+            } else {
+                crate::usage::Usage::load()
+            },
             dragging: None,
             night: (false, None),
             module_text: Vec::new(),
@@ -369,6 +375,7 @@ impl Shell {
         shell.night = (shell.night_scheduled(), None);
         shell.sync();
         shell.launcher.set_modes(shell.mode_names());
+        shell.launcher.set_usage(shell.usage.clone());
         let welcome = if !demo && !shell.config_path.exists() {
             shell.first_run()
         } else {
@@ -1577,7 +1584,24 @@ impl Shell {
     fn run(&mut self, target: Target) -> Task<Message> {
         let close = self.set_overlay(None);
         let task = match target {
-            Target::App(command) => self.spawn(&command),
+            Target::App(command) => {
+                self.usage.note(&command, crate::usage::now());
+                self.usage.save();
+                self.launcher.set_usage(self.usage.clone());
+                self.spawn(&command)
+            }
+            Target::Run(command) => self.spawn(&command),
+            Target::Web(query) => {
+                let opener = if cfg!(target_os = "macos") {
+                    "open"
+                } else {
+                    "xdg-open"
+                };
+                self.spawn(&format!(
+                    "{opener} '{}'",
+                    crate::launcher::web_address(&query)
+                ))
+            }
             Target::Window(id) => {
                 return Task::batch([close, self.update(Message::FocusWindow(id))]);
             }

@@ -35,6 +35,10 @@ pub enum Target {
     Keys,
     Capture(crate::capture::Capture),
     Power(Power),
+    // A command typed into the search, run as it is.
+    Run(String),
+    // The search, looked up on the web.
+    Web(String),
 }
 
 #[derive(Default)]
@@ -49,6 +53,7 @@ pub struct Launcher {
     grid: bool,
     rates: Option<(std::sync::Arc<crate::rates::Rates>, std::time::Instant)>,
     asked: bool,
+    usage: crate::usage::Usage,
 }
 
 pub struct OpenWindow {
@@ -191,6 +196,10 @@ impl Launcher {
 
     pub fn set_windows(&mut self, windows: Vec<OpenWindow>) {
         self.windows = windows;
+    }
+
+    pub fn set_usage(&mut self, usage: crate::usage::Usage) {
+        self.usage = usage;
     }
 
     pub fn set_files(&mut self, files: Vec<std::path::PathBuf>) {
@@ -377,11 +386,21 @@ impl Launcher {
                 }
             }
         }
+        // What's started often and lately comes first; while typing it only breaks near ties.
+        let now = crate::usage::now();
+        let used = |exec: &str| {
+            let weight = self.usage.weight(exec, now);
+            if query.is_empty() {
+                weight
+            } else {
+                weight.min(60)
+            }
+        };
         for app in &self.apps {
             for (name, exec) in &app.actions {
                 if let Some(score) = apps::action_score(query, app, name) {
                     ranked.push((
-                        score,
+                        score + used(exec),
                         Entry {
                             title: name.clone(),
                             about: app.name.clone(),
@@ -395,7 +414,7 @@ impl Launcher {
             if let Some(score) = apps::score(query, app) {
                 let bonus = if query.is_empty() && app.game { 1 } else { 0 };
                 ranked.push((
-                    score + bonus,
+                    score + bonus + used(&app.exec),
                     Entry {
                         title: app.name.clone(),
                         about: app.about.clone(),
@@ -407,7 +426,9 @@ impl Launcher {
             }
         }
         ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
-        ranked.into_iter().map(|(_, entry)| entry).collect()
+        let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
+        entries.extend(fallbacks(query));
+        entries
     }
 
     pub fn view(&self, palette: Palette, mode: Option<(&str, Icon)>) -> Element<'_, Message> {
@@ -645,6 +666,57 @@ impl Launcher {
     }
 }
 
+// Last in any search: run it if it's a command, or look it up on the web.
+fn fallbacks(query: &str) -> Vec<Entry<'static>> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let program = query.split_whitespace().next().unwrap_or_default();
+    let run = runnable(program).then(|| Entry {
+        title: format!("Run “{query}”"),
+        about: "As a command, in the background".to_owned(),
+        picture: Pic::Icon(Icon::Terminal),
+        target: Target::Run(query.to_owned()),
+        game: false,
+    });
+    let web = Entry {
+        title: format!("Search the web for “{query}”"),
+        about: "DuckDuckGo, in the browser".to_owned(),
+        picture: Pic::Icon(Icon::Globe),
+        target: Target::Web(query.to_owned()),
+        game: false,
+    };
+    run.into_iter().chain([web]).collect()
+}
+
+fn runnable(program: &str) -> bool {
+    if program.is_empty() || program.contains('/') {
+        return false;
+    }
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|dir| {
+            std::fs::metadata(dir.join(program)).is_ok_and(|meta| {
+                meta.is_file()
+                    && std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111 != 0
+            })
+        })
+    })
+}
+
+pub fn web_address(query: &str) -> String {
+    let encoded: String = query
+        .bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            b' ' => "+".to_owned(),
+            b => format!("%{b:02X}"),
+        })
+        .collect();
+    format!("https://duckduckgo.com/?q={encoded}")
+}
+
 fn letter<'a>(name: &str, palette: Palette) -> Element<'a, Message> {
     let first = name
         .chars()
@@ -816,6 +888,42 @@ mod tests {
         assert_eq!(launcher.selected, COLUMNS);
         let _ = launcher.search("/notes".into());
         assert!(!launcher.grid(), "file results read better as a list");
+    }
+
+    #[test]
+    fn what_is_started_often_and_lately_comes_first() {
+        let mut launcher = launcher();
+        let mut usage = crate::usage::Usage::default();
+        let firefox = launcher
+            .apps
+            .iter()
+            .find(|a| a.name == "Firefox")
+            .unwrap()
+            .exec
+            .clone();
+        usage.note(&firefox, crate::usage::now());
+        launcher.set_usage(usage);
+        assert_eq!(launcher.entries()[0].title, "Firefox", "before the games");
+    }
+
+    #[test]
+    fn a_search_ends_with_the_web_and_a_command_when_there_is_one() {
+        let mut launcher = launcher();
+        let _ = launcher.search("zzqx".into());
+        let titles: Vec<String> = launcher.entries().into_iter().map(|e| e.title).collect();
+        assert_eq!(titles, ["Search the web for “zzqx”"]);
+        let _ = launcher.search("sh -c true".into());
+        let targets: Vec<Target> = launcher.entries().into_iter().map(|e| e.target).collect();
+        assert!(targets.contains(&Target::Run("sh -c true".into())));
+        assert_eq!(targets.last(), Some(&Target::Web("sh -c true".into())));
+    }
+
+    #[test]
+    fn a_web_search_is_written_into_the_address() {
+        assert_eq!(
+            web_address("rust & wayland?"),
+            "https://duckduckgo.com/?q=rust+%26+wayland%3F"
+        );
     }
 
     #[test]

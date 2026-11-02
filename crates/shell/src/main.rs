@@ -55,6 +55,7 @@ mod strip;
 mod style;
 mod switcher;
 mod themes;
+mod usage;
 mod wallpaper;
 mod weather;
 mod wifi;
