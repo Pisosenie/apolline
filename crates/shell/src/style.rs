@@ -144,6 +144,14 @@ pub fn pill(background: Rgba) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
+pub fn tinted(background: Rgba) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style {
+        background: fill(background),
+        border: rounded(RADIUS_TILE),
+        ..container::Style::default()
+    }
+}
+
 pub fn dot(c: Rgba) -> impl Fn(&Theme) -> container::Style {
     pill(c)
 }

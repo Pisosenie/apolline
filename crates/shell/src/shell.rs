@@ -94,13 +94,21 @@ pub enum Message {
     Weather(Option<crate::weather::Weather>),
     Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
-    Networks(Vec<controls::Network>),
-    PairedList(Vec<controls::Paired>),
-    PickNetwork(controls::Network),
+    Wifi(crate::wifi::Seen),
+    Bluetooth(crate::bluetooth::Seen),
+    PickNetwork(crate::wifi::Network),
     NetPassword(String),
     JoinNetwork,
-    Joined(Result<(), String>),
-    PairDevice(controls::Paired),
+    Joined(crate::wifi::Network, Result<(), crate::wifi::Failed>),
+    ForgetNetwork(crate::wifi::Network),
+    Gadget(crate::bluetooth::Device),
+    ForgetGadget(crate::bluetooth::Device),
+    BluetoothAsk(crate::bluetooth::Ask),
+    BluetoothDone(u64),
+    Switched(Change, Result<(), String>),
+    PinTyped(String),
+    PairReply(bool),
+    RadioDone(Result<(), String>),
     Thumb(String, Option<image::Handle>),
     Polkit(polkit::Request),
     PolkitGone(String),
@@ -186,9 +194,11 @@ pub struct Shell {
     agenda: std::sync::Arc<crate::events::Agenda>,
     weather: Option<crate::weather::Weather>,
     detail: Option<panel::Detail>,
-    networks: Vec<controls::Network>,
-    paired: Vec<controls::Paired>,
-    joining: Option<(controls::Network, String)>,
+    networks: Vec<crate::wifi::Network>,
+    gadgets: Vec<crate::bluetooth::Device>,
+    joining: Option<(crate::wifi::Network, String)>,
+    asking: Option<crate::bluetooth::Ask>,
+    pin: String,
     net_note: Option<String>,
     net_busy: bool,
     apps: Vec<App>,
@@ -267,7 +277,9 @@ impl Shell {
             weather: None,
             detail: None,
             networks: Vec::new(),
-            paired: Vec::new(),
+            gadgets: Vec::new(),
+            asking: None,
+            pin: String::new(),
             joining: None,
             net_note: None,
             net_busy: false,
@@ -532,20 +544,32 @@ impl Shell {
             Message::Files(files) => self.launcher.set_files(files),
             Message::Detail(detail) => {
                 self.detail = detail;
-                self.joining = None;
+                self.leave_detail();
                 self.net_note = None;
-                return self.load_detail();
+                if self.sample() {
+                    self.networks = crate::wifi::sample();
+                    self.gadgets = crate::bluetooth::sample();
+                }
             }
-            Message::Networks(networks) => self.networks = networks,
-            Message::PairedList(paired) => self.paired = paired,
+            Message::Wifi(seen) => {
+                self.controls.wifi = seen.radio;
+                self.networks = seen.networks;
+            }
+            Message::Bluetooth(seen) => {
+                self.controls.bluetooth = seen.radio;
+                self.gadgets = seen.devices;
+            }
             Message::PickNetwork(network) => {
                 self.net_note = None;
-                if network.secure && !network.known {
+                if network.asks_password() {
                     self.joining = Some((network, String::new()));
                     return iced::widget::operation::focus(panel::PASSWORD);
                 }
+                self.joining = None;
                 self.net_busy = true;
-                return Task::perform(controls::join(network, None), Message::Joined);
+                return Task::perform(crate::wifi::join(network.clone(), None), move |result| {
+                    Message::Joined(network, result)
+                });
             }
             Message::NetPassword(password) => {
                 if let Some((_, typed)) = &mut self.joining {
@@ -553,28 +577,86 @@ impl Shell {
                 }
             }
             Message::JoinNetwork => {
-                if let Some((network, password)) = self.joining.clone()
+                if let Some((network, password)) = self.joining.take()
                     && !password.is_empty()
                 {
+                    // The row stays open, empty, while it joins.
+                    self.joining = Some((network.clone(), String::new()));
                     self.net_busy = true;
-                    return Task::perform(controls::join(network, Some(password)), Message::Joined);
+                    self.net_note = None;
+                    return Task::perform(
+                        crate::wifi::join(network.clone(), Some(password)),
+                        move |result| Message::Joined(network, result),
+                    );
                 }
             }
-            Message::Joined(result) => {
+            Message::Joined(network, result) => {
                 self.net_busy = false;
-                match result {
-                    Ok(()) => {
-                        self.joining = None;
-                        self.net_note = None;
+                self.joining = None;
+                if let Err(failed) = result {
+                    self.net_note = Some(failed.said);
+                    // A typo, or a saved password that stopped working: ask for it again.
+                    if failed.password {
+                        self.joining = Some((network, String::new()));
+                        return iced::widget::operation::focus(panel::PASSWORD);
                     }
-                    Err(err) => self.net_note = Some(err),
                 }
-                return Task::batch([self.load_detail(), self.read_controls()]);
             }
-            Message::PairDevice(device) => {
+            Message::ForgetNetwork(network) => {
                 self.net_busy = true;
                 self.net_note = None;
-                return Task::perform(controls::pair(device), Message::Joined);
+                return Task::perform(crate::wifi::forget(network), Message::RadioDone);
+            }
+            Message::Gadget(device) => {
+                self.net_busy = true;
+                self.net_note = None;
+                return Task::perform(crate::bluetooth::toggle(device), Message::RadioDone);
+            }
+            Message::ForgetGadget(device) => {
+                self.net_busy = true;
+                self.net_note = None;
+                return Task::perform(crate::bluetooth::forget(device), Message::RadioDone);
+            }
+            Message::BluetoothAsk(ask) => {
+                let typing = matches!(
+                    ask.what,
+                    crate::bluetooth::Asking::Pin | crate::bluetooth::Asking::Passkey
+                );
+                self.asking = Some(ask);
+                self.pin.clear();
+                if typing {
+                    return iced::widget::operation::focus(panel::PIN);
+                }
+            }
+            Message::BluetoothDone(id) => {
+                if self.asking.as_ref().is_some_and(|ask| ask.is(id)) {
+                    self.asking = None;
+                    self.pin.clear();
+                }
+            }
+            Message::PinTyped(pin) => self.pin = pin,
+            Message::PairReply(yes) => {
+                if let Some(ask) = self.asking.take() {
+                    let pin = std::mem::take(&mut self.pin);
+                    return Task::future(crate::bluetooth::reply(ask, yes.then_some(pin)))
+                        .discard();
+                }
+            }
+            Message::Switched(_, Ok(())) => {}
+            // It didn't take: the tile goes back and says why.
+            Message::Switched(change, Err(err)) => {
+                let (back, name) = match change {
+                    Change::Wifi(on) => (Change::Wifi(!on), "Wi-Fi"),
+                    Change::Bluetooth(on) => (Change::Bluetooth(!on), "Bluetooth"),
+                    _ => return Task::none(),
+                };
+                self.controls.apply(&back);
+                return self.show(Osd::Note(format!("{name}: {err}")));
+            }
+            Message::RadioDone(result) => {
+                self.net_busy = false;
+                self.asking = None;
+                self.net_note = result.err();
             }
             Message::Weather(weather) => {
                 if weather.is_some() || self.config.weather.is_none() {
@@ -1011,14 +1093,28 @@ impl Shell {
                     .touched
                     .is_none_or(|at| at.elapsed() > QUIET_AFTER_TOUCH)
                 {
-                    self.controls = controls;
+                    self.controls = Controls {
+                        wifi: self.controls.wifi.take(),
+                        bluetooth: self.controls.bluetooth.take(),
+                        ..controls
+                    };
                 }
             }
             Message::Change(change) => {
                 self.controls.apply(&change);
                 self.touched = Some(Instant::now());
                 if !self.sample() {
-                    return Task::future(controls::change(change)).discard();
+                    return match change {
+                        Change::Wifi(on) => Task::perform(crate::wifi::power(on), move |result| {
+                            Message::Switched(change, result)
+                        }),
+                        Change::Bluetooth(on) => {
+                            Task::perform(crate::bluetooth::power(on), move |result| {
+                                Message::Switched(change, result)
+                            })
+                        }
+                        change => Task::future(controls::change(change)).discard(),
+                    };
                 }
             }
             Message::Player(action) => return self.player(action),
@@ -1189,6 +1285,9 @@ impl Shell {
         if self.overlay == Some(Overlay::Marks) {
             self.marks = None;
         }
+        if self.overlay == Some(Overlay::Panel) {
+            self.leave_detail();
+        }
         self.overlay = overlay;
         self.power_menu = false;
         self.armed = None;
@@ -1205,6 +1304,7 @@ impl Shell {
             ]),
             Some(Overlay::Panel) => {
                 self.detail = None;
+                self.leave_detail();
                 self.held.clear();
                 self.read_controls()
             }
@@ -1471,18 +1571,16 @@ impl Shell {
         }
     }
 
-    fn load_detail(&mut self) -> Task<Message> {
-        if self.sample() {
-            self.networks = controls::sample_networks();
-            return Task::none();
-        }
-        match self.detail {
-            Some(panel::Detail::Wifi) => Task::perform(controls::networks(), Message::Networks),
-            Some(panel::Detail::Bluetooth) => {
-                Task::perform(controls::paired(), Message::PairedList)
-            }
-            None => Task::none(),
-        }
+    // Nothing typed or asked outlives the list it was typed in.
+    fn leave_detail(&mut self) {
+        self.joining = None;
+        self.asking = None;
+        self.pin.clear();
+        crate::bluetooth::refuse();
+    }
+
+    fn listing(&self, detail: panel::Detail) -> bool {
+        self.overlay == Some(Overlay::Panel) && self.detail == Some(detail)
     }
 
     fn read_controls(&self) -> Task<Message> {
@@ -1921,8 +2019,10 @@ impl Shell {
                 apps: &self.apps,
                 detail: self.detail,
                 networks: &self.networks,
-                paired: &self.paired,
+                gadgets: &self.gadgets,
                 joining: self.joining.as_ref(),
+                asking: self.asking.as_ref(),
+                pin: &self.pin,
                 note: self.net_note.as_deref(),
                 busy: self.net_busy,
             }),
@@ -2161,6 +2261,8 @@ impl Shell {
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
                 controls::watch().map(Message::Controls),
+                crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
+                crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
             ])
         };
         iced::Subscription::batch([

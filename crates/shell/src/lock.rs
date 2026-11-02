@@ -20,7 +20,7 @@ use crate::media::{self, Action, Track};
 use crate::power::Battery;
 use crate::shell;
 use crate::status::short_layout;
-use crate::{controls, fonts, niri, power, shot, style, wallpaper};
+use crate::{fonts, niri, power, shot, style, wallpaper};
 
 const FIELD: &str = "lock-password";
 const DARK: Rgba = Rgba::hex(0x040508);
@@ -678,9 +678,7 @@ fn initial(name: &str) -> String {
 }
 
 fn read_network() -> Task<Message> {
-    Task::perform(controls::read(), |controls| {
-        Message::Network(controls.wifi.filter(|w| w.on).and_then(|w| w.connected))
-    })
+    Task::perform(crate::wifi::connected(), Message::Network)
 }
 
 #[cfg(target_os = "linux")]

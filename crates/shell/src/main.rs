@@ -1,5 +1,7 @@
 mod apps;
 mod bar;
+mod bluetooth;
+mod bus;
 mod calc;
 mod calendar;
 mod capture;
@@ -48,6 +50,7 @@ mod switcher;
 mod themes;
 mod wallpaper;
 mod weather;
+mod wifi;
 mod windows;
 
 #[cfg(target_os = "linux")]
@@ -209,12 +212,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
                         options.open.push(overlay(shell::Overlay::Panel));
                         shell::Message::Detail(Some(panel::Detail::Wifi))
                     }
+                    Some("bluetooth") => {
+                        options.open.push(overlay(shell::Overlay::Panel));
+                        shell::Message::Detail(Some(panel::Detail::Bluetooth))
+                    }
                     Some("osd") => {
                         shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
                     }
                     _ => {
                         return Err(
-                            "--open needs launcher, panel, wifi, switch, clipboard, keys, calendar, polkit or osd".into(),
+                            "--open needs launcher, panel, wifi, bluetooth, switch, clipboard, keys, calendar, polkit or osd".into(),
                         );
                     }
                 };

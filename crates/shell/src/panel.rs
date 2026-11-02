@@ -6,7 +6,8 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
-use crate::controls::{Change, Controls, Network, Paired, Radio};
+use crate::bluetooth::{Ask, Asking};
+use crate::controls::{Change, Controls, Radio};
 use crate::icon::{Icon, icon};
 use crate::media::{Action, Track, shorten};
 use crate::notify::Notification;
@@ -75,9 +76,11 @@ pub struct Panel<'a> {
     pub history: &'a [Notification],
     pub apps: &'a [crate::apps::App],
     pub detail: Option<Detail>,
-    pub networks: &'a [Network],
-    pub paired: &'a [Paired],
-    pub joining: Option<&'a (Network, String)>,
+    pub networks: &'a [crate::wifi::Network],
+    pub gadgets: &'a [crate::bluetooth::Device],
+    pub joining: Option<&'a (crate::wifi::Network, String)>,
+    pub asking: Option<&'a Ask>,
+    pub pin: &'a str,
     pub note: Option<&'a str>,
     pub busy: bool,
 }
@@ -89,6 +92,7 @@ pub enum Detail {
 }
 
 pub const PASSWORD: &str = "wifi-password";
+pub const PIN: &str = "bluetooth-pin";
 
 pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     let palette = panel.palette;
@@ -100,7 +104,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     if let Some(detail) = panel.detail {
         body = body.push(match detail {
             Detail::Wifi => wifi_list(&panel),
-            Detail::Bluetooth => paired_list(&panel),
+            Detail::Bluetooth => gadget_list(&panel),
         });
         return frame(body, panel.at_bottom, panel.look);
     }
@@ -745,21 +749,26 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         ]
         .spacing(10)
         .align_y(Alignment::Center);
-        if network.secure {
+        if network.stranger {
+            line = line.push(icon(Icon::Warning, 13.0, style::WARN));
+        } else if network.secure() {
             line = line.push(icon(Icon::Lock, 13.0, style::FAINT));
         }
         if network.active {
             line = line.push(icon(Icon::Check, 14.0, palette.accent));
         }
-        list = list.push(
-            button(line)
-                .width(Fill)
-                .padding([8, 10])
-                .style(style::ghost(8.0))
-                .on_press_maybe(
-                    (!network.active && !panel.busy).then(|| Message::PickNetwork(network.clone())),
-                ),
-        );
+        let pick = button(line)
+            .width(Fill)
+            .padding([8, 10])
+            .style(style::ghost(8.0))
+            .on_press_maybe(
+                (!network.active && !panel.busy).then(|| Message::PickNetwork(network.clone())),
+            );
+        list = list.push(forgettable(
+            pick,
+            (network.known || network.stranger).then(|| Message::ForgetNetwork(network.clone())),
+            panel.busy,
+        ));
         if let Some((joining, password)) = panel.joining
             && joining.ssid == network.ssid
         {
@@ -791,25 +800,71 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
     list.into()
 }
 
-fn paired_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
+// A row with a small "forget" button after it, for what's saved.
+fn forgettable<'a>(
+    row_button: iced::widget::Button<'a, Message>,
+    forget: Option<Message>,
+    busy: bool,
+) -> Element<'a, Message> {
+    let Some(forget) = forget else {
+        return row_button.into();
+    };
+    row![
+        row_button,
+        button(icon(Icon::Trash, 14.0, style::FAINT))
+            .padding(8)
+            .style(style::ghost(8.0))
+            .on_press_maybe((!busy).then_some(forget)),
+    ]
+    .spacing(2)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn gadget_icon(kind: &str) -> Icon {
+    match kind {
+        "audio-headset" | "audio-headphones" => Icon::Headphones,
+        "audio-card" => Icon::Speaker,
+        "input-keyboard" => Icon::Keyboard,
+        "input-mouse" | "input-tablet" => Icon::Mouse,
+        "input-gaming" => Icon::Gamepad,
+        "phone" => Icon::Smartphone,
+        "computer" => Icon::Laptop,
+        _ if kind.starts_with("watch") => Icon::Watch,
+        _ => Icon::Bluetooth,
+    }
+}
+
+fn gadget_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
     let palette = panel.palette;
     let mut list = column![detail_header("Bluetooth", panel.busy)].spacing(4);
-    if panel.paired.is_empty() {
-        list = list.push(
-            text("No paired devices yet. Pair one once with bluetoothctl or blueman; after that it lives here.")
-                .size(12)
-                .color(style::color(style::FAINT)),
-        );
+    if let Some(ask) = panel.asking {
+        let device = panel
+            .gadgets
+            .iter()
+            .find(|d| ask.about(d))
+            .map_or("the device", |d| d.name.as_str());
+        list = list.push(ask_card(ask, device, panel.pin, palette));
     }
-    for device in panel.paired {
-        let state = if device.connected {
-            "Connected"
+    let label = |words: &'static str| {
+        container(text(words).size(11).color(style::color(style::FAINT))).padding([6, 10])
+    };
+    let (mine, nearby): (Vec<_>, Vec<_>) = panel.gadgets.iter().partition(|d| d.paired);
+    if !mine.is_empty() {
+        list = list.push(label("Your devices"));
+    }
+    for device in mine {
+        let mut state = if device.connected {
+            "Connected".to_owned()
         } else {
-            "Not connected"
+            "Not connected".to_owned()
         };
+        if let Some(battery) = device.battery {
+            state = format!("{state} · {battery}%");
+        }
         let line = row![
             icon(
-                Icon::Bluetooth,
+                gadget_icon(&device.kind),
                 15.0,
                 if device.connected {
                     palette.accent
@@ -818,7 +873,7 @@ fn paired_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
                 }
             ),
             column![
-                text(device.name.as_str()).size(13),
+                text(shorten(&device.name, 30)).size(13),
                 text(state).size(11).color(style::color(style::FAINT)),
             ]
             .width(Fill),
@@ -832,16 +887,130 @@ fn paired_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         ]
         .spacing(10)
         .align_y(Alignment::Center);
+        let toggle = button(line)
+            .width(Fill)
+            .padding([8, 10])
+            .style(style::ghost(8.0))
+            .on_press_maybe((!panel.busy).then(|| Message::Gadget(device.clone())));
+        list = list.push(forgettable(
+            toggle,
+            Some(Message::ForgetGadget(device.clone())),
+            panel.busy,
+        ));
+    }
+    list = list.push(label("Nearby"));
+    if nearby.is_empty() {
+        list = list.push(
+            container(
+                text("Looking… put the device in pairing mode")
+                    .size(12)
+                    .color(style::color(style::FAINT)),
+            )
+            .padding([4, 10]),
+        );
+    }
+    for device in nearby.into_iter().take(8) {
+        let line = row![
+            icon(gadget_icon(&device.kind), 15.0, neutral::MUTED),
+            text(shorten(&device.name, 30)).size(13).width(Fill),
+            text("Pair").size(12).color(style::color(palette.accent)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center);
         list = list.push(
             button(line)
                 .width(Fill)
                 .padding([8, 10])
                 .style(style::ghost(8.0))
-                .on_press_maybe((!panel.busy).then(|| Message::PairDevice(device.clone()))),
+                .on_press_maybe(
+                    (!panel.busy && panel.asking.is_none())
+                        .then(|| Message::Gadget(device.clone())),
+                ),
         );
     }
     if let Some(note) = panel.note {
         list = list.push(text(note).size(12).color(style::color(style::WARN)));
     }
     list.into()
+}
+
+fn ask_card<'a>(
+    ask: &'a Ask,
+    device: &'a str,
+    pin: &'a str,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let code = |code: &'a str| {
+        text(code)
+            .size(26)
+            .font(style::mono())
+            .color(style::color(neutral::TEXT))
+    };
+    let buttons = |yes: &'static str, ready: bool| {
+        row![
+            space::horizontal(),
+            button(text("Cancel").size(13))
+                .padding([7, 14])
+                .style(style::secondary)
+                .on_press(Message::PairReply(false)),
+            button(text(yes).size(13))
+                .padding([7, 16])
+                .style(style::primary(palette))
+                .on_press_maybe(ready.then_some(Message::PairReply(true))),
+        ]
+        .spacing(8)
+    };
+    let body: Column<'a, Message> = match &ask.what {
+        Asking::Confirm(number) => column![
+            text(format!("Pair with {device}?")).size(13),
+            text("It should show the same code")
+                .size(12)
+                .color(style::color(style::FAINT)),
+            code(number),
+            buttons("Pair", true),
+        ],
+        Asking::Type(number) => column![
+            text(format!("Type this on {device}, then press Enter")).size(13),
+            code(number),
+            row![
+                space::horizontal(),
+                button(text("Cancel").size(13))
+                    .padding([7, 14])
+                    .style(style::secondary)
+                    .on_press(Message::PairReply(false)),
+            ],
+        ],
+        Asking::Allow => column![
+            text(format!("Pair with {device}?")).size(13),
+            buttons("Pair", true),
+        ],
+        Asking::Pin | Asking::Passkey => column![
+            text(if ask.what == Asking::Pin {
+                format!("The PIN for {device}")
+            } else {
+                format!("The code {device} shows")
+            })
+            .size(13),
+            text(if ask.what == Asking::Pin {
+                "Often 0000 or 1234; it's in the manual"
+            } else {
+                "Six digits on its screen"
+            })
+            .size(12)
+            .color(style::color(style::FAINT)),
+            iced::widget::text_input("PIN", pin)
+                .id(PIN)
+                .on_input(Message::PinTyped)
+                .on_submit_maybe((!pin.is_empty()).then_some(Message::PairReply(true)))
+                .padding([7, 10])
+                .size(13)
+                .style(style::field(palette)),
+            buttons("Pair", !pin.is_empty()),
+        ],
+    };
+    container(body.spacing(8))
+        .width(Fill)
+        .padding(12)
+        .style(style::tinted(palette.accent_soft))
+        .into()
 }

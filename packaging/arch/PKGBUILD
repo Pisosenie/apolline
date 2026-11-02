@@ -11,7 +11,7 @@ depends=('niri' 'pam' 'libxkbcommon' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
 optdepends=(
   'wireplumber: volume in quick settings'
   'networkmanager: Wi-Fi in quick settings'
-  'bluez-utils: Bluetooth in quick settings'
+  'bluez: Bluetooth in quick settings'
   'brightnessctl: brightness in quick settings'
   'upower: battery in the bar'
   'power-profiles-daemon: performance profiles in modes'
