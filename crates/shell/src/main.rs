@@ -70,7 +70,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys
        apolline volume up|down|mute | mic mute | brightness up|down
