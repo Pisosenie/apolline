@@ -104,6 +104,88 @@ pub fn remember(clips: &mut Vec<Clip>, clip: Clip) {
     });
 }
 
+// What you pinned outlives the session; the rest of the history is only ever in memory.
+fn kept_path() -> Option<std::path::PathBuf> {
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".local/share"))
+        })?;
+    Some(data.join("apolline").join("pinned.json"))
+}
+
+pub fn pinned() -> Vec<Clip> {
+    kept_path()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| unkeep(&text))
+        .unwrap_or_default()
+}
+
+// Written whenever a pin changes; only you can read it, since pins can be private.
+pub fn keep(clips: &[Clip]) -> iced::Task<crate::shell::Message> {
+    let Some(path) = kept_path() else {
+        return iced::Task::none();
+    };
+    let text = keep_text(clips);
+    iced::Task::future(async move {
+        let written = tokio::task::spawn_blocking(move || write_private(&path, &text)).await;
+        if let Ok(Err(err)) = written {
+            eprintln!("apolline: pinned clips: {err}");
+        }
+    })
+    .discard()
+}
+
+fn keep_text(clips: &[Clip]) -> String {
+    use base64::Engine;
+    let kept: Vec<serde_json::Value> = clips
+        .iter()
+        .filter(|clip| clip.pinned)
+        .map(|clip| match &clip.content {
+            Content::Text(text) => serde_json::json!({ "text": text }),
+            Content::Png(bytes) => {
+                serde_json::json!({ "png": base64::prelude::BASE64_STANDARD.encode(bytes.as_ref()) })
+            }
+        })
+        .collect();
+    serde_json::Value::from(kept).to_string()
+}
+
+fn unkeep(text: &str) -> Vec<Clip> {
+    use base64::Engine;
+    serde_json::from_str::<Vec<serde_json::Value>>(text)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|kept| {
+            let content = match (kept["text"].as_str(), kept["png"].as_str()) {
+                (Some(text), _) => Content::Text(text.to_owned()),
+                (None, Some(data)) => Content::Png(Arc::new(
+                    base64::prelude::BASE64_STANDARD.decode(data).ok()?,
+                )),
+                (None, None) => return None,
+            };
+            Some(Clip {
+                pinned: true,
+                ..Clip::new(content)
+            })
+        })
+        .collect()
+}
+
+fn write_private(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let staged = path.with_extension("json.new");
+    let mut file = std::fs::OpenOptions::new();
+    file.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut file, 0o600);
+    file.open(&staged)?.write_all(text.as_bytes())?;
+    std::fs::rename(staged, path)
+}
+
 pub fn subscription() -> Subscription<Clip> {
     Subscription::run(watch)
 }
@@ -410,6 +492,25 @@ pub fn sample() -> Vec<Clip> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_pins_are_written_down_and_they_come_back_pinned() {
+        let pin = |content| Clip {
+            pinned: true,
+            ..Clip::new(content)
+        };
+        let clips = vec![
+            pin(Content::Text("ssh deploy@10.0.0.4 \"line\"".into())),
+            Clip::new(Content::Text("a password, say".into())),
+            pin(Content::Png(Arc::new(vec![137, 80, 78, 71]))),
+        ];
+        let back = unkeep(&keep_text(&clips));
+        assert_eq!(back.len(), 2, "the unpinned one isn't kept");
+        assert!(back.iter().all(|clip| clip.pinned));
+        assert_eq!(back[0].content, clips[0].content);
+        assert_eq!(back[1].content, clips[2].content);
+        assert!(unkeep("not json").is_empty());
+    }
 
     #[test]
     fn kinds_are_guessed_from_the_text() {

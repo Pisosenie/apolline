@@ -278,7 +278,7 @@ impl Shell {
             clips: if sample {
                 clipboard::sample()
             } else {
-                Vec::new()
+                clipboard::pinned()
             },
             picker: Picker::default(),
             keymap: Vec::new(),
@@ -789,13 +789,19 @@ impl Shell {
             Message::ClipPin(index) => {
                 if let Some(clip) = self.clips.get_mut(index) {
                     clip.pinned = !clip.pinned;
+                    if !self.sample() {
+                        return clipboard::keep(&self.clips);
+                    }
                 }
             }
             Message::ClipRemove(index) => {
                 if index < self.clips.len() {
-                    self.clips.remove(index);
+                    let removed = self.clips.remove(index);
                     let count = self.picker.visible(&self.clips).len();
                     self.picker.selected = self.picker.selected.min(count.saturating_sub(1));
+                    if removed.pinned && !self.sample() {
+                        return clipboard::keep(&self.clips);
+                    }
                 }
             }
             Message::Control(Command::Nudge(nudge)) => return self.nudge(nudge),

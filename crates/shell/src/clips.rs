@@ -152,9 +152,13 @@ impl Picker {
             hint("del", "remove"),
             hint("esc", "close"),
             space::horizontal(),
-            text("Kept in memory only, gone when you log out")
-                .size(11)
-                .color(style::color(style::FAINT)),
+            text(if pinned > 0 {
+                "Pinned ones stay; the rest is in memory only, gone when you log out"
+            } else {
+                "Kept in memory only, gone when you log out; pinned ones stay"
+            })
+            .size(11)
+            .color(style::color(style::FAINT)),
         ]
         .spacing(14)
         .align_y(Alignment::Center);
