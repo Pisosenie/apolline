@@ -6,8 +6,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Local};
 use iced::keyboard::{self, Key, key::Named};
-use iced::widget::{container, image, space, stack};
-use iced::{ContentFit, Element, Fill, Padding, Task, window};
+use iced::widget::{column, container, image, space, stack, text};
+use iced::{Alignment, ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::apps::{self, App};
 use crate::bar::{self, Bar};
@@ -2603,6 +2603,61 @@ impl Shell {
     }
 
     pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
+        let picture = self.wallpaper_picture(output);
+        match self.config.desktop.clock {
+            Some(spot) => stack![picture, self.desktop_clock(spot)].into(),
+            None => picture,
+        }
+    }
+
+    // The time and the date, big and light, on the wallpaper.
+    fn desktop_clock(&self, spot: apolline_config::Spot) -> Element<'_, Message> {
+        use apolline_config::{Corner, Spot};
+        let ink = apolline_theme::Scheme::DARK.text;
+        let (x, y) = match spot {
+            Spot::Center => (Alignment::Center, Alignment::Center),
+            Spot::Corner(corner) => (
+                match corner {
+                    Corner::TopLeft | Corner::BottomLeft => Alignment::Start,
+                    Corner::Top | Corner::Bottom => Alignment::Center,
+                    Corner::TopRight | Corner::BottomRight => Alignment::End,
+                },
+                if corner.bottom() {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                },
+            ),
+        };
+        let clock = column![
+            text(self.now.format("%H:%M").to_string())
+                .size(120)
+                .font(style::light())
+                .line_height(0.95)
+                .color(style::color(ink)),
+            text(self.now.format("%A, %-d %B").to_string())
+                .size(18)
+                .font(style::medium())
+                .color(style::color(ink.alpha(0.8))),
+        ]
+        .spacing(2)
+        .align_x(x);
+        // Clear of the bar on its side, and of the screen's edges.
+        let bar = style::under_bar(&self.config.bar, &self.config.style, 1.0) + 32.0;
+        let padding = match self.config.bar.position {
+            Edge::Top => Padding::new(56.0).top(bar),
+            Edge::Bottom => Padding::new(56.0).bottom(bar),
+        };
+        container(clock)
+            .width(Fill)
+            .height(Fill)
+            .padding(padding)
+            .align_x(x)
+            .align_y(y)
+            .into()
+    }
+
+    fn wallpaper_picture(&self, output: Option<&str>) -> Element<'_, Message> {
         let shown = self
             .shown
             .iter()

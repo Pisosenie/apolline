@@ -1061,6 +1061,18 @@ impl Reader<'_> {
                         desktop.gtk = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
+                "clock" => {
+                    let mut spots: Vec<(&str, Option<crate::Spot>)> =
+                        vec![("off", None), ("center", Some(crate::Spot::Center))];
+                    spots.extend(
+                        Corner::ALL
+                            .iter()
+                            .map(|(name, c)| (*name, Some(crate::Spot::Corner(*c)))),
+                    );
+                    if let Some(v) = self.choice(key, value, &spots) {
+                        desktop.clock = v
+                    }
+                }
                 "outputs" => {
                     let DeValue::Table(table) = value.get_ref() else {
                         self.wrong::<()>(
@@ -1085,6 +1097,7 @@ impl Reader<'_> {
                         "wallpaper",
                         "accent",
                         "palette",
+                        "clock",
                         "theme",
                         "folders",
                         "rotate",

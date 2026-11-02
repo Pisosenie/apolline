@@ -29,6 +29,16 @@ use crate::{bar, caldav, fonts, keys, notify, secrets, shot, style, themes, wall
 
 const HISTORY: usize = 100;
 const SYSTEM_CURSOR: &str = "System's";
+const CLOCK_SPOTS: [(&str, &str); 8] = [
+    ("off", "Off"),
+    ("center", "In the middle"),
+    ("top-left", "Top left"),
+    ("top", "Top"),
+    ("top-right", "Top right"),
+    ("bottom-left", "Bottom left"),
+    ("bottom", "Bottom"),
+    ("bottom-right", "Bottom right"),
+];
 const BUILT_IN_FONT: &str = "Geist, built in";
 const WALLS: usize = 11;
 const PER_ROW: usize = 4;
@@ -239,6 +249,7 @@ enum Message {
     DesktopWallpaper(String),
     DesktopAccent(Accent),
     Palette(String),
+    DesktopClock(String),
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,
@@ -762,6 +773,20 @@ impl Settings {
                 return self.custom_thumb();
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
+            Message::DesktopClock(label) => {
+                let spot = CLOCK_SPOTS
+                    .iter()
+                    .find(|(_, name)| *name == label)
+                    .map(|(key, _)| *key)
+                    .unwrap_or("off");
+                self.edit(|e| {
+                    if spot == "off" {
+                        e.unset("desktop", "clock");
+                    } else {
+                        e.set("desktop", "clock", spot);
+                    }
+                });
+            }
             // A palette brings its own accent; one made from the wallpaper takes the wallpaper's.
             Message::Palette(name) => self.edit(|e| {
                 if name == "dark" {
@@ -2951,6 +2976,30 @@ impl Settings {
                     switch(self.config.desktop.shuffle, Message::Shuffle, palette),
                 ),
                 padded(palette_picker(&self.config.desktop.palette, palette)),
+                setting(
+                    "Clock on the desktop",
+                    "The time and the date, big, on the wallpaper",
+                    iced::widget::pick_list(
+                        CLOCK_SPOTS
+                            .iter()
+                            .map(|(_, name)| (*name).to_owned())
+                            .collect::<Vec<_>>(),
+                        Some(
+                            CLOCK_SPOTS
+                                .iter()
+                                .find(|(key, _)| {
+                                    Some(*key)
+                                        == self.config.desktop.clock.map(apolline_config::Spot::key)
+                                        || (*key == "off" && self.config.desktop.clock.is_none())
+                                })
+                                .map_or("Off", |(_, name)| name)
+                                .to_owned(),
+                        ),
+                        Message::DesktopClock,
+                    )
+                    .text_size(13)
+                    .padding([7, 12]),
+                ),
                 padded(accent_picker(
                     Some(self.config.desktop.accent),
                     auto_accent(&self.config.desktop.wallpaper),

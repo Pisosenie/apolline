@@ -21,6 +21,7 @@ pub struct Theme {
     // Each surface's size, corners and glass, and the launcher as a list or a grid.
     pub style: Styles,
     pub lock: Lock,
+    pub clock: Option<crate::Spot>,
 }
 
 impl Theme {
@@ -53,6 +54,7 @@ impl Theme {
             blur: config.windows.blur,
             style: config.style,
             lock: config.lock,
+            clock: config.desktop.clock,
         }
     }
 
@@ -79,6 +81,7 @@ impl Theme {
             }
         };
         differ("wallpaper", self.wallpaper == now.wallpaper);
+        differ("desktop clock", self.clock == now.clock);
         differ("accent", self.accent == now.accent);
         differ("colors", self.palette == now.palette);
         differ("gaps", self.layout.gaps == now.layout.gaps);
@@ -155,6 +158,7 @@ impl Theme {
         fill(&mut config.style.panel, self.style.panel);
         fill(&mut config.style.cards, self.style.cards);
         fill(&mut config.style.osd, self.style.osd);
+        config.desktop.clock = self.clock;
         config.lock.centered = self.lock.centered;
         config.lock.blur = self.lock.blur;
     }
@@ -210,6 +214,10 @@ impl Theme {
                 Some(value) => editor.set("windows", key, round(value)),
                 None => editor.unset("windows", key),
             }
+        }
+        match self.clock {
+            Some(spot) => editor.set("desktop", "clock", spot.key()),
+            None => editor.unset("desktop", "clock"),
         }
         if self.lock.centered {
             editor.set("lock", "layout", "center");

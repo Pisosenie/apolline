@@ -191,6 +191,32 @@ pub struct Styles {
     pub grid: bool,
 }
 
+// A place on the screen for something that isn't in a corner only.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Spot {
+    Center,
+    Corner(Corner),
+}
+
+impl Spot {
+    pub fn named(name: &str) -> Option<Spot> {
+        if name == "center" {
+            return Some(Spot::Center);
+        }
+        Corner::ALL
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, corner)| Spot::Corner(*corner))
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Spot::Center => "center",
+            Spot::Corner(corner) => corner.key(),
+        }
+    }
+}
+
 // Where notification cards come up.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Corner {
@@ -297,6 +323,8 @@ pub struct Rule {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Desktop {
+    // A big clock with the date on the wallpaper, and where.
+    pub clock: Option<Spot>,
     pub wallpaper: String,
     pub accent: Accent,
     // A named palette, or "wallpaper" / "wallpaper-light" for one made from the wallpaper's color.
@@ -723,6 +751,7 @@ impl Default for Config {
             mode: None,
             theme: None,
             desktop: Desktop {
+                clock: None,
                 wallpaper: "fog.jpg".into(),
                 accent: Accent::Auto,
                 palette: "dark".into(),
@@ -945,6 +974,18 @@ pub fn default_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_desktop_clock_goes_where_it_is_put() {
+        let (config, problems) = parse("[desktop]\nclock = \"bottom-left\"\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(config.desktop.clock, Some(Spot::Corner(Corner::BottomLeft)));
+        assert_eq!(
+            parse("[desktop]\nclock = \"center\"\n").0.desktop.clock,
+            Some(Spot::Center)
+        );
+        assert_eq!(parse("[desktop]\nclock = \"off\"\n").0.desktop.clock, None);
+    }
 
     #[test]
     fn templates_need_somewhere_to_come_from_and_go() {
