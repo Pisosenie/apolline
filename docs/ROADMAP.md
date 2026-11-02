@@ -96,12 +96,21 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   theme and takes you back to it in one click, and says what the running mode puts over it.
 - **Themes as folders** — done: `theme.toml` with its wallpaper, `apolline theme install FILE|FOLDER`.
   Installs from a link too. A `niri.kdl` in the folder adds looks only (layout, animations, rules).
-- **Per-surface style** — done for the launcher (radius, opacity, size, list or grid) and quick settings
-  (radius, opacity, size).
+- **Per-surface style** — done for the bar (size, corners), the launcher (radius, opacity, size, list or
+  grid), quick settings, notification cards and the volume popup; cards go in any corner.
+- **Palettes** — done: light and dark, Catppuccin, Gruvbox, Nord, Tokyo Night, Rosé Pine, Everforest,
+  Kanagawa, Dracula, Paper, or neutrals tinted from the wallpaper; any accent is shifted until it reads.
+- **The bar's shape** — done: any of four edges, a strip or islands, its pieces dragged into place in
+  Settings, pinned apps dragged on the bar itself, the apps' tray.
+- **Lock screen and desktop** — done: the lock centered or in the corner, blurred; a clock on the wallpaper.
+- **Templates** — done: any app's colors from a file of yours filled in from the palette.
+- **Ten themes** — done, carrying the palette, the bar's shape and every surface's style.
 - **Wallpapers**: done — a gallery from folders, one per monitor, rotation, a thumbnail cache and a cross-fade.
 - **Fonts, icons, cursor and GTK theme** pickers — done.
-- **More apps in the accent**: done for KDE apps (an `Apolline` color scheme); next are live reload of
-  running GTK apps and Flatpak.
+- **More apps in the palette**: done for GTK, KDE and qt6ct apps, the whole palette and not only the
+  accent; next are live reload of running GTK apps and Flatpak.
+- **Next for rice:** a font per surface, looks for the login screen, a catalog of themes to browse,
+  and Russian first among translations.
   Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.
 
 ### 4. Finding things and getting in
@@ -137,8 +146,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - A bar module of your own — done (`[[module]]`: command, every, click).
 
 ### 6. Getting it to people
-- Screenshots and a short video in the README, `apolline-git` on the AUR, CI that builds and tests
-  on every push.
+- Screenshots and a short video in the README, `apolline-git` on the AUR. CI builds, lints and tests
+  on every push — done.
 - CI against the newest niri — done for the config side: every week and on every push, the fragment for
   sample configs goes through `niri validate`. A session recorded on niri 26.04 replays in the tests,
   and CI records a fresh one from the newest niri (headless sway, `tools/niri-session.sh`) and reads it the same way.
