@@ -117,16 +117,34 @@ pub fn binds(niri_config: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+// niri running inside another window takes Alt for Mod, so the keys say what to press there.
+fn mod_name() -> &'static str {
+    static NAME: std::sync::OnceLock<&str> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        if crate::wallpaper::monitors()
+            .iter()
+            .any(|output| output == "winit")
+        {
+            "Alt"
+        } else {
+            "Super"
+        }
+    })
+}
+
 pub fn caps(combo: &str) -> Vec<String> {
-    combo
+    let mut caps: Vec<String> = combo
         .split('+')
         .map(|part| match part {
-            "Mod" => "Super".to_owned(),
+            "Mod" => mod_name().to_owned(),
             "Page_Up" => "PgUp".to_owned(),
             "Page_Down" => "PgDn".to_owned(),
             other => other.to_owned(),
         })
-        .collect()
+        .collect();
+    // Mod+Alt+V is Alt+V once Mod is Alt.
+    caps.dedup();
+    caps
 }
 
 #[cfg(test)]
