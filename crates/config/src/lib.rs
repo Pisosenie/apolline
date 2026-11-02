@@ -183,6 +183,8 @@ pub struct Surface {
 pub struct Styles {
     pub launcher: Surface,
     pub panel: Surface,
+    // The bar's glass is [bar] opacity; here its size and corners.
+    pub bar: Surface,
     pub cards: Surface,
     pub osd: Surface,
     pub grid: bool,

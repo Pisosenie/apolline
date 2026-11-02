@@ -57,7 +57,7 @@ struct Screen {
 struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
-    look: (Edge, bool),
+    look: (Edge, bool, u16),
     popups: Option<(window::Id, u32)>,
     // Where the cards' window was opened, and at what size; either changing opens it again.
     popups_place: (Corner, f32),
@@ -72,7 +72,7 @@ impl Layers {
         let mut layers = Self {
             shell,
             screens: BTreeMap::new(),
-            look: (Edge::Top, true),
+            look: (Edge::Top, true, 100),
             popups: None,
             popups_place: (Corner::TopRight, 1.0),
             popups_hold: Hold::default(),
@@ -327,6 +327,9 @@ impl Layers {
     fn scale(&self, id: window::Id) -> f32 {
         match self.overlay {
             Some((overlay, kind)) if overlay == id => self.shell.size_of(kind),
+            _ if self.screens.values().any(|screen| screen.bar == id) => {
+                f32::from(self.look.2) / 100.0
+            }
             _ if self.popups.is_some_and(|(popups, _)| popups == id) => self.popups_place.1,
             _ if self.osd == Some(id) => self.shell.osd_size(),
             _ => 1.0,
@@ -349,8 +352,11 @@ impl Layers {
     }
 }
 
-fn open_screen(output: &Output, (edge, floating): (Edge, bool)) -> (Screen, Task<Message>) {
-    let height = metrics::BAR_HEIGHT as u32;
+fn open_screen(
+    output: &Output,
+    (edge, floating, size): (Edge, bool, u16),
+) -> (Screen, Task<Message>) {
+    let height = (metrics::BAR_HEIGHT * f32::from(size) / 100.0).round() as u32;
     let inset = if floating {
         metrics::BAR_INSET as i32
     } else {

@@ -1,4 +1,4 @@
-use apolline_theme::{Palette, metrics, neutral};
+use apolline_theme::{Palette, neutral};
 use chrono::{DateTime, Datelike, Local, Months, NaiveDate};
 use iced::widget::{Row, button, column, container, mouse_area, opaque, row, space, text};
 use iced::{Alignment, Element, Fill, Length, Padding};
@@ -37,6 +37,7 @@ pub fn view<'a>(
     weather: Option<&'a Weather>,
     palette: Palette,
     at_bottom: bool,
+    gap: f32,
 ) -> Element<'a, Message> {
     let today = now.date_naive();
     let first = month(today, offset);
@@ -137,7 +138,6 @@ pub fn view<'a>(
         .padding(18)
         .style(style::surface);
 
-    let gap = metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0;
     mouse_area(
         container(opaque(card))
             .width(Fill)

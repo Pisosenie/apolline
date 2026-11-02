@@ -2542,7 +2542,11 @@ impl Settings {
         .padding([5, 8])
         .width(Fill)
         .style(move |_| {
-            let mut style = style::glass(theme.bar.opacity, theme.bar.floating)(&Theme::Dark);
+            let mut style = style::glass(
+                theme.bar.opacity,
+                theme.bar.floating,
+                apolline_theme::metrics::RADIUS_BAR,
+            )(&Theme::Dark);
             if theme.bar.floating {
                 style.border.radius = 7.0.into();
             }
@@ -3662,6 +3666,7 @@ impl Settings {
                 apps: &self.apps,
                 now: chrono::Local::now(),
                 look,
+                radius: style::bar_size(&self.config.style).1,
                 panel_open: false,
                 pinned: self
                     .config
@@ -3719,6 +3724,32 @@ impl Settings {
                         "Frosted",
                         "Blur what's behind the bar, like frosted glass",
                         switch(look.blur, Message::BarBlur, palette),
+                    ),
+                    setting(
+                        "Size",
+                        "Its height, with the text and icons in it",
+                        value_slider(
+                            80..=150,
+                            (self.config.style.bar.size.unwrap_or(1.0) * 100.0).round() as u16,
+                            |v| Message::Style(Part::Bar, Knob::Size, v),
+                            "%",
+                            palette,
+                        ),
+                    ),
+                    setting(
+                        "Corners",
+                        "Of the island, when it floats",
+                        value_slider(
+                            0..=24,
+                            self.config
+                                .style
+                                .bar
+                                .radius
+                                .unwrap_or(apolline_theme::metrics::RADIUS_BAR as u16),
+                            |v| Message::Style(Part::Bar, Knob::Corners, v),
+                            "px",
+                            palette,
+                        ),
                     ),
                     setting(
                         "Glass",
@@ -5943,6 +5974,7 @@ enum Part {
     Panel,
     Cards,
     Osd,
+    Bar,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5961,6 +5993,7 @@ impl Part {
             Part::Panel => "panel",
             Part::Cards => "notifications",
             Part::Osd => "osd",
+            Part::Bar => "bar",
         }
     }
 
@@ -5970,6 +6003,7 @@ impl Part {
             Part::Panel => "Quick settings",
             Part::Cards => "Notifications",
             Part::Osd => "Volume and brightness",
+            Part::Bar => "Bar",
         }
     }
 
@@ -5979,6 +6013,7 @@ impl Part {
             Part::Panel => style.panel,
             Part::Cards => style.cards,
             Part::Osd => style.osd,
+            Part::Bar => style.bar,
         }
     }
 
@@ -5988,6 +6023,7 @@ impl Part {
             Part::Launcher | Part::Panel => (20, 0.95),
             Part::Cards => (16, 1.0),
             Part::Osd => (16, 0.95),
+            Part::Bar => (apolline_theme::metrics::RADIUS_BAR as u16, 0.55),
         }
     }
 }

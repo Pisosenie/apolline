@@ -183,11 +183,12 @@ impl Reader<'_> {
                                 "panel" => &mut config.style.panel,
                                 "notifications" => &mut config.style.cards,
                                 "osd" => &mut config.style.osd,
+                                "bar" => &mut config.style.bar,
                                 _ => {
                                     self.unknown(
                                         key,
                                         "surface",
-                                        &["launcher", "panel", "notifications", "osd"],
+                                        &["launcher", "panel", "bar", "notifications", "osd"],
                                     );
                                     continue;
                                 }

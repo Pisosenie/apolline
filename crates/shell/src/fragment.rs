@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use apolline_config::{
     Appear, Blur, Center, Config, Keyboard, Motion, Mouse, Rule, Shortcut, Touchpad, Width, Windows,
 };
-use apolline_theme::metrics;
 
 const TEMPLATE: &str = include_str!("../../../assets/niri.kdl");
 const PLAY: &str = r##"
@@ -356,7 +355,10 @@ window-rule {{
         if config.bar.blur {
             let mut lines = vec!["match namespace=\"^apolline-bar$\"".to_owned()];
             if config.bar.floating {
-                lines.push(format!("geometry-corner-radius {}", metrics::RADIUS_BAR));
+                lines.push(format!(
+                    "geometry-corner-radius {}",
+                    crate::style::bar_size(&config.style).1
+                ));
             }
             lines.push(block("background-effect", &["blur true".to_owned()]));
             text.push_str(&format!("\n{}", block("layer-rule", &lines)));

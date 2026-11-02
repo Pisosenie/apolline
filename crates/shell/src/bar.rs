@@ -29,6 +29,8 @@ pub struct Bar<'a> {
     pub awake: bool,
     pub now: DateTime<Local>,
     pub look: &'a apolline_config::Bar,
+    // The island's corners, when it floats.
+    pub radius: f32,
     pub panel_open: bool,
     pub apps: &'a [App],
     pub pinned: Vec<Pinned>,
@@ -83,7 +85,7 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
         .height(metrics::BAR_HEIGHT)
         .padding([0, 5])
         .align_y(Alignment::Center)
-        .style(style::glass(look.opacity, look.floating))
+        .style(style::glass(look.opacity, look.floating, bar.radius))
         .into()
 }
 

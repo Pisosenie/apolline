@@ -61,6 +61,8 @@ impl Power {
 
 pub struct Panel<'a> {
     pub at_bottom: bool,
+    // How far it keeps clear of the bar.
+    pub gap: f32,
     pub modes: &'a [ModeSettings],
     pub mode: Option<usize>,
     pub palette: Palette,
@@ -122,7 +124,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             Detail::Bluetooth => gadget_list(&panel),
             Detail::Quiet => quiet_list(&panel),
         });
-        return frame(body, panel.at_bottom, panel.look);
+        return frame(body, panel.at_bottom, panel.gap, panel.look);
     }
 
     let wifi = radio_tile(
@@ -249,7 +251,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     }
     body = body.push(history(panel.history, panel.opened, panel.apps, palette));
 
-    frame(body, panel.at_bottom, panel.look)
+    frame(body, panel.at_bottom, panel.gap, panel.look)
 }
 
 fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
@@ -818,6 +820,7 @@ fn devices_row<'a>(
 fn frame<'a>(
     body: iced::widget::Column<'a, Message>,
     at_bottom: bool,
+    gap: f32,
     look: apolline_config::Surface,
 ) -> Element<'a, Message> {
     let card = container(body.width(WIDTH))
@@ -834,10 +837,9 @@ fn frame<'a>(
                 Alignment::Start
             })
             .padding(if at_bottom {
-                Padding::new(metrics::BAR_INSET)
-                    .bottom(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0)
+                Padding::new(metrics::BAR_INSET).bottom(gap)
             } else {
-                Padding::new(metrics::BAR_INSET).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0)
+                Padding::new(metrics::BAR_INSET).top(gap)
             }),
     )
     .on_press(Message::Overlay(None))

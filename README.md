@@ -80,7 +80,7 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 ## Surfaces your way
 
-`[style.launcher]`, `[style.panel]`, `[style.notifications]` and `[style.osd]` (or Settings → Appearance) set `radius`, `opacity` and `size` (0.8 to 1.5, text and spacing together) for the launcher, quick settings, notification cards and the volume and brightness popup; `[notifications] position` puts the cards in any corner or the middle of the top or bottom edge (`top-left`, `top`, `top-right`, `bottom-left`, `bottom`, `bottom-right`), the newest nearest the edge; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
+`[style.bar]` (or Settings → Bar) sets the bar's `size`, its height with the text and icons in it, and the `radius` of its island. `[style.launcher]`, `[style.panel]`, `[style.notifications]` and `[style.osd]` (or Settings → Appearance) set `radius`, `opacity` and `size` (0.8 to 1.5, text and spacing together) for the launcher, quick settings, notification cards and the volume and brightness popup; `[notifications] position` puts the cards in any corner or the middle of the top or bottom edge (`top-left`, `top`, `top-right`, `bottom-left`, `bottom`, `bottom-right`), the newest nearest the edge; `grid = true` in `[style.launcher]` shows apps as a grid of big icons, moved through with all four arrows.
 
 `[bar] stats = ["cpu", "memory", "temperature"]`, or Settings → Bar, shows the machine on the bar. It is read every five seconds and rounded (CPU in steps of 5%, temperature of 2°), so the bar repaints only when a number really moves.
 

@@ -89,20 +89,37 @@ pub fn mono() -> Font {
 }
 
 pub fn bar(_: &Theme) -> container::Style {
-    glass(0.55, true)(&Theme::Dark)
+    glass(0.55, true, metrics::RADIUS_BAR)(&Theme::Dark)
 }
 
-pub fn glass(opacity: f32, floating: bool) -> impl Fn(&Theme) -> container::Style {
+pub fn glass(opacity: f32, floating: bool, radius: f32) -> impl Fn(&Theme) -> container::Style {
     move |_| container::Style {
         text_color: Some(color(neutral::TEXT)),
         background: fill(neutral::INK.alpha(opacity)),
         border: if floating {
-            outlined(neutral::HAIRLINE, metrics::RADIUS_BAR)
+            outlined(neutral::HAIRLINE, radius)
         } else {
             Border::default()
         },
         ..container::Style::default()
     }
+}
+
+// The bar's height on screen and its island's corners, from [style.bar].
+pub fn bar_size(style: &apolline_config::Styles) -> (f32, f32) {
+    let scale = style.bar.size.unwrap_or(1.0);
+    let radius = style.bar.radius.map_or(metrics::RADIUS_BAR, f32::from);
+    (metrics::BAR_HEIGHT * scale, radius)
+}
+
+// How far an overlay at `scale` keeps clear of the bar, in its own units.
+pub fn under_bar(bar: &apolline_config::Bar, style: &apolline_config::Styles, scale: f32) -> f32 {
+    let inset = if bar.floating {
+        metrics::BAR_INSET
+    } else {
+        0.0
+    };
+    (inset + bar_size(style).0 + 8.0) / scale
 }
 
 pub fn surface_as(look: apolline_config::Surface) -> impl Fn(&Theme) -> container::Style {

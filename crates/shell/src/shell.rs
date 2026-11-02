@@ -2349,6 +2349,7 @@ impl Shell {
                 self.weather.as_ref(),
                 palette,
                 self.config.bar.position == Edge::Bottom,
+                style::under_bar(&self.config.bar, &self.config.style, 1.0),
             ),
             Some(Overlay::Polkit) => match &self.polkit {
                 Some(dialog) => polkit::view(dialog, palette),
@@ -2356,6 +2357,11 @@ impl Shell {
             },
             Some(Overlay::Panel) => panel::view(Panel {
                 at_bottom: self.config.bar.position == Edge::Bottom,
+                gap: style::under_bar(
+                    &self.config.bar,
+                    &self.config.style,
+                    self.config.style.panel.size.unwrap_or(1.0),
+                ),
                 modes: &self.config.modes,
                 mode: self.mode,
                 palette,
@@ -2521,8 +2527,14 @@ impl Shell {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn bar_look(&self) -> (Edge, bool) {
-        (self.config.bar.position, self.config.bar.floating)
+    // Where the bar is, whether it floats, and how much bigger it is drawn.
+    pub fn bar_look(&self) -> (Edge, bool, u16) {
+        let size = self.config.style.bar.size.unwrap_or(1.0);
+        (
+            self.config.bar.position,
+            self.config.bar.floating,
+            (size * 100.0).round() as u16,
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -2567,6 +2579,7 @@ impl Shell {
             awake: self.awake,
             now: self.now,
             look: &self.config.bar,
+            radius: style::bar_size(&self.config.style).1,
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
