@@ -2,6 +2,7 @@ mod apps;
 mod arrange;
 mod bar;
 mod bluetooth;
+mod board;
 mod bus;
 mod calc;
 mod caldav;

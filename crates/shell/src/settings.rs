@@ -3,8 +3,8 @@ use std::time::{Duration, SystemTime};
 
 use apolline_config::{
     Accent, Appear, Blur, Calendar, Center, Config, Diagnostic, Edge, Editor, ModeSettings, Motion,
-    Notifications, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, Trigger, Width, Workspaces,
-    auto_accent,
+    Notifications, Piece, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, TrayItem, Trigger,
+    Width, Workspaces, auto_accent,
 };
 use apolline_theme::{ACCENTS, Palette, Rgba, neutral};
 use iced::keyboard;
@@ -323,6 +323,12 @@ enum Message {
     Workspaces(Workspaces),
     Seconds(bool),
     BarEdge(Edge),
+    // A piece of the bar, or an icon of the quick settings button, picked up and let go.
+    BarHold(Option<crate::board::Held>),
+    TrayHold(Option<crate::board::Held>),
+    BoardMove(iced::Point),
+    BarDrop(Option<crate::board::Board>),
+    TrayDrop(Option<crate::board::Board>),
     BarFloating(bool),
     BarOpacity(u16),
     BarBlur(bool),
@@ -426,6 +432,9 @@ struct Settings {
     theme_note: Option<Result<String, String>>,
     draft: String,
     wallpaper_draft: String,
+    // What's being dragged on the bar's layout, and on the quick settings button's.
+    bar_held: Option<crate::board::Held>,
+    tray_held: Option<crate::board::Held>,
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
@@ -511,6 +520,8 @@ impl Settings {
             page: Page::Modes,
             draft: String::new(),
             wallpaper_draft: String::new(),
+            bar_held: None,
+            tray_held: None,
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
@@ -1119,6 +1130,35 @@ impl Settings {
                 self.edit(|e| e.set("bar", "workspaces", value));
             }
             Message::Seconds(on) => self.edit(|e| e.set("bar", "seconds", on)),
+            Message::BarHold(held) => self.bar_held = held,
+            Message::TrayHold(held) => self.tray_held = held,
+            Message::BoardMove(at) => {
+                for held in [&mut self.bar_held, &mut self.tray_held]
+                    .into_iter()
+                    .flatten()
+                {
+                    held.at = at;
+                }
+            }
+            Message::BarDrop(board) => {
+                self.bar_held = None;
+                if let Some(board) = board {
+                    let names = |zone: Option<&Vec<String>>| zone.cloned().unwrap_or_default();
+                    let [left, center, right] = [0, 1, 2].map(|z| names(board.zones.get(z)));
+                    self.edit(|e| {
+                        e.set_list("bar", "left", &left);
+                        e.set_list("bar", "center", &center);
+                        e.set_list("bar", "right", &right);
+                    });
+                }
+            }
+            Message::TrayDrop(board) => {
+                self.tray_held = None;
+                if let Some(board) = board {
+                    let tray = board.zones.first().cloned().unwrap_or_default();
+                    self.edit(|e| e.set_list("bar", "tray", &tray));
+                }
+            }
             Message::BarEdge(edge) => self.edit(|e| {
                 e.set(
                     "bar",
@@ -3589,6 +3629,76 @@ impl Settings {
         rows
     }
 
+    // The bar's pieces and the quick settings button's icons, arranged by dragging.
+    fn layout_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let bar = &self.config.bar;
+        let placed: Vec<String> = [&bar.left, &bar.center, &bar.right]
+            .iter()
+            .flat_map(|zone| zone.iter().map(|p| p.name().to_owned()))
+            .collect();
+        let named = self.config.modules.iter().filter_map(|m| m.name.clone());
+        let spare = Piece::NAMED
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .chain(named)
+            .filter(|name| !placed.contains(name))
+            .collect();
+        let zone = |pieces: &[Piece]| pieces.iter().map(|p| p.name().to_owned()).collect();
+        let pieces = crate::board::Board {
+            zones: vec![zone(&bar.left), zone(&bar.center), zone(&bar.right)],
+            spare,
+        };
+        let tray = crate::board::Board {
+            zones: vec![bar.tray.iter().map(|i| i.name().to_owned()).collect()],
+            spare: TrayItem::ALL
+                .iter()
+                .filter(|(_, item)| !bar.tray.contains(item))
+                .map(|(name, _)| (*name).to_owned())
+                .collect(),
+        };
+        vec![
+            column![
+                text("What the bar shows, and where")
+                    .size(13)
+                    .font(style::medium()),
+                crate::board::view(
+                    pieces,
+                    &["Left", "Center", "Right"],
+                    piece_label,
+                    palette,
+                    self.bar_held.clone(),
+                    Message::BarHold,
+                    Message::BoardMove,
+                    Message::BarDrop,
+                ),
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+            column![
+                text("The quick settings button")
+                    .size(13)
+                    .font(style::medium()),
+                crate::board::view(
+                    tray,
+                    &["Shown"],
+                    tray_label,
+                    palette,
+                    self.tray_held.clone(),
+                    Message::TrayHold,
+                    Message::BoardMove,
+                    Message::TrayDrop,
+                ),
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+            note(
+                "Drag a piece to move it along the bar or between its sides, and below the bar to take it off. Mode, media, notifications and recording show only when there's something to show.",
+            ),
+        ]
+    }
+
     fn bar(&self) -> Element<'_, Message> {
         let look = &self.config.bar;
         let palette = self.palette();
@@ -3640,6 +3750,7 @@ impl Settings {
         });
         column![
             preview,
+            group("Layout", self.layout_rows(palette)),
             group(
                 "Place and look",
                 vec![
@@ -5845,6 +5956,36 @@ fn sample_outputs() -> Vec<apolline_niri::Output> {
             logical(1600, 0, 2560, 1440, 1.0),
         ),
     ]
+}
+
+fn piece_label(name: &str) -> String {
+    match name {
+        "mode" => "Mode",
+        "workspaces" => "Workspaces",
+        "windows" => "Apps and windows",
+        "clock" => "Clock",
+        "media" => "Now playing",
+        "notifications" => "Notifications",
+        "recording" => "Recording",
+        "stats" => "CPU and memory",
+        "tray" => "Quick settings",
+        "modules" => "Your modules",
+        name => return name.to_owned(),
+    }
+    .to_owned()
+}
+
+fn tray_label(name: &str) -> String {
+    match name {
+        "keyboard" => "Layout",
+        "awake" => "Awake",
+        "wifi" => "Wi-Fi",
+        "bluetooth" => "Bluetooth",
+        "volume" => "Volume",
+        "battery" => "Battery",
+        name => return name.to_owned(),
+    }
+    .to_owned()
 }
 
 #[cfg(test)]

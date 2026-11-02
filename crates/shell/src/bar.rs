@@ -62,7 +62,14 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .spacing(spacing)
             .align_y(Alignment::Center)
     };
-    container(
+    // With nothing in the middle, the right side keeps what it needs and the left has the rest,
+    // instead of half each.
+    let sides = if look.center.is_empty() {
+        row![
+            container(zone(&look.left, 10.0)).width(Fill),
+            zone(&look.right, 6.0),
+        ]
+    } else {
         row![
             container(zone(&look.left, 10.0)).width(Fill),
             zone(&look.center, 10.0),
@@ -70,14 +77,14 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
                 .width(Fill)
                 .align_x(Alignment::End),
         ]
-        .align_y(Alignment::Center),
-    )
-    .width(Fill)
-    .height(metrics::BAR_HEIGHT)
-    .padding([0, 5])
-    .align_y(Alignment::Center)
-    .style(style::glass(look.opacity, look.floating))
-    .into()
+    };
+    container(sides.align_y(Alignment::Center))
+        .width(Fill)
+        .height(metrics::BAR_HEIGHT)
+        .padding([0, 5])
+        .align_y(Alignment::Center)
+        .style(style::glass(look.opacity, look.floating))
+        .into()
 }
 
 fn piece<'a>(
