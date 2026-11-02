@@ -133,6 +133,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   and CI records a fresh one from the newest niri (headless sway, `tools/niri-session.sh`) and reads it the same way.
 - Idle CPU and memory measured on real hardware next to Noctalia and Dux, the same way each time.
   In a VM on Mesa's software renderer the shell idles at 0.2–0.4% CPU; its memory there is mostly llvmpipe's.
+  At rest it starts no programs: the volume follows `pactl subscribe`, Wi-Fi and Bluetooth their D-Bus
+  signals, and the rest of quick settings is read only while they are open.
 - A Fedora COPR after the AUR.
 
 ## Not now

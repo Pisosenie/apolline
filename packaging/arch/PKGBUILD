@@ -10,6 +10,7 @@ license=('MIT OR Apache-2.0')
 depends=('niri' 'pam' 'libxkbcommon' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
 optdepends=(
   'wireplumber: volume in quick settings'
+  'libpulse: the volume on the bar follows changes made elsewhere'
   'networkmanager: Wi-Fi in quick settings'
   'bluez: Bluetooth in quick settings'
   'brightnessctl: brightness in quick settings'

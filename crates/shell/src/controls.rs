@@ -104,25 +104,72 @@ impl Controls {
     }
 }
 
-pub fn watch() -> iced::Subscription<Controls> {
-    iced::Subscription::run(changes)
+// The bar shows only the volume, so with quick settings closed it is read again when the sound
+// server says an output or the default changed; open, they read everything each second. Without
+// a pulse server to listen to, every half minute.
+pub fn volume() -> iced::Subscription<Option<Volume>> {
+    iced::Subscription::run(volumes)
 }
 
-fn changes() -> impl iced::futures::Stream<Item = Controls> {
+fn volumes() -> impl iced::futures::Stream<Item = Option<Volume>> {
+    use iced::futures::SinkExt;
+    use tokio::io::{AsyncBufReadExt, BufReader};
     iced::stream::channel(1, async |mut output| {
-        use iced::futures::SinkExt;
         let mut last = None;
         loop {
-            let now = read().await;
-            if last.as_ref() != Some(&now) {
-                last = Some(now.clone());
-                if output.send(now).await.is_err() {
-                    return;
+            let mut command = Command::new("pactl");
+            command
+                .arg("subscribe")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true);
+            crate::child::tie(command.as_std_mut(), libc::SIGTERM);
+            let mut child = command.spawn().ok();
+            let mut events = child
+                .as_mut()
+                .and_then(|child| child.stdout.take())
+                .map(|out| BufReader::new(out).lines());
+            loop {
+                let now = run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])
+                    .await
+                    .as_deref()
+                    .and_then(parse_volume);
+                if last != Some(now) {
+                    last = Some(now);
+                    if output.send(now).await.is_err() {
+                        return;
+                    }
+                }
+                let changed = match &mut events {
+                    Some(lines) => sink_changed(lines).await,
+                    None => false,
+                };
+                if !changed {
+                    // No pactl, no pulse server, or it restarted: look again in a while.
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    break;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     })
+}
+
+// Waits for an event about an output or the server's defaults, then lets its burst pass.
+// False once pactl has nothing more to say.
+async fn sink_changed(
+    lines: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
+) -> bool {
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) if line.contains(" on sink #") || line.contains(" on server") => break,
+            Ok(Some(_)) => {}
+            _ => return false,
+        }
+    }
+    let settle = std::time::Duration::from_millis(100);
+    while let Ok(Ok(Some(_))) = tokio::time::timeout(settle, lines.next_line()).await {}
+    true
 }
 
 // Wi-Fi and Bluetooth come from their own D-Bus watches, not from here.

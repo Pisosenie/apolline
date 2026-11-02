@@ -94,6 +94,7 @@ pub enum Message {
     Weather(Option<crate::weather::Weather>),
     Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
+    Volume(Option<controls::Volume>),
     Wifi(crate::wifi::Seen),
     Bluetooth(crate::bluetooth::Seen),
     PickNetwork(crate::wifi::Network),
@@ -1098,6 +1099,14 @@ impl Shell {
                         bluetooth: self.controls.bluetooth.take(),
                         ..controls
                     };
+                }
+            }
+            Message::Volume(volume) => {
+                if self
+                    .touched
+                    .is_none_or(|at| at.elapsed() > QUIET_AFTER_TOUCH)
+                {
+                    self.controls.volume = volume;
                 }
             }
             Message::Change(change) => {
@@ -2260,7 +2269,11 @@ impl Shell {
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
-                controls::watch().map(Message::Controls),
+                if self.overlay == Some(Overlay::Panel) {
+                    iced::Subscription::none()
+                } else {
+                    controls::volume().map(Message::Volume)
+                },
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
             ])
