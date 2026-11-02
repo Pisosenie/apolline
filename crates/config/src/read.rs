@@ -336,10 +336,22 @@ impl Reader<'_> {
                         layout.shadows = v
                     }
                 }
+                "border_width" => {
+                    if let Some(v) = self.number(key, value, 1..=8) {
+                        layout.border_width = v
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
-                    &["gaps", "radius", "borders", "gradient", "shadows"],
+                    &[
+                        "gaps",
+                        "radius",
+                        "borders",
+                        "border_width",
+                        "gradient",
+                        "shadows",
+                    ],
                 ),
             }
         }

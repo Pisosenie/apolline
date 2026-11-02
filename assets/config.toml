@@ -14,6 +14,7 @@ palette = "dark"           # dark, light, catppuccin-mocha, gruvbox, nord, tokyo
 gaps = 10
 radius = 12
 borders = true
+border_width = 1           # 1 is a hairline, up to 8 for a frame
 shadows = true
 
 [bar]

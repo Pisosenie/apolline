@@ -82,6 +82,7 @@ impl Theme {
         differ(
             "borders",
             self.layout.borders == now.layout.borders
+                && self.layout.border_width == now.layout.border_width
                 && self.layout.gradient == now.layout.gradient,
         );
         differ("shadows", self.layout.shadows == now.layout.shadows);
@@ -159,6 +160,15 @@ impl Theme {
         editor.set("layout", "gaps", i64::from(self.layout.gaps));
         editor.set("layout", "radius", i64::from(self.layout.radius));
         editor.set("layout", "borders", self.layout.borders);
+        if self.layout.border_width == 1 {
+            editor.unset("layout", "border_width");
+        } else {
+            editor.set(
+                "layout",
+                "border_width",
+                i64::from(self.layout.border_width),
+            );
+        }
         if self.layout.gradient {
             editor.set("layout", "gradient", true);
         } else {

@@ -315,6 +315,7 @@ enum Message {
     Radius(u16),
     BorderStyle(u8),
     Shadows(bool),
+    BorderWidth(u16),
     Workspaces(Workspaces),
     Seconds(bool),
     BarEdge(Edge),
@@ -1128,6 +1129,13 @@ impl Settings {
                 }
             }),
             Message::Shadows(on) => self.edit(|e| e.set("layout", "shadows", on)),
+            Message::BorderWidth(width) => self.stage(|e| {
+                if width == 1 {
+                    e.unset("layout", "border_width");
+                } else {
+                    e.set("layout", "border_width", i64::from(width));
+                }
+            }),
             Message::Workspaces(style) => {
                 let value = match style {
                     Workspaces::Dots => "dots",
@@ -3112,6 +3120,11 @@ impl Settings {
                             },
                             Message::BorderStyle,
                         ),
+                    ),
+                    setting(
+                        "Border width",
+                        "One pixel is a hairline; four and up is a frame",
+                        value_slider(1..=8, layout.border_width, Message::BorderWidth, "px", palette),
                     ),
                     setting(
                         "Shadows",

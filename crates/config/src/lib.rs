@@ -318,6 +318,7 @@ pub struct Layout {
     pub gaps: u16,
     pub radius: u16,
     pub borders: bool,
+    pub border_width: u16,
     pub gradient: bool,
     pub shadows: bool,
 }
@@ -737,6 +738,7 @@ impl Default for Config {
                 gaps: 10,
                 radius: 12,
                 borders: true,
+                border_width: 1,
                 gradient: false,
                 shadows: true,
             },

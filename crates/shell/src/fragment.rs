@@ -216,9 +216,9 @@ layout {{
 
     border {{
         {border}
-        width 1
+        width {border_width}
         active-color "{accent}"{gradient}
-        inactive-color "#ffffff14"
+        inactive-color "{inactive}"
         urgent-color "#ff6a3d"
     }}
 
@@ -246,6 +246,13 @@ window-rule {{
         gaps = layout.gaps,
         columns = columns(&fragment.config.windows),
         border = on(layout.borders),
+        border_width = layout.border_width,
+        // A line that shows on the palette's own windows: light on dark, dark on light.
+        inactive = {
+            let scheme = fragment.config.scheme(fragment.mode);
+            let line = scheme.overlay.alpha(0.12).over(scheme.window);
+            line.to_hex()
+        },
         accent = fragment.config.palette(fragment.mode).accent.to_hex(),
         gradient = if layout.gradient {
             let accent = fragment.config.palette(fragment.mode).accent;
