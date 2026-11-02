@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use apolline_theme::{Palette, font, metrics, neutral};
-use iced::widget::{button, column, container, image, progress_bar, row, space, text, text_input};
+use iced::widget::{
+    button, column, container, image, keyed_column, progress_bar, row, space, text, text_input,
+};
 use iced::{Background, Border, ContentFit, Element, Fill, Theme};
 
 use crate::apps::App;
@@ -36,23 +38,41 @@ fn card_height(notification: &Notification) -> u32 {
     HEIGHT + buttons + progress
 }
 
+// The cards that show: the newest few, and always the one being answered.
+pub fn shown<'a>(
+    cards: impl Iterator<Item = &'a Notification>,
+    answering: Option<u32>,
+) -> Vec<&'a Notification> {
+    let all: Vec<&Notification> = cards.collect();
+    let mut shown: Vec<&Notification> = all.iter().copied().take(MAX).collect();
+    if let Some(id) = answering
+        && !shown.iter().any(|n| n.id == id)
+        && let Some(card) = all.iter().find(|n| n.id == id)
+    {
+        shown.pop();
+        shown.push(card);
+    }
+    shown
+}
+
 #[cfg(any(target_os = "linux", test))]
-pub fn height<'a>(cards: impl Iterator<Item = &'a Notification>) -> u32 {
-    let heights: Vec<u32> = cards.take(MAX).map(card_height).collect();
+pub fn height(cards: &[&Notification]) -> u32 {
+    let heights: Vec<u32> = cards.iter().map(|n| card_height(n)).collect();
     heights.iter().sum::<u32>() + (heights.len() as u32).saturating_sub(1) * GAP
 }
 
+// Keyed by id, so a card keeps its field's focus when others come and go around it.
 pub fn stack<'a>(
-    notifications: impl Iterator<Item = &'a Notification>,
+    cards: Vec<&'a Notification>,
     apps: &'a [App],
     palette: Palette,
     replying: Option<&'a (u32, String)>,
 ) -> Element<'a, Message> {
-    column(notifications.take(MAX).map(|n| {
+    keyed_column(cards.into_iter().map(|n| {
         let typed = replying
             .filter(|(id, _)| *id == n.id)
             .map(|(_, typed)| typed.as_str());
-        card(n, apps, palette, typed)
+        (n.id, card(n, apps, palette, typed))
     }))
     .spacing(GAP as f32)
     .width(WIDTH as f32)
@@ -216,6 +236,91 @@ pub fn ago(elapsed: Duration) -> String {
     }
 }
 
+// The cards' hold on the keyboard. niri hands an on-demand surface the keyboard for a click made
+// while it already is one, and at once when one is mapped, so the cards turn on-demand only once
+// the pointer is over one that can be answered, and give the keyboard back after any click that
+// didn't start an answer.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Hold {
+    keys: Keys,
+    pointer: bool,
+}
+
+#[cfg(any(target_os = "linux", test))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Keys {
+    #[default]
+    Off,
+    // A click on the cards will give it.
+    Ready,
+    // An answer is being typed.
+    Held,
+    // Given back; waiting for the compositor to take it.
+    Returning,
+}
+
+// What reached the cards' window.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Clone, Copy, Debug)]
+pub enum Felt {
+    PointerIn,
+    PointerOut,
+    Click,
+    KeysLost,
+}
+
+// What a change on the cards' window asks of the answer being typed.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Nudge {
+    // The keyboard went elsewhere.
+    Unfocused,
+    // A click on the cards: the keys stay with the answer, not with what was clicked.
+    Refocus,
+}
+
+#[cfg(any(target_os = "linux", test))]
+impl Hold {
+    pub fn on_demand(self) -> bool {
+        matches!(self.keys, Keys::Ready | Keys::Held)
+    }
+
+    pub fn settle(self, typing: bool, answerable: bool) -> Hold {
+        let keys = match self.keys {
+            _ if typing => Keys::Held,
+            Keys::Off if self.pointer && answerable => Keys::Ready,
+            Keys::Ready if !answerable => Keys::Off,
+            Keys::Held if !typing => Keys::Returning,
+            keys => keys,
+        };
+        Hold { keys, ..self }
+    }
+
+    pub fn felt(self, felt: Felt) -> (Hold, Option<Nudge>) {
+        let keys = match (felt, self.keys) {
+            // Back after giving the keyboard back: long enough for it to have gone.
+            (Felt::PointerIn, Keys::Returning) => Keys::Off,
+            // A click that started no answer still handed over the keyboard.
+            (Felt::Click, Keys::Ready) => Keys::Returning,
+            (Felt::KeysLost, Keys::Held) => Keys::Ready,
+            (Felt::KeysLost, Keys::Returning) => Keys::Off,
+            (_, keys) => keys,
+        };
+        let pointer = match felt {
+            Felt::PointerIn => true,
+            Felt::PointerOut => false,
+            _ => self.pointer,
+        };
+        let nudge = match (felt, self.keys) {
+            (Felt::KeysLost, Keys::Held) => Some(Nudge::Unfocused),
+            (Felt::Click, Keys::Held) => Some(Nudge::Refocus),
+            _ => None,
+        };
+        (Hold { keys, pointer }, nudge)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,9 +340,83 @@ mod tests {
             ("default".into(), "Open".into()),
             ("reply".into(), "Reply".into()),
         ];
-        assert_eq!(height([].iter()), 0);
-        assert_eq!(height([&plain].into_iter()), 84);
-        assert_eq!(height([&plain, &asking].into_iter()), 84 + 8 + 122);
-        assert_eq!(height(std::iter::repeat_n(&plain, 7)), 3 * 84 + 2 * 8);
+        assert_eq!(height(&[]), 0);
+        assert_eq!(height(&[&plain]), 84);
+        assert_eq!(height(&[&plain, &asking]), 84 + 8 + 122);
+        let many = shown(std::iter::repeat_n(&plain, 7), None);
+        assert_eq!(height(&many), 3 * 84 + 2 * 8);
+    }
+
+    #[test]
+    fn the_cards_take_the_keyboard_only_to_answer() {
+        let hold = Hold::default().settle(false, true);
+        assert!(!hold.on_demand(), "not before the pointer gets there");
+        let (hold, _) = hold.felt(Felt::PointerIn);
+        assert!(!hold.settle(false, false).on_demand(), "nothing to answer");
+        let ready = hold.settle(false, true);
+        assert!(ready.on_demand());
+
+        let typing = ready.settle(true, true);
+        assert_eq!(
+            typing.felt(Felt::Click),
+            (typing, Some(Nudge::Refocus)),
+            "a click on the cards keeps typing in the answer"
+        );
+        let (lost, nudge) = typing.felt(Felt::KeysLost);
+        assert_eq!(
+            nudge,
+            Some(Nudge::Unfocused),
+            "a click elsewhere takes the keyboard"
+        );
+        assert!(
+            lost.settle(true, true).on_demand(),
+            "a click on the cards brings it back"
+        );
+
+        let sent = typing.settle(false, true);
+        assert!(!sent.on_demand(), "sent: the keyboard goes back");
+        let (gone, _) = sent.felt(Felt::KeysLost);
+        assert_eq!(
+            gone.settle(false, true),
+            ready,
+            "and the cards are ready again"
+        );
+    }
+
+    #[test]
+    fn a_click_that_answers_nothing_gives_the_keyboard_back() {
+        let (hold, _) = Hold::default().felt(Felt::PointerIn);
+        let (clicked, nudge) = hold.settle(false, true).felt(Felt::Click);
+        assert_eq!(nudge, None);
+        assert!(!clicked.settle(false, true).on_demand());
+        assert!(
+            clicked.settle(true, true).on_demand(),
+            "Reply right after still gets a field to click into"
+        );
+        let (back, _) = clicked.felt(Felt::PointerOut).0.felt(Felt::PointerIn);
+        assert!(
+            back.settle(false, true).on_demand(),
+            "rearmed when the pointer is back"
+        );
+    }
+
+    #[test]
+    fn the_card_being_answered_stays_in_view() {
+        let cards: Vec<Notification> = (1..=5)
+            .map(|id| Notification {
+                id,
+                ..crate::notify::shot_card("/tmp/a.png")
+            })
+            .collect();
+        let ids = |answering| -> Vec<u32> {
+            shown(cards.iter(), answering)
+                .iter()
+                .map(|n| n.id)
+                .collect()
+        };
+        assert_eq!(ids(None), [1, 2, 3]);
+        assert_eq!(ids(Some(2)), [1, 2, 3]);
+        assert_eq!(ids(Some(5)), [1, 2, 5]);
+        assert_eq!(ids(Some(9)), [1, 2, 3], "gone already");
     }
 }

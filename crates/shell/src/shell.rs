@@ -102,6 +102,14 @@ pub enum Message {
     HistoryGroup(String),
     Quiet(panel::Quiet),
     ReplyOpen(u32),
+    // The answer lost the keyboard: one with nothing typed closes, a draft stays.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    ReplyUnfocused,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    ReplyRefocus,
+    // Keyboard focus and pointer news from a layer window.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    LayerEvent(iced::window::Id, iced::Event),
     ReplyTyped(String),
     ReplySend,
     Wifi(crate::wifi::Seen),
@@ -1029,7 +1037,9 @@ impl Shell {
                 return Task::future(profile::restore(previous)).discard();
             }
             Message::Notify(mut notification) => {
-                self.forget(notification.id);
+                // A new version of a card being answered keeps what's typed.
+                self.popups.retain(|(n, _)| n.id != notification.id);
+                self.held.retain(|n| n.id != notification.id);
                 if notification.timeout == Some(notify::SHOWN_FOR) {
                     let seconds = u64::from(self.config.alerts.seconds);
                     notification.timeout = Some(Duration::from_secs(seconds));
@@ -1191,6 +1201,24 @@ impl Shell {
             Message::ReplyOpen(id) => {
                 self.replying = Some((id, String::new()));
                 return iced::widget::operation::focus(popup::REPLY);
+            }
+            Message::ReplyRefocus if self.replying.is_some() => {
+                return iced::widget::operation::is_focused(popup::REPLY).then(|focused| {
+                    if focused {
+                        Task::none()
+                    } else {
+                        iced::widget::operation::focus(popup::REPLY)
+                    }
+                });
+            }
+            Message::ReplyUnfocused => {
+                if self
+                    .replying
+                    .as_ref()
+                    .is_some_and(|(_, typed)| typed.trim().is_empty())
+                {
+                    self.replying = None;
+                }
             }
             Message::ReplyTyped(typed) => {
                 if let Some((_, text)) = &mut self.replying {
@@ -2220,7 +2248,19 @@ impl Shell {
 
     #[cfg(target_os = "linux")]
     pub fn popup_height(&self) -> u32 {
-        popup::height(self.popups.iter().rev().map(|(n, _)| n))
+        popup::height(&self.shown_cards())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn answerable(&self) -> bool {
+        self.shown_cards().iter().any(|n| n.reply.is_some())
+    }
+
+    fn shown_cards(&self) -> Vec<&notify::Notification> {
+        popup::shown(
+            self.popups.iter().rev().map(|(n, _)| n),
+            self.replying.as_ref().map(|(id, _)| *id),
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -2300,7 +2340,7 @@ impl Shell {
 
     pub fn popups(&self) -> Element<'_, Message> {
         popup::stack(
-            self.popups.iter().rev().map(|(n, _)| n),
+            self.shown_cards(),
             &self.apps,
             self.config.palette(self.mode),
             self.replying.as_ref(),

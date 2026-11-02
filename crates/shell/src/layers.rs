@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use apolline_theme::metrics;
 use iced::widget::space;
-use iced::{Color, Element, Font, Subscription, Task, Theme, window};
+use iced::{Color, Element, Font, Subscription, Task, Theme, mouse, window};
 use iced_layershell::build_pattern::daemon;
 use iced_layershell::reexport::{
     Anchor, KeyboardInteractivity, Layer, NewLayerShellSettings, OutputOption,
@@ -13,6 +13,7 @@ use crate::fonts;
 use crate::shell::{Message, Overlay, Shell};
 use apolline_config::Edge;
 
+use crate::popup::{Felt, Hold, Nudge};
 use crate::{osd, popup};
 
 const POPUP_MARGIN: i32 = 8;
@@ -58,8 +59,7 @@ struct Layers {
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool),
     popups: Option<(window::Id, u32)>,
-    // Whether the cards have the keyboard, for an answer typed on one.
-    popups_typing: bool,
+    popups_hold: Hold,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
 }
@@ -72,7 +72,7 @@ impl Layers {
             screens: BTreeMap::new(),
             look: (Edge::Top, true),
             popups: None,
-            popups_typing: false,
+            popups_hold: Hold::default(),
             overlay: None,
             osd: None,
         };
@@ -81,6 +81,19 @@ impl Layers {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        let message = match message {
+            Message::LayerEvent(id, event) if self.popups.is_some_and(|(p, _)| p == id) => {
+                let (held, nudge) = self.popups_felt(id, &event);
+                let next = match nudge {
+                    Some(Nudge::Unfocused) => self.update(Message::ReplyUnfocused),
+                    Some(Nudge::Refocus) => self.update(Message::ReplyRefocus),
+                    None => self.fit_popups(),
+                };
+                return Task::batch([held, next]);
+            }
+            Message::LayerEvent(..) => return Task::none(),
+            other => other,
+        };
         let task = self.shell.update(message);
         Task::batch([
             task,
@@ -182,25 +195,46 @@ impl Layers {
 
     fn fit_popups(&mut self) -> Task<Message> {
         let size = self.size_popups();
-        let typing = self.shell.replying();
-        match self.popups {
-            Some((id, _)) if typing != self.popups_typing => {
-                self.popups_typing = typing;
-                let keyboard_interactivity = if typing {
-                    KeyboardInteractivity::Exclusive
-                } else {
-                    KeyboardInteractivity::None
-                };
-                Task::batch([
-                    size,
-                    Task::done(Message::KeyboardInteractivityChange {
-                        id,
-                        keyboard_interactivity,
-                    }),
-                ])
-            }
-            _ => size,
+        let Some((id, _)) = self.popups else {
+            return size;
+        };
+        let next = self
+            .popups_hold
+            .settle(self.shell.replying(), self.shell.answerable());
+        Task::batch([size, self.hold_popups(id, next)])
+    }
+
+    fn popups_felt(
+        &mut self,
+        id: window::Id,
+        event: &iced::Event,
+    ) -> (Task<Message>, Option<Nudge>) {
+        use iced::Event::{Mouse, Window};
+        let felt = match event {
+            Mouse(mouse::Event::CursorEntered) => Felt::PointerIn,
+            Mouse(mouse::Event::CursorLeft) => Felt::PointerOut,
+            Mouse(mouse::Event::ButtonReleased(_)) => Felt::Click,
+            Window(window::Event::Unfocused) => Felt::KeysLost,
+            _ => return (Task::none(), None),
+        };
+        let (next, nudge) = self.popups_hold.felt(felt);
+        (self.hold_popups(id, next), nudge)
+    }
+
+    fn hold_popups(&mut self, id: window::Id, next: Hold) -> Task<Message> {
+        let changed = next.on_demand() != self.popups_hold.on_demand();
+        self.popups_hold = next;
+        if !changed {
+            return Task::none();
         }
+        Task::done(Message::KeyboardInteractivityChange {
+            id,
+            keyboard_interactivity: if next.on_demand() {
+                KeyboardInteractivity::OnDemand
+            } else {
+                KeyboardInteractivity::None
+            },
+        })
     }
 
     fn size_popups(&mut self) -> Task<Message> {
@@ -217,7 +251,7 @@ impl Layers {
                     ..Default::default()
                 });
                 self.popups = Some((id, height));
-                self.popups_typing = false;
+                self.popups_hold = Hold::default();
                 open
             }
             Some((id, _)) if height == 0 => {
@@ -264,7 +298,18 @@ impl Layers {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        self.shell.subscription()
+        Subscription::batch([
+            self.shell.subscription(),
+            iced::event::listen_with(|event, _, id| match event {
+                iced::Event::Window(window::Event::Unfocused)
+                | iced::Event::Mouse(
+                    mouse::Event::CursorEntered
+                    | mouse::Event::CursorLeft
+                    | mouse::Event::ButtonReleased(_),
+                ) => Some(Message::LayerEvent(id, event)),
+                _ => None,
+            }),
+        ])
     }
 }
 
