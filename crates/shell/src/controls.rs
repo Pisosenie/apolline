@@ -3,6 +3,7 @@ use tokio::process::Command;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Controls {
     pub volume: Option<Volume>,
+    pub mic: Option<Volume>,
     pub brightness: Option<u8>,
     pub wifi: Option<Radio>,
     pub bluetooth: Option<Radio>,
@@ -33,6 +34,8 @@ pub struct Radio {
 pub enum Change {
     Volume(f32),
     Mute(bool),
+    MicVolume(f32),
+    MicMute(bool),
     Brightness(u8),
     Wifi(bool),
     Bluetooth(bool),
@@ -45,6 +48,10 @@ impl Controls {
         Self {
             volume: Some(Volume {
                 level: 0.62,
+                muted: false,
+            }),
+            mic: Some(Volume {
+                level: 0.8,
                 muted: false,
             }),
             brightness: Some(70),
@@ -83,6 +90,17 @@ impl Controls {
             Change::Mute(muted) => {
                 if let Some(volume) = &mut self.volume {
                     volume.muted = muted;
+                }
+            }
+            Change::MicVolume(level) => {
+                if let Some(mic) = &mut self.mic {
+                    mic.level = level;
+                    mic.muted = false;
+                }
+            }
+            Change::MicMute(muted) => {
+                if let Some(mic) = &mut self.mic {
+                    mic.muted = muted;
                 }
             }
             Change::Brightness(percent) => self.brightness = Some(percent),
@@ -174,13 +192,18 @@ async fn sink_changed(
 
 // Wi-Fi and Bluetooth come from their own D-Bus watches, not from here.
 pub async fn read() -> Controls {
-    let (volume, brightness, status) = iced::futures::join!(
+    let (volume, mic, brightness, status) = iced::futures::join!(
         run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"]),
+        run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SOURCE@"]),
         run("brightnessctl", &["-m", "-c", "backlight"]),
         run("wpctl", &["status"]),
     );
     let (outputs, inputs) = status.as_deref().map(parse_devices).unwrap_or_default();
     Controls {
+        mic: mic
+            .as_deref()
+            .and_then(parse_volume)
+            .filter(|_| !inputs.is_empty()),
         outputs,
         inputs,
         volume: volume.as_deref().and_then(parse_volume),
@@ -308,6 +331,24 @@ pub async fn change(change: Change) {
                 if muted { "1" } else { "0" }.into(),
             ],
         ),
+        Change::MicVolume(level) => (
+            "wpctl",
+            vec![
+                "set-volume".into(),
+                "-l".into(),
+                "1.0".into(),
+                "@DEFAULT_AUDIO_SOURCE@".into(),
+                format!("{:.2}", level.clamp(0.0, 1.0)),
+            ],
+        ),
+        Change::MicMute(muted) => (
+            "wpctl",
+            vec![
+                "set-mute".into(),
+                "@DEFAULT_AUDIO_SOURCE@".into(),
+                if muted { "1" } else { "0" }.into(),
+            ],
+        ),
         Change::Brightness(percent) => (
             "brightnessctl",
             vec![
@@ -323,8 +364,14 @@ pub async fn change(change: Change) {
             ("wpctl", vec!["set-default".into(), id.to_string()])
         }
     };
-    if let Change::Volume(_) = change {
-        let _ = run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).await;
+    match change {
+        Change::Volume(_) => {
+            let _ = run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).await;
+        }
+        Change::MicVolume(_) => {
+            let _ = run("wpctl", &["set-mute", "@DEFAULT_AUDIO_SOURCE@", "0"]).await;
+        }
+        _ => {}
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     if run(program, &args).await.is_none() {

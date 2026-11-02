@@ -203,6 +203,16 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             |v| Message::Change(Change::Volume(v)),
         ));
     }
+    if let Some(mic) = panel.controls.mic {
+        let glyph = if mic.muted { Icon::MicOff } else { Icon::Mic };
+        sliders = sliders.push(slider_row(
+            icon(glyph, 18.0, neutral::TEXT),
+            Some(Message::Change(Change::MicMute(!mic.muted))),
+            if mic.muted { 0.0 } else { mic.level },
+            palette,
+            |v| Message::Change(Change::MicVolume(v)),
+        ));
+    }
     for (devices, glyph, pick) in [
         (
             &panel.controls.outputs,
