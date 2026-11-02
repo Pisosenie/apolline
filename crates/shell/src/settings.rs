@@ -255,6 +255,7 @@ enum Message {
     DisplayX(String, String),
     DisplayY(String, String),
     DisplayMove(String),
+    DisplayPlace(String, i64, i64),
     KeepDisplays,
     RevertDisplays,
     ForMonitor(Option<String>),
@@ -495,7 +496,11 @@ impl Settings {
             live: crate::control::shared(),
             monitors: wallpaper::monitors(),
             monitor: None,
-            outputs: crate::niri::outputs(),
+            outputs: if crate::niri::connected() {
+                crate::niri::outputs()
+            } else {
+                sample_outputs()
+            },
             cursors: crate::paint::cursors(),
             icon_themes: apps::icon_themes(),
             families: crate::paint::font_families(),
@@ -678,6 +683,19 @@ impl Settings {
                 }
             }
             Message::DisplayMove(_) => {}
+            Message::DisplayPlace(name, x, y) => {
+                // Without niri the sample screens move here; with it, niri's answer moves them.
+                if !crate::niri::connected()
+                    && let Some(logical) = self
+                        .outputs
+                        .iter_mut()
+                        .find(|o| o.name == name)
+                        .and_then(|o| o.logical.as_mut())
+                {
+                    (logical.x, logical.y) = (x as i32, y as i32);
+                }
+                self.change_display(|e| e.set_display_position(&name, x, y))
+            }
             Message::KeepDisplays => self.revert = None,
             Message::RevertDisplays => self.put_displays_back(),
             Message::DesktopWallpaper(name) if self.monitor.is_some() => {
@@ -1319,7 +1337,10 @@ impl Settings {
                 {
                     self.put_displays_back();
                 }
-                if self.page == Page::Displays && self.outputs_may_change() {
+                if self.page == Page::Displays
+                    && self.outputs_may_change()
+                    && crate::niri::connected()
+                {
                     self.outputs = crate::niri::outputs();
                 }
                 if stamp(&self.path) != self.stamp {
@@ -4286,6 +4307,36 @@ impl Settings {
                 "No screens to show: this works inside a niri session, where niri msg outputs lists them.",
             ));
         }
+        let screens: Vec<crate::arrange::Screen> = self
+            .outputs
+            .iter()
+            .filter_map(|output| {
+                let logical = output.logical.as_ref()?;
+                Some(crate::arrange::Screen {
+                    name: output.name.clone(),
+                    label: if output.model.is_empty() {
+                        format!("{} × {}", logical.width, logical.height)
+                    } else {
+                        output.model.clone()
+                    },
+                    place: crate::arrange::Place {
+                        x: logical.x.into(),
+                        y: logical.y.into(),
+                        width: logical.width.into(),
+                        height: logical.height.into(),
+                    },
+                })
+            })
+            .collect();
+        if screens.len() > 1 {
+            page = page.push(group(
+                "Arrangement",
+                vec![
+                    crate::arrange::view(screens, palette, Message::DisplayPlace),
+                    note("Drag a screen to where it stands on your desk; it settles against the nearest edge."),
+                ],
+            ));
+        }
         let niri = std::fs::read_to_string(fragment::niri_config()).unwrap_or_default();
         for output in &self.outputs {
             let name = output.name.clone();
@@ -5544,6 +5595,50 @@ fn mode_overrides(mode: &ModeSettings) -> Vec<String> {
         over.push("no shadows, blur or animations".to_owned());
     }
     over
+}
+
+// Two screens to show when there is no niri to ask, as in a preview on another system.
+fn sample_outputs() -> Vec<apolline_niri::Output> {
+    let screen =
+        |name: &str, make: &str, model: &str, mode: (u32, u32), logical| apolline_niri::Output {
+            name: name.into(),
+            make: make.into(),
+            model: model.into(),
+            modes: vec![apolline_niri::OutputMode {
+                width: mode.0,
+                height: mode.1,
+                refresh_rate: 60_000,
+                is_preferred: true,
+            }],
+            current_mode: Some(0),
+            vrr_supported: false,
+            vrr_enabled: false,
+            logical: Some(logical),
+        };
+    let logical = |x, y, width, height, scale| apolline_niri::Logical {
+        x,
+        y,
+        width,
+        height,
+        scale,
+        transform: "Normal".into(),
+    };
+    vec![
+        screen(
+            "eDP-1",
+            "BOE",
+            "Built-in",
+            (2560, 1600),
+            logical(0, 440, 1600, 1000, 1.6),
+        ),
+        screen(
+            "DP-1",
+            "Dell Inc.",
+            "U2723QE",
+            (2560, 1440),
+            logical(1600, 0, 2560, 1440, 1.0),
+        ),
+    ]
 }
 
 #[cfg(test)]

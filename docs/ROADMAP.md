@@ -116,7 +116,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 
 ### 5. Displays and comfort
 - Settings → Displays: resolution, refresh rate, scale, arrangement, VRR, with a revert timer,
-  validated with `niri validate` before it applies.
+  validated with `niri validate` before it applies — done. Screens are arranged by dragging them on
+  a map, where they settle against a neighbour's edge (tried on sample screens: nested niri has one).
 - Night light on a schedule — done, still to be seen on real hardware (nested niri has no gamma control).
 - Wi-Fi and Bluetooth over D-Bus instead of command-line tools — done: nearby networks with a password
   field (WPA2, WPA3, a typo asks again), pairing with a code, a PIN or a code to type, forgetting old

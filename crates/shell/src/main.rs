@@ -1,4 +1,5 @@
 mod apps;
+mod arrange;
 mod bar;
 mod bluetooth;
 mod bus;

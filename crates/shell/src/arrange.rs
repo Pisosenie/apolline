@@ -1,0 +1,365 @@
+use apolline_theme::{Palette, neutral};
+use iced::alignment::Vertical;
+use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
+use iced::widget::text::Alignment;
+use iced::{Element, Fill, Point, Rectangle, Renderer, Size, Theme, mouse};
+
+use crate::style;
+
+// Closer than this, in logical pixels, an edge lines up with its neighbour's.
+const ALIGN: i64 = 96;
+const PAD: f32 = 24.0;
+
+// A screen where niri puts it, in logical pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Place {
+    pub x: i64,
+    pub y: i64,
+    pub width: i64,
+    pub height: i64,
+}
+
+impl Place {
+    fn overlaps(&self, other: &Place) -> bool {
+        self.x < other.x + other.width
+            && other.x < self.x + self.width
+            && self.y < other.y + other.height
+            && other.y < self.y + self.height
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Screen {
+    pub name: String,
+    pub label: String,
+    pub place: Place,
+}
+
+// Where a screen dropped at `at` ends up: against the nearest edge of another one, lined up with it
+// when close, and never on top of one.
+pub fn snap(at: Place, others: &[Place]) -> Option<(i64, i64)> {
+    let mut best: Option<(i64, (i64, i64))> = None;
+    for other in others {
+        let along_y = slide(at.y, at.height, other.y, other.height);
+        let along_x = slide(at.x, at.width, other.x, other.width);
+        let sides = [
+            (other.x - at.width, along_y),
+            (other.x + other.width, along_y),
+            (along_x, other.y - at.height),
+            (along_x, other.y + other.height),
+        ];
+        for (x, y) in sides {
+            let moved = Place { x, y, ..at };
+            if others.iter().any(|o| moved.overlaps(o)) {
+                continue;
+            }
+            let distance = (x - at.x).abs() + (y - at.y).abs();
+            if best.is_none_or(|(d, _)| distance < d) {
+                best = Some((distance, (x, y)));
+            }
+        }
+    }
+    best.map(|(_, at)| at)
+}
+
+// Along an edge it touches: kept where it is, but always sharing some of the edge, and lined up
+// with the neighbour's start, end or middle when close to one.
+fn slide(at: i64, length: i64, other: i64, other_length: i64) -> i64 {
+    let touching = at.clamp(other - length + 1, other + other_length - 1);
+    [
+        other,
+        other + other_length - length,
+        other + (other_length - length) / 2,
+    ]
+    .into_iter()
+    .filter(|lined| (lined - touching).abs() <= ALIGN)
+    .min_by_key(|lined| (lined - touching).abs())
+    .unwrap_or(touching)
+}
+
+pub fn view<'a, M: 'a>(
+    screens: Vec<Screen>,
+    palette: Palette,
+    place: impl Fn(String, i64, i64) -> M + 'a,
+) -> Element<'a, M> {
+    canvas::Canvas::new(Arrange {
+        screens,
+        palette,
+        place: Box::new(place),
+    })
+    .width(Fill)
+    .height(220)
+    .into()
+}
+
+struct Arrange<'a, M> {
+    screens: Vec<Screen>,
+    palette: Palette,
+    place: Box<dyn Fn(String, i64, i64) -> M + 'a>,
+}
+
+#[derive(Default)]
+struct Drag {
+    index: usize,
+    grab: Point,
+    at: Point,
+}
+
+// Logical pixels to the canvas and back, fitting every screen with some room around.
+struct Fit {
+    scale: f32,
+    origin: Point,
+    left: i64,
+    top: i64,
+}
+
+impl Fit {
+    fn new(screens: &[Screen], bounds: Size) -> Fit {
+        let left = screens.iter().map(|s| s.place.x).min().unwrap_or(0);
+        let top = screens.iter().map(|s| s.place.y).min().unwrap_or(0);
+        let right = screens
+            .iter()
+            .map(|s| s.place.x + s.place.width)
+            .max()
+            .unwrap_or(1);
+        let bottom = screens
+            .iter()
+            .map(|s| s.place.y + s.place.height)
+            .max()
+            .unwrap_or(1);
+        let (wide, high) = ((right - left).max(1) as f32, (bottom - top).max(1) as f32);
+        let scale = ((bounds.width - 2.0 * PAD) / wide).min((bounds.height - 2.0 * PAD) / high);
+        Fit {
+            scale,
+            origin: Point::new(
+                (bounds.width - wide * scale) / 2.0,
+                (bounds.height - high * scale) / 2.0,
+            ),
+            left,
+            top,
+        }
+    }
+
+    fn rect(&self, place: &Place) -> Rectangle {
+        Rectangle {
+            x: self.origin.x + (place.x - self.left) as f32 * self.scale,
+            y: self.origin.y + (place.y - self.top) as f32 * self.scale,
+            width: place.width as f32 * self.scale,
+            height: place.height as f32 * self.scale,
+        }
+    }
+
+    fn logical(&self, point: Point) -> (i64, i64) {
+        (
+            ((point.x - self.origin.x) / self.scale).round() as i64 + self.left,
+            ((point.y - self.origin.y) / self.scale).round() as i64 + self.top,
+        )
+    }
+}
+
+impl<M> canvas::Program<M> for Arrange<'_, M> {
+    type State = Option<Drag>;
+
+    fn update(
+        &self,
+        drag: &mut Option<Drag>,
+        event: &canvas::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<M>> {
+        let fit = Fit::new(&self.screens, bounds.size());
+        let point = cursor.position_in(bounds);
+        match event {
+            canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                let point = point?;
+                // One screen has nowhere to go.
+                if self.screens.len() < 2 {
+                    return None;
+                }
+                let index = self
+                    .screens
+                    .iter()
+                    .position(|s| fit.rect(&s.place).contains(point))?;
+                let rect = fit.rect(&self.screens[index].place);
+                *drag = Some(Drag {
+                    index,
+                    grab: Point::new(point.x - rect.x, point.y - rect.y),
+                    at: Point::new(rect.x, rect.y),
+                });
+                Some(canvas::Action::request_redraw().and_capture())
+            }
+            canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                let moving = drag.as_mut()?;
+                let point = point?;
+                moving.at = Point::new(point.x - moving.grab.x, point.y - moving.grab.y);
+                Some(canvas::Action::request_redraw().and_capture())
+            }
+            canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                let moved = drag.take()?;
+                let screen = &self.screens[moved.index];
+                let (x, y) = fit.logical(moved.at);
+                let others: Vec<Place> = self
+                    .screens
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != moved.index)
+                    .map(|(_, s)| s.place)
+                    .collect();
+                let (x, y) = snap(
+                    Place {
+                        x,
+                        y,
+                        ..screen.place
+                    },
+                    &others,
+                )?;
+                if (x, y) == (screen.place.x, screen.place.y) {
+                    return Some(canvas::Action::request_redraw());
+                }
+                Some(canvas::Action::publish((self.place)(screen.name.clone(), x, y)).and_capture())
+            }
+            _ => None,
+        }
+    }
+
+    fn draw(
+        &self,
+        drag: &Option<Drag>,
+        renderer: &Renderer,
+        _: &Theme,
+        bounds: Rectangle,
+        _: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let fit = Fit::new(&self.screens, bounds.size());
+        for (index, screen) in self.screens.iter().enumerate() {
+            let mut rect = fit.rect(&screen.place);
+            let dragged = drag.as_ref().filter(|d| d.index == index);
+            if let Some(dragged) = dragged {
+                rect.x = dragged.at.x;
+                rect.y = dragged.at.y;
+            }
+            let path = Path::rounded_rectangle(rect.position(), rect.size(), 8.0.into());
+            let tint = if dragged.is_some() {
+                self.palette.accent_soft
+            } else {
+                style::FILL
+            };
+            frame.fill(&path, style::color(tint));
+            frame.stroke(
+                &path,
+                Stroke::default()
+                    .with_color(style::color(if dragged.is_some() {
+                        self.palette.accent
+                    } else {
+                        neutral::TEXT.alpha(0.25)
+                    }))
+                    .with_width(1.5),
+            );
+            for (line, (words, size, tint)) in [
+                (&screen.name, 13.0, neutral::TEXT),
+                (&screen.label, 11.0, style::FAINT),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                frame.fill_text(canvas::Text {
+                    content: words.clone(),
+                    position: Point::new(
+                        rect.center_x(),
+                        rect.center_y() + 16.0 * line as f32 - 8.0,
+                    ),
+                    color: style::color(tint),
+                    size: size.into(),
+                    align_x: Alignment::Center,
+                    align_y: Vertical::Center,
+                    max_width: rect.width - 8.0,
+                    ..canvas::Text::default()
+                });
+            }
+        }
+        vec![frame.into_geometry()]
+    }
+
+    fn mouse_interaction(
+        &self,
+        drag: &Option<Drag>,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        if drag.is_some() {
+            return mouse::Interaction::Grabbing;
+        }
+        let fit = Fit::new(&self.screens, bounds.size());
+        match cursor.position_in(bounds) {
+            Some(point)
+                if self.screens.len() > 1
+                    && self
+                        .screens
+                        .iter()
+                        .any(|s| fit.rect(&s.place).contains(point)) =>
+            {
+                mouse::Interaction::Grab
+            }
+            _ => mouse::Interaction::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LAPTOP: Place = Place {
+        x: 0,
+        y: 0,
+        width: 1600,
+        height: 1000,
+    };
+
+    fn monitor(x: i64, y: i64) -> Place {
+        Place {
+            x,
+            y,
+            width: 2560,
+            height: 1440,
+        }
+    }
+
+    #[test]
+    fn a_dropped_screen_meets_its_neighbour() {
+        assert_eq!(
+            snap(monitor(1700, -400), &[LAPTOP]),
+            Some((1600, -440)),
+            "to the right, bottoms lined up"
+        );
+        assert_eq!(
+            snap(monitor(-2500, 300), &[LAPTOP]),
+            Some((-2560, 300)),
+            "to the left, kept where it was dropped along the edge"
+        );
+        assert_eq!(
+            snap(monitor(-480, -1500), &[LAPTOP]),
+            Some((-480, -1440)),
+            "above, centred"
+        );
+        assert_eq!(
+            snap(monitor(5000, 3000), &[LAPTOP]),
+            Some((1600, 999)),
+            "far away still ends up touching"
+        );
+        assert_eq!(snap(monitor(0, 0), &[]), None, "alone, nowhere to go");
+    }
+
+    #[test]
+    fn it_never_lands_on_another_screen() {
+        let others = [LAPTOP, monitor(1600, 0)];
+        let (x, y) = snap(monitor(800, 200), &others).unwrap();
+        let landed = Place {
+            x,
+            y,
+            ..monitor(0, 0)
+        };
+        assert!(others.iter().all(|o| !landed.overlaps(o)), "{landed:?}");
+    }
+}
