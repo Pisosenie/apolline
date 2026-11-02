@@ -33,6 +33,8 @@ pub struct Dialog {
     pub password: String,
     pub error: Option<String>,
     pub info: Option<String>,
+    // What PAM asked for last, when it isn't just the password.
+    pub asks: Option<String>,
     pub busy: bool,
     pub answers: Option<mpsc::Sender<String>>,
     pub check: Option<iced::task::Handle>,
@@ -46,6 +48,7 @@ impl Dialog {
             password: String::new(),
             error: None,
             info: None,
+            asks: None,
             busy: false,
             answers: None,
             check: None,
@@ -215,6 +218,8 @@ fn members(groups: &str, passwd: &str, gid: u32) -> Vec<String> {
 pub enum Said {
     // A line from PAM for the person: "Place your finger on the reader", "Account locked".
     Info(String),
+    // PAM wants something typed that nothing typed yet answers: "Password:", "Verification code:".
+    Asks(String),
     Done(Result<(), String>),
 }
 
@@ -285,7 +290,17 @@ async fn converse(
     while let Some(line) = lines.next_line().await.map_err(|err| err.to_string())? {
         let (kind, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let answer = match kind {
-            "PAM_PROMPT_ECHO_OFF" => Some(answers.next().await.ok_or("the dialog went away")?),
+            "PAM_PROMPT_ECHO_OFF" => {
+                // Typed ahead, it goes in at once; otherwise the dialog says what's asked and waits.
+                let typed = match answers.try_recv() {
+                    Ok(typed) => typed,
+                    Err(_) => {
+                        let _ = output.send(Said::Asks(unescape(rest))).await;
+                        answers.next().await.ok_or("the dialog went away")?
+                    }
+                };
+                Some(typed)
+            }
             "PAM_PROMPT_ECHO_ON" => Some(user.to_owned()),
             "PAM_ERROR_MSG" | "PAM_TEXT_INFO" => {
                 let text = unescape(rest);
@@ -357,7 +372,11 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
         .spacing(4);
         body = body.push(choices);
     }
-    let field = text_input(&format!("Password for {user}"), &dialog.password)
+    let placeholder = dialog
+        .asks
+        .clone()
+        .unwrap_or_else(|| format!("Password for {user}"));
+    let field = text_input(&placeholder, &dialog.password)
         .id(FIELD)
         .secure(true)
         .on_input_maybe((!dialog.busy).then_some(Message::PolkitPassword))
@@ -461,6 +480,29 @@ mod tests {
         let script = b"PAM_PROMPT_ECHO_OFF Password: \nPAM_ERROR_MSG Account locked for 10 minutes\nFAILURE\n";
         let result = converse(&script[..], Vec::new(), "dzorin", &mut answers, &mut output).await;
         assert_eq!(result, Err("Account locked for 10 minutes".into()));
+
+        // A second question, a one-time code: the dialog hears it and the answer goes in after.
+        let (mut output, said) = mpsc::channel(4);
+        answer.try_send("polina".to_owned()).unwrap();
+        let script =
+            b"PAM_PROMPT_ECHO_OFF Password: \nPAM_PROMPT_ECHO_OFF Verification code: \nSUCCESS\n";
+        let mut written = Vec::new();
+        let talk = converse(
+            &script[..],
+            &mut written,
+            "dzorin",
+            &mut answers,
+            &mut output,
+        );
+        let typed_later = async {
+            answer.send("123456".to_owned()).await.unwrap();
+        };
+        let (result, ()) = iced::futures::join!(talk, typed_later);
+        assert_eq!(result, Ok(()));
+        assert_eq!(written, b"polina\n123456\n");
+        drop(output);
+        let said: Vec<Said> = said.collect().await;
+        assert_eq!(said, [Said::Asks("Verification code:".into())]);
 
         drop(answer);
         let (mut output, _said) = mpsc::channel(4);

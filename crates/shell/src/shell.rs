@@ -904,6 +904,16 @@ impl Shell {
                     dialog.info = Some(info);
                 }
             }
+            // Asked for more after an answer, a code or a key's PIN: the field is free again.
+            Message::PolkitSaid(_, polkit::Said::Asks(asks)) => {
+                if let Some(dialog) = &mut self.polkit {
+                    let asks = asks.trim().trim_end_matches(':').trim().to_owned();
+                    let plain = asks.is_empty() || asks.eq_ignore_ascii_case("password");
+                    dialog.asks = (!plain).then_some(asks);
+                    dialog.busy = false;
+                    return iced::widget::operation::focus(polkit::FIELD);
+                }
+            }
             Message::PolkitSaid(_, polkit::Said::Done(Ok(()))) => {
                 if let Some(dialog) = self.polkit.take() {
                     polkit::finish(&dialog.request.cookie, true);
@@ -1775,9 +1785,8 @@ impl Shell {
             return Task::none();
         };
         let (mut answer, answers) = iced::futures::channel::mpsc::channel(1);
-        if let Some(password) = password {
-            dialog.busy = answer.try_send(password).is_ok();
-        }
+        dialog.busy = password.is_some_and(|password| answer.try_send(password).is_ok());
+        dialog.asks = None;
         dialog.answers = Some(answer);
         dialog.info = None;
         let user = dialog
