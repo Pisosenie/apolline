@@ -75,6 +75,8 @@ pub struct Panel<'a> {
     pub night: bool,
     pub profiles: Option<&'a crate::profile::Profiles>,
     pub history: &'a [Notification],
+    // Apps whose notifications show all, not only the newest.
+    pub opened: &'a [String],
     pub apps: &'a [crate::apps::App],
     pub detail: Option<Detail>,
     pub networks: &'a [crate::wifi::Network],
@@ -222,7 +224,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
     if let Some(track) = panel.track {
         body = body.push(player(track, palette));
     }
-    body = body.push(history(panel.history, panel.apps, palette));
+    body = body.push(history(panel.history, panel.opened, panel.apps, palette));
 
     frame(body, panel.at_bottom, panel.look)
 }
@@ -576,6 +578,7 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
 
 fn history<'a>(
     items: &'a [Notification],
+    opened: &'a [String],
     apps: &'a [crate::apps::App],
     palette: Palette,
 ) -> Element<'a, Message> {
@@ -601,8 +604,35 @@ fn history<'a>(
             .color(style::color(style::FAINT))
             .into()
     } else {
-        let entries =
-            Column::with_children(items.iter().map(|n| entry(n, apps, palette))).spacing(6);
+        // One app's newest on top of the rest of its own, which open with a click.
+        let mut groups: Vec<(&str, Vec<&Notification>)> = Vec::new();
+        for item in items {
+            match groups.iter_mut().find(|(app, _)| *app == item.app) {
+                Some((_, list)) => list.push(item),
+                None => groups.push((&item.app, vec![item])),
+            }
+        }
+        let mut entries = Column::new().spacing(6);
+        for (app, list) in groups {
+            let open = opened.iter().any(|o| o == app);
+            let shown = if open { list.len() } else { 1 };
+            for item in &list[..shown] {
+                entries = entries.push(entry(item, apps, palette));
+            }
+            if list.len() > 1 {
+                let said = if open {
+                    "Show less".to_owned()
+                } else {
+                    format!("{} more from {}", list.len() - 1, shorten(app, 24))
+                };
+                entries = entries.push(
+                    button(text(said).size(11).color(style::color(palette.accent)))
+                        .padding([2, 10])
+                        .style(style::ghost(6.0))
+                        .on_press(Message::HistoryGroup(app.to_owned())),
+                );
+            }
+        }
         container(
             scrollable(entries)
                 .direction(style::thin())

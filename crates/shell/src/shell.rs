@@ -99,6 +99,7 @@ pub enum Message {
     PickProfile(String),
     ProfileSet(String, Result<(), String>),
     OpenLink(String),
+    HistoryGroup(String),
     ReplyOpen(u32),
     ReplyTyped(String),
     ReplySend,
@@ -212,6 +213,8 @@ pub struct Shell {
     replying: Option<(u32, String)>,
     // The low battery mark already warned about, until the charger goes in.
     warned: Option<u8>,
+    // Apps whose past notifications are opened up in quick settings.
+    opened: Vec<String>,
     // Calendar reminders already shown, by when and what, so each comes once.
     reminded: Vec<(chrono::NaiveDateTime, std::sync::Arc<str>)>,
     net_note: Option<String>,
@@ -304,6 +307,7 @@ impl Shell {
             replying: None,
             warned: None,
             reminded: Vec::new(),
+            opened: Vec::new(),
             joining: None,
             net_note: None,
             net_busy: false,
@@ -1100,6 +1104,13 @@ impl Shell {
                     (false, false) => notify::closed(id, Closed::Dismissed),
                 };
                 return Task::batch([close, focus, told]);
+            }
+            Message::HistoryGroup(app) => {
+                if self.opened.contains(&app) {
+                    self.opened.retain(|o| *o != app);
+                } else {
+                    self.opened.push(app);
+                }
             }
             // A link from a calendar, so given to the opener as it is, never to a shell.
             Message::OpenLink(link) => {
@@ -2211,6 +2222,7 @@ impl Shell {
                 night: self.night.1.unwrap_or(self.night.0),
                 profiles: self.profiles.as_ref(),
                 history: &self.history,
+                opened: &self.opened,
                 apps: &self.apps,
                 detail: self.detail,
                 networks: &self.networks,
