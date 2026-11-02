@@ -6,11 +6,13 @@ use iced::{Alignment, Background, Element, Fill, Theme};
 
 use crate::apps::{self, App};
 use crate::controls::Controls;
+use crate::drag::drag;
 use crate::icon::{Icon, icon};
 use crate::media::Track;
 use crate::power::Battery;
 use crate::shell::{Message, Overlay};
 use crate::status::Status;
+use crate::strip;
 use crate::style;
 
 pub struct Bar<'a> {
@@ -30,6 +32,8 @@ pub struct Bar<'a> {
     pub panel_open: bool,
     pub apps: &'a [App],
     pub pinned: Vec<Pinned>,
+    // An app being dragged on the row of pinned apps: whether it was pinned, and where it is.
+    pub dragging: Option<(&'a str, bool, f32)>,
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
     pub stats: crate::stats::Stats,
@@ -379,11 +383,30 @@ fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     .into()
 }
 
+// Pinned apps, then the open windows; any of them can be dragged among the pinned ones to pin it
+// there, and a pinned one dragged well past them is unpinned.
 fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     let palette = bar.palette;
-    let pinned = bar.pinned.iter().map(|pin| {
-        let glyph = crate::windows::picture(bar.apps, &pin.id, 16.0, palette);
-        let (width, tint) = match (pin.focused, pin.running) {
+    let ids: Vec<String> = bar.pinned.iter().map(|pin| pin.id.clone()).collect();
+    let shown = match bar.dragging {
+        Some((app, was_pinned, x)) => strip::landing(&ids, app, was_pinned, x),
+        None => ids.clone(),
+    };
+    let lifted = bar.dragging.map(|(app, ..)| app);
+    let loose_of = |pinned: &[String]| -> Vec<(u64, String, bool)> {
+        bar.status
+            .windows
+            .iter()
+            .filter(|(_, app, _)| !pinned.iter().any(|id| id == app_key(bar.apps, app)))
+            .cloned()
+            .collect()
+    };
+    let loose = loose_of(&shown);
+    let pinned = shown.iter().map(|id| {
+        let pin = bar.pinned.iter().find(|pin| pin.id == *id);
+        let (running, focused) = pin.map_or((true, false), |pin| (pin.running, pin.focused));
+        let glyph = crate::windows::picture(bar.apps, id, 16.0, palette);
+        let (width, tint) = match (focused, running) {
             (true, _) => (12, palette.accent),
             (false, true) => (4, neutral::MUTED),
             (false, false) => (0, neutral::MUTED),
@@ -392,29 +415,24 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             .width(width)
             .height(2)
             .style(style::pill(tint));
-        let focused = pin.focused;
+        let held = lifted == Some(id.as_str());
         let button = button(column![glyph, marker].spacing(2).align_x(Alignment::Center))
             .padding(iced::Padding::new(4.0).bottom(1.0))
             .style(move |theme, status| {
                 let mut style = style::ghost(7.0)(theme, status);
-                if focused {
+                if held {
+                    style.background = Some(Background::Color(style::color(palette.accent_soft)));
+                } else if focused {
                     style.background = Some(Background::Color(style::color(style::FILL)));
                 }
                 style
             })
-            .on_press(Message::OpenPinned(pin.id.clone()));
+            .on_press(Message::OpenPinned(id.clone()));
         mouse_area(button)
-            .on_right_press(Message::Pin(pin.id.clone()))
+            .on_right_press(Message::Pin(id.clone()))
             .into()
     });
-    let pinned_ids: Vec<&str> = bar.pinned.iter().map(|pin| pin.id.as_str()).collect();
-    let loose: Vec<&(u64, String, bool)> = bar
-        .status
-        .windows
-        .iter()
-        .filter(|(_, app, _)| !pinned_ids.contains(&app_key(bar.apps, app)))
-        .collect();
-    let gap = (!bar.pinned.is_empty() && !loose.is_empty()).then(|| {
+    let gap = (!shown.is_empty() && !loose.is_empty()).then(|| {
         container(space())
             .width(1)
             .height(14)
@@ -422,8 +440,7 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
             .into()
     });
     let windows = loose.into_iter().map(|(id, app, focused)| {
-        let focused = *focused;
-        let glyph = crate::windows::picture(bar.apps, app, 16.0, palette);
+        let glyph = crate::windows::picture(bar.apps, &app, 16.0, palette);
         let marker = container(space())
             .width(if focused { 12 } else { 0 })
             .height(2)
@@ -437,16 +454,33 @@ fn tasks<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
                 }
                 style
             })
-            .on_press(Message::FocusWindow(*id));
+            .on_press(Message::FocusWindow(id));
         mouse_area(task)
-            .on_middle_press(Message::CloseWindow(*id))
-            .on_right_press(Message::Pin(app_key(bar.apps, app).to_owned()))
+            .on_middle_press(Message::CloseWindow(id))
+            .on_right_press(Message::Pin(app_key(bar.apps, &app).to_owned()))
             .into()
     });
-    Row::with_children(pinned.chain(gap).chain(windows))
+    let row = Row::with_children(pinned.chain(gap).chain(windows))
         .spacing(2)
-        .align_y(Alignment::Center)
-        .into()
+        .align_y(Alignment::Center);
+    // What a press lands on, as the row stands before any drag.
+    let loose: Vec<String> = loose_of(&ids)
+        .into_iter()
+        .map(|(_, app, _)| app_key(bar.apps, &app).to_owned())
+        .collect();
+    drag(
+        row,
+        move |at| {
+            let picked = strip::hit(at.x, ids.len(), loose.len()).map(|hit| match hit {
+                strip::Hit::Pinned(i) => (ids[i].clone(), true),
+                strip::Hit::Window(i) => (loose[i].clone(), false),
+            });
+            Message::StripStart(picked, at.x)
+        },
+        |at| Message::StripMove(at.x),
+        |at| Message::StripDrop(at.x),
+    )
+    .into()
 }
 
 pub fn app_key<'a>(apps: &'a [App], app_id: &'a str) -> &'a str {

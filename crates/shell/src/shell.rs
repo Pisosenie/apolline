@@ -32,7 +32,7 @@ use crate::profile;
 use crate::status::Status;
 use crate::switcher;
 use crate::{gsettings, paint};
-use crate::{style, wallpaper};
+use crate::{strip, style, wallpaper};
 
 const FADE: Duration = Duration::from_millis(450);
 const QUIET_AFTER_TOUCH: Duration = Duration::from_millis(1500);
@@ -101,6 +101,10 @@ pub enum Message {
     OpenLink(String),
     HistoryGroup(String),
     Quiet(panel::Quiet),
+    // A drag on the bar's pinned apps: what was picked up (the app, and whether it's pinned).
+    StripStart(Option<(String, bool)>, f32),
+    StripMove(f32),
+    StripDrop(f32),
     ReplyOpen(u32),
     // The answer lost the keyboard: one with nothing typed closes, a draft stays.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -247,6 +251,8 @@ pub struct Shell {
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
     shown: Vec<Shown>,
+    // An app being dragged on the bar: which, whether it was pinned, and where it is now.
+    dragging: Option<(String, bool, f32)>,
     night: (bool, Option<bool>),
     module_text: Vec<(usize, String)>,
     recording: Option<crate::capture::Recording>,
@@ -347,6 +353,7 @@ impl Shell {
             config,
             wallpapers: Vec::new(),
             shown: Vec::new(),
+            dragging: None,
             night: (false, None),
             module_text: Vec::new(),
             recording: None,
@@ -784,6 +791,23 @@ impl Shell {
                 }
             }
             Message::OpenPinned(id) => return self.open_pinned(&id),
+            Message::StripStart(picked, x) => {
+                self.dragging = picked.map(|(app, was_pinned)| (app, was_pinned, x));
+            }
+            Message::StripMove(x) => {
+                if let Some((_, _, at)) = &mut self.dragging {
+                    *at = x;
+                }
+            }
+            Message::StripDrop(x) => {
+                if let Some((app, was_pinned, _)) = self.dragging.take() {
+                    let pinned = strip::landing(&self.config.pinned, &app, was_pinned, x);
+                    if pinned != self.config.pinned {
+                        self.save(|e| e.set_list("bar", "pinned", &pinned));
+                        return self.reload_config();
+                    }
+                }
+            }
             Message::Pin(id) => {
                 let mut pinned = self.config.pinned.clone();
                 match pinned.iter().position(|p| *p == id) {
@@ -2505,6 +2529,10 @@ impl Shell {
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,
             pinned: self.pinned(),
+            dragging: self
+                .dragging
+                .as_ref()
+                .map(|(app, was_pinned, x)| (app.as_str(), *was_pinned, *x)),
             recording: self.recording.as_ref().map(|r| r.started.elapsed()),
             stats: self.stats,
             next: self

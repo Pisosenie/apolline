@@ -3620,6 +3620,7 @@ impl Settings {
                         focused: false,
                     })
                     .collect(),
+                dragging: None,
                 modules: Vec::new(),
                 recording: None,
                 next: None,
