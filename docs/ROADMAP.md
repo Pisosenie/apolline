@@ -151,4 +151,5 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - **A dock.** niri's strip plus windows and pinned apps on the bar already do its job.
 - **An AI panel, a process monitor, a notepad.** Other apps do these well.
 - **Later:** screen recording with "save the last 30 seconds" for games, and live wallpapers (video,
-  shaders) in an `apolline wall` child process the shell drives over JSON lines on stdin and stdout.
+  shaders) in `apolline-wall`, a program and repository of its own that the shell will drive over JSON
+  lines on stdin and stdout; pictures with crossfades already work there.
