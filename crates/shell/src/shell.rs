@@ -119,7 +119,7 @@ pub enum Message {
     PolkitUser(usize),
     PolkitPassword(String),
     PolkitSubmit,
-    PolkitDone(String, Result<(), String>),
+    PolkitSaid(String, polkit::Said),
     PolkitCancel,
     SettingsPage(&'static str),
     Apps(Vec<App>),
@@ -812,6 +812,7 @@ impl Shell {
                 return Task::batch([
                     self.set_overlay(Some(Overlay::Polkit)),
                     iced::widget::operation::focus(polkit::FIELD),
+                    self.ask_polkit(None),
                 ]);
             }
             Message::PolkitGone(cookie) => {
@@ -828,6 +829,7 @@ impl Shell {
                 if let Some(dialog) = &mut self.polkit {
                     dialog.user = index;
                     dialog.error = None;
+                    return self.ask_polkit(None);
                 }
             }
             Message::PolkitPassword(password) => {
@@ -840,42 +842,49 @@ impl Shell {
                     && !dialog.busy
                     && !dialog.password.is_empty()
                 {
-                    dialog.busy = true;
-                    dialog.error = None;
-                    let user = dialog
-                        .request
-                        .users
-                        .get(dialog.user)
-                        .cloned()
-                        .unwrap_or_default();
-                    let cookie = dialog.request.cookie.clone();
                     let password = std::mem::take(&mut dialog.password);
-                    let (check, handle) = Task::perform(
-                        polkit::authenticate(user, cookie.clone(), password),
-                        move |result| Message::PolkitDone(cookie.clone(), result),
-                    )
-                    .abortable();
-                    dialog.check = Some(handle.abort_on_drop());
-                    return check;
+                    dialog.error = None;
+                    // Into the running conversation, or a new one when that one is over.
+                    let sent = dialog
+                        .answers
+                        .as_mut()
+                        .is_some_and(|answers| answers.try_send(password.clone()).is_ok());
+                    if !sent {
+                        return self.ask_polkit(Some(password));
+                    }
+                    dialog.busy = true;
                 }
             }
-            Message::PolkitDone(cookie, _)
+            Message::PolkitSaid(cookie, _)
                 if self
                     .polkit
                     .as_ref()
                     .is_none_or(|d| d.request.cookie != cookie) => {}
-            Message::PolkitDone(_, Ok(())) => {
+            Message::PolkitSaid(_, polkit::Said::Info(info)) => {
+                if let Some(dialog) = &mut self.polkit {
+                    dialog.info = Some(info);
+                }
+            }
+            Message::PolkitSaid(_, polkit::Said::Done(Ok(()))) => {
                 if let Some(dialog) = self.polkit.take() {
                     polkit::finish(&dialog.request.cookie, true);
                 }
                 return self.set_overlay(None);
             }
-            Message::PolkitDone(_, Err(error)) => {
+            Message::PolkitSaid(_, polkit::Said::Done(Err(error))) => {
                 if let Some(dialog) = &mut self.polkit {
-                    dialog.check = None;
-                    dialog.busy = false;
+                    let tried = std::mem::replace(&mut dialog.busy, false);
                     dialog.error = Some(error);
-                    return iced::widget::operation::focus(polkit::FIELD);
+                    dialog.answers = None;
+                    dialog.check = None;
+                    // After a wrong password the helper starts over, so a finger works again;
+                    // a helper that fails by itself waits for the next try instead.
+                    let again = if tried {
+                        self.ask_polkit(None)
+                    } else {
+                        Task::none()
+                    };
+                    return Task::batch([again, iced::widget::operation::focus(polkit::FIELD)]);
                 }
             }
             Message::PolkitCancel => return self.set_overlay(None),
@@ -1614,6 +1623,36 @@ impl Shell {
         self.asking = None;
         self.pin.clear();
         crate::bluetooth::refuse();
+    }
+
+    // A new conversation with polkit's helper, with a password already in when it was typed first.
+    fn ask_polkit(&mut self, password: Option<String>) -> Task<Message> {
+        if self.sample() {
+            return Task::none();
+        }
+        let Some(dialog) = &mut self.polkit else {
+            return Task::none();
+        };
+        let (mut answer, answers) = iced::futures::channel::mpsc::channel(1);
+        if let Some(password) = password {
+            dialog.busy = answer.try_send(password).is_ok();
+        }
+        dialog.answers = Some(answer);
+        dialog.info = None;
+        let user = dialog
+            .request
+            .users
+            .get(dialog.user)
+            .cloned()
+            .unwrap_or_default();
+        let cookie = dialog.request.cookie.clone();
+        let (talk, handle) = Task::run(
+            polkit::conversation(user, cookie.clone(), answers),
+            move |said| Message::PolkitSaid(cookie.clone(), said),
+        )
+        .abortable();
+        dialog.check = Some(handle.abort_on_drop());
+        talk
     }
 
     fn listing(&self, detail: panel::Detail) -> bool {

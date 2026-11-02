@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use apolline_theme::Palette;
 use iced::futures::channel::{mpsc, oneshot};
-use iced::futures::{SinkExt, Stream};
+use iced::futures::{SinkExt, Stream, StreamExt};
 use iced::widget::{Row, button, column, container, mouse_area, opaque, row, text, text_input};
 use iced::{Alignment, Element, Fill, Padding, Subscription};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
@@ -32,7 +32,9 @@ pub struct Dialog {
     pub user: usize,
     pub password: String,
     pub error: Option<String>,
+    pub info: Option<String>,
     pub busy: bool,
+    pub answers: Option<mpsc::Sender<String>>,
     pub check: Option<iced::task::Handle>,
 }
 
@@ -43,7 +45,9 @@ impl Dialog {
             user: 0,
             password: String::new(),
             error: None,
+            info: None,
             busy: false,
+            answers: None,
             check: None,
         }
     }
@@ -206,52 +210,87 @@ fn members(groups: &str, passwd: &str, gid: u32) -> Vec<String> {
     found
 }
 
-pub async fn authenticate(user: String, cookie: String, password: String) -> Result<(), String> {
-    match tokio::net::UnixStream::connect(SOCKET).await {
-        Ok(stream) => {
-            let (read, mut write) = stream.into_split();
-            write
-                .write_all(format!("{user}\n{cookie}\n").as_bytes())
-                .await
-                .map_err(|err| err.to_string())?;
-            converse(BufReader::new(read), write, &user, &password).await
-        }
-        Err(_) => {
-            let mut helper = tokio::process::Command::new(HELPER)
-                .arg(&user)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .kill_on_drop(true)
-                .spawn()
-                .map_err(|err| format!("{HELPER}: {err}"))?;
-            let (Some(mut stdin), Some(stdout)) = (helper.stdin.take(), helper.stdout.take())
-            else {
-                return Err("the polkit helper has no pipes".into());
-            };
-            stdin
-                .write_all(format!("{cookie}\n").as_bytes())
-                .await
-                .map_err(|err| err.to_string())?;
-            converse(BufReader::new(stdout), stdin, &user, &password).await
-        }
+// What the helper says while it checks.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Said {
+    // A line from PAM for the person: "Place your finger on the reader", "Account locked".
+    Info(String),
+    Done(Result<(), String>),
+}
+
+// One go at the helper, started when the dialog shows, so whatever PAM wants first, a finger or a
+// key, is on screen before a password is typed; the password goes in when PAM asks for it.
+pub fn conversation(
+    user: String,
+    cookie: String,
+    mut answers: mpsc::Receiver<String>,
+) -> impl Stream<Item = Said> {
+    iced::stream::channel(4, async move |mut output| {
+        let done = match helper(&user, &cookie).await {
+            Ok((reader, writer, _child)) => {
+                converse(reader, writer, &user, &mut answers, &mut output).await
+            }
+            Err(err) => Err(err),
+        };
+        let _ = output.send(Said::Done(done)).await;
+    })
+}
+
+type Pipes = (
+    Box<dyn AsyncBufRead + Unpin + Send>,
+    Box<dyn AsyncWrite + Unpin + Send>,
+    Option<tokio::process::Child>,
+);
+
+// polkit's socket-activated helper, or the setuid one where there is no socket.
+async fn helper(user: &str, cookie: &str) -> Result<Pipes, String> {
+    if let Ok(stream) = tokio::net::UnixStream::connect(SOCKET).await {
+        let (read, mut write) = stream.into_split();
+        write
+            .write_all(format!("{user}\n{cookie}\n").as_bytes())
+            .await
+            .map_err(|err| err.to_string())?;
+        return Ok((Box::new(BufReader::new(read)), Box::new(write), None));
     }
+    let mut child = tokio::process::Command::new(HELPER)
+        .arg(user)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| format!("{HELPER}: {err}"))?;
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        return Err("the polkit helper has no pipes".into());
+    };
+    stdin
+        .write_all(format!("{cookie}\n").as_bytes())
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok((
+        Box::new(BufReader::new(stdout)),
+        Box::new(stdin),
+        Some(child),
+    ))
 }
 
 async fn converse(
     reader: impl AsyncBufRead + Unpin,
     mut writer: impl AsyncWrite + Unpin,
     user: &str,
-    password: &str,
+    answers: &mut mpsc::Receiver<String>,
+    output: &mut mpsc::Sender<Said>,
 ) -> Result<(), String> {
     let mut lines = reader.lines();
     let mut said = None;
     while let Some(line) = lines.next_line().await.map_err(|err| err.to_string())? {
         let (kind, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let answer = match kind {
-            "PAM_PROMPT_ECHO_OFF" => Some(password),
-            "PAM_PROMPT_ECHO_ON" => Some(user),
+            "PAM_PROMPT_ECHO_OFF" => Some(answers.next().await.ok_or("the dialog went away")?),
+            "PAM_PROMPT_ECHO_ON" => Some(user.to_owned()),
             "PAM_ERROR_MSG" | "PAM_TEXT_INFO" => {
-                said = Some(unescape(rest));
+                let text = unescape(rest);
+                let _ = output.send(Said::Info(text.clone())).await;
+                said = Some(text);
                 None
             }
             "SUCCESS" => return Ok(()),
@@ -327,12 +366,16 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
         .size(14)
         .style(style::field(palette));
     body = body.push(field);
-    let note: Element<'_, Message> = match &dialog.error {
-        Some(error) => text(error.as_str())
+    let note: Element<'_, Message> = match (&dialog.error, &dialog.info) {
+        (Some(error), _) => text(error.as_str())
             .size(12)
             .color(style::color(style::WARN))
             .into(),
-        None => text(request.action.as_str())
+        (None, Some(info)) => text(info.as_str())
+            .size(12)
+            .color(style::color(style::SOFT_TEXT))
+            .into(),
+        (None, None) => text(request.action.as_str())
             .size(11)
             .font(style::mono())
             .color(style::color(style::FAINT))
@@ -390,15 +433,40 @@ mod tests {
     }
 
     async fn conversation() {
+        let (mut answer, mut answers) = mpsc::channel(1);
+        let (mut output, said) = mpsc::channel(4);
+        answer.try_send("polina".to_owned()).unwrap();
         let script = b"PAM_TEXT_INFO Touch\\nthe key\nPAM_PROMPT_ECHO_OFF Password: \nSUCCESS\n";
         let mut written = Vec::new();
-        let result = converse(&script[..], &mut written, "dzorin", "polina").await;
+        let result = converse(
+            &script[..],
+            &mut written,
+            "dzorin",
+            &mut answers,
+            &mut output,
+        )
+        .await;
         assert_eq!(result, Ok(()));
         assert_eq!(written, b"polina\n");
+        drop(output);
+        let said: Vec<Said> = said.collect().await;
+        assert_eq!(
+            said,
+            [Said::Info("Touch the key".into())],
+            "shown before any password"
+        );
 
+        let (mut output, _said) = mpsc::channel(4);
+        answer.try_send("nope".to_owned()).unwrap();
         let script = b"PAM_PROMPT_ECHO_OFF Password: \nPAM_ERROR_MSG Account locked for 10 minutes\nFAILURE\n";
-        let result = converse(&script[..], Vec::new(), "dzorin", "nope").await;
+        let result = converse(&script[..], Vec::new(), "dzorin", &mut answers, &mut output).await;
         assert_eq!(result, Err("Account locked for 10 minutes".into()));
+
+        drop(answer);
+        let (mut output, _said) = mpsc::channel(4);
+        let script = b"PAM_PROMPT_ECHO_OFF Password: \n";
+        let result = converse(&script[..], Vec::new(), "dzorin", &mut answers, &mut output).await;
+        assert!(result.is_err(), "a closed dialog ends it");
     }
 
     #[test]

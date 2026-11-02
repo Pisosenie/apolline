@@ -109,7 +109,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - Fingerprint next to the password on the lock screen, both at once — done, over fprintd's D-Bus API
   (tried against a fake reader, `tools/fake-bus.sh`). Off by default: a finger stands in for the
   password, so second factors in PAM don't apply to it. The polkit dialog can only ask through polkit's
-  own helper, so there it is pam_fprintd in the polkit-1 PAM stack.
+  own helper, so there it is pam_fprintd in the polkit-1 PAM stack; the dialog talks to the helper from
+  the moment it opens, so "place your finger" shows at once and a finger alone is enough.
 - The login screen (`apolline greet`, done in its first form) remembers the last person and session and
   lists people through getent; next are the keyboard layout and no flash on the way into the session.
   It still needs a run on real hardware.
