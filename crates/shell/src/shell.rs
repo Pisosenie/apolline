@@ -2350,6 +2350,7 @@ impl Shell {
                 palette,
                 self.config.bar.position == Edge::Bottom,
                 style::under_bar(&self.config.bar, &self.config.style, 1.0),
+                self.config.calendars.len(),
             ),
             Some(Overlay::Polkit) => match &self.polkit {
                 Some(dialog) => polkit::view(dialog, palette),

@@ -38,6 +38,7 @@ pub fn view<'a>(
     palette: Palette,
     at_bottom: bool,
     gap: f32,
+    calendars: usize,
 ) -> Element<'a, Message> {
     let today = now.date_naive();
     let first = month(today, offset);
@@ -133,6 +134,31 @@ pub fn view<'a>(
     ];
     if picked.is_some() || agenda.busy(today) {
         body = body.push(day_list(picked.unwrap_or(today), today, agenda, palette));
+    }
+    // With nothing set up yet, say what it can show and where that's set.
+    let invites: Vec<Element<'a, Message>> = [
+        (weather.is_none(), Icon::CloudSun, "Add weather"),
+        (calendars == 0, Icon::Plus, "Add calendar"),
+    ]
+    .into_iter()
+    .filter(|(missing, ..)| *missing)
+    .map(|(_, glyph, label)| {
+        button(
+            row![
+                icon(glyph, 14.0, neutral::MUTED),
+                text(label).size(12).color(style::color(neutral::MUTED)),
+            ]
+            .spacing(7)
+            .align_y(Alignment::Center),
+        )
+        .padding([6, 10])
+        .style(style::ghost(8.0))
+        .on_press(Message::SettingsPage("bar"))
+        .into()
+    })
+    .collect();
+    if !invites.is_empty() {
+        body = body.push(Row::with_children(invites).spacing(4));
     }
     let card = container(body.spacing(14).width(Length::Fixed(CELL * 7.0)))
         .padding(18)
