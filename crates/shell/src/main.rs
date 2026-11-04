@@ -20,6 +20,7 @@ mod fingerprint;
 mod fonts;
 mod fragment;
 mod greet;
+mod greet_look;
 mod greetd;
 mod gsettings;
 mod icon;
@@ -87,7 +88,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME] | theme install PATH|LINK
        apolline pick [--prompt TEXT] < lines
-       apolline greet [--kiosk | --preview] [--screenshot FILE]
+       apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
        apolline setup
        apolline fragment [CONFIG] [MODE]
        apolline settings [--page NAME]

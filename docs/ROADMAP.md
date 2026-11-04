@@ -109,8 +109,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - **Fonts, icons, cursor and GTK theme** pickers — done.
 - **More apps in the palette**: done for GTK, KDE and qt6ct apps, the whole palette and not only the
   accent, and running GTK apps change at once; next is Flatpak.
-- **Next for rice:** a font per surface, looks for the login screen, a catalog of themes to browse,
-  and Russian first among translations.
+- **A font per surface** and **the login screen in your look** — done.
+- **Next for rice:** a catalog of themes to browse, and Russian first among translations.
   Apolline ships no terminal templates; the Apolline terminal (its own project) reads the palette itself.
 
 ### 4. Finding things and getting in

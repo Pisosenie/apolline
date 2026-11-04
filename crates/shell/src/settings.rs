@@ -370,6 +370,9 @@ enum Message {
     LockBlur(bool),
     LockFingerprint(bool),
     LockNow,
+    GreetPreview,
+    GreetInstall,
+    GreetDone(Result<(), String>),
     IdleLock(u16),
     IdleScreen(u16),
     IdleSuspend(u16),
@@ -481,6 +484,7 @@ struct Settings {
     controls: Controls,
     setup_log: Vec<String>,
     tested: Option<Result<(), String>>,
+    greet_note: Option<Result<(), String>>,
     error: Option<String>,
     screenshot: Option<PathBuf>,
     shooting: bool,
@@ -572,6 +576,7 @@ impl Settings {
             controls: Controls::sample(),
             setup_log: Vec::new(),
             tested: None,
+            greet_note: None,
             error: None,
             screenshot,
             shooting: false,
@@ -1328,6 +1333,43 @@ impl Settings {
                 self.stage(|e| e.set("idle", "screen_off_after", i64::from(v)))
             }
             Message::IdleSuspend(v) => self.stage(|e| e.set("idle", "suspend_after", i64::from(v))),
+            Message::GreetPreview => {
+                self.greet_note = None;
+                let staged = crate::greet_look::stage(&self.config);
+                return match staged {
+                    Ok(files) => {
+                        let line = format!(
+                            "{} greet --preview --look '{}' &",
+                            crate::control::me(),
+                            files[0].display()
+                        );
+                        Task::future(async move {
+                            let _ = tokio::process::Command::new("sh")
+                                .args(["-c", &line])
+                                .status()
+                                .await;
+                        })
+                        .discard()
+                    }
+                    Err(err) => {
+                        self.greet_note = Some(Err(err));
+                        Task::none()
+                    }
+                };
+            }
+            Message::GreetInstall => {
+                self.greet_note = None;
+                return match crate::greet_look::stage(&self.config) {
+                    Ok(files) => {
+                        Task::perform(crate::greet_look::install(files), Message::GreetDone)
+                    }
+                    Err(err) => {
+                        self.greet_note = Some(Err(err));
+                        Task::none()
+                    }
+                };
+            }
+            Message::GreetDone(result) => self.greet_note = Some(result),
             Message::LockNow => {
                 let line = format!("{} lock &", crate::control::me());
                 return Task::future(async move {
@@ -4195,6 +4237,7 @@ impl Settings {
                     ),
                 ]
             ),
+            self.login_screen(),
             group(
                 "Shows",
                 vec![
@@ -4223,6 +4266,38 @@ impl Settings {
         ]
         .spacing(22)
         .into()
+    }
+
+    fn login_screen(&self) -> Element<'_, Message> {
+        let palette = self.palette();
+        let buttons = row![
+            button(text("Preview").size(13))
+                .padding([8, 14])
+                .style(style::secondary)
+                .on_press(Message::GreetPreview),
+            button(text("Use it").size(13))
+                .padding([8, 14])
+                .style(style::primary(palette))
+                .on_press(Message::GreetInstall),
+        ]
+        .spacing(8);
+        let mut rows = vec![setting(
+            "This look at login",
+            "Your wallpaper, accent and font, and the clock where it is above, for everyone who signs in here. Asks for your password.",
+            buttons,
+        )];
+        match &self.greet_note {
+            Some(Ok(())) => rows.push(fact(
+                Icon::Check,
+                "The login screen has it from the next time it shows",
+            )),
+            Some(Err(err)) => rows.push(note(err)),
+            None => rows.push(note(&format!(
+                "Kept in {}; with greetd running `apolline greet --kiosk`. A font has to be installed for everyone to show there.",
+                crate::greet_look::SYSTEM
+            ))),
+        }
+        group("Login screen", rows)
     }
 
     fn notifications(&self) -> Element<'_, Message> {

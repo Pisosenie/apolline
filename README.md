@@ -228,7 +228,9 @@ user = "greeter"
 
 `--kiosk` starts cage with the system's keyboard layout (`localectl set-x11-keymap us,ru "" "" grp:alt_shift_toggle` sets it), so the password is typed the way it is everywhere else; `cage -s -- apolline greet` works too, in US English.
 
-`apolline greet --preview` shows it in a window.
+Settings → Lock screen → Login screen gives it your look: the wallpaper, accent and font, and the clock centered or in the corner, blurred or not, the way the lock has them. It asks for your password and writes `/etc/apolline/greet.toml`, with the wallpaper beside it unless it's one Apolline ships; only `install` runs as root. The file is an Apolline config, so it can be written by hand too. The font has to be installed for everyone (in `/usr/share/fonts`), not just for you.
+
+`apolline greet --preview` shows it in a window, Esc closes it; `--look FILE` tries another file.
 
 ## Notifications
 

@@ -4,14 +4,18 @@ use std::time::Duration;
 
 use apolline_theme::{Palette, Rgba, neutral};
 use chrono::{DateTime, Local};
+use iced::gradient::{Gradient, Linear};
+use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::focus;
 use iced::widget::{
     Row, Space, button, column, container, image, pick_list, row, space, stack, text, text_input,
 };
 use iced::{
-    Alignment, Background, Border, ContentFit, Element, Fill, Font, Subscription, Task, window,
+    Alignment, Background, Border, ContentFit, Element, Fill, Font, Radians, Subscription, Task,
+    window,
 };
 
+use crate::greet_look::{self, Look};
 use crate::icon::{Icon, icon};
 use crate::{fonts, greetd, shot, style, wallpaper};
 
@@ -49,6 +53,7 @@ enum Message {
     Wallpaper(Result<image::Handle, String>),
     Tick,
     Shot(window::Screenshot),
+    Leave,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,7 +74,8 @@ struct Greet {
     wallpaper: Option<image::Handle>,
     now: DateTime<Local>,
     socket: Option<String>,
-    palette: Palette,
+    look: Look,
+    preview: bool,
     screenshot: Option<PathBuf>,
 }
 
@@ -83,6 +89,13 @@ pub fn main(args: &[String]) -> ExitCode {
         .position(|a| a == "--screenshot")
         .and_then(|i| args.get(i + 1))
         .map(PathBuf::from);
+    let look = Look::read(
+        &args
+            .iter()
+            .position(|a| a == "--look")
+            .and_then(|i| args.get(i + 1))
+            .map_or_else(|| PathBuf::from(greet_look::SYSTEM), PathBuf::from),
+    );
     let socket = std::env::var("GREETD_SOCK").ok();
     if socket.is_none() && !preview && screenshot.is_none() {
         eprintln!("apolline greet: run it from greetd, or add --preview");
@@ -145,7 +158,8 @@ pub fn main(args: &[String]) -> ExitCode {
         wallpaper: None,
         now: Local::now(),
         socket,
-        palette: Palette::default(),
+        look: look.clone(),
+        preview,
         screenshot,
     }));
     let app = iced::application(
@@ -155,7 +169,12 @@ pub fn main(args: &[String]) -> ExitCode {
                 .ok()
                 .and_then(|mut g| g.take())
                 .expect("booted once");
-            let load = Task::perform(wallpaper::load("fog.jpg".into()), Message::Wallpaper);
+            let name = greet.look.wallpaper.clone();
+            let load = if greet.look.blur {
+                Task::perform(wallpaper::load_blurred(name), Message::Wallpaper)
+            } else {
+                Task::perform(wallpaper::load(name), Message::Wallpaper)
+            };
             let first = if greet.users.is_empty() && greet.login.is_empty() {
                 LOGIN
             } else {
@@ -169,7 +188,10 @@ pub fn main(args: &[String]) -> ExitCode {
     .title("Apolline")
     .subscription(Greet::subscription)
     .theme(|_: &Greet| style::theme())
-    .default_font(Font::with_name(crate::style::family()))
+    .default_font(Font::with_name(
+        look.font
+            .map_or_else(crate::style::family, |font| font.name()),
+    ))
     .window(window::Settings {
         size: iced::Size::new(1440.0, 900.0),
         decorations: false,
@@ -424,6 +446,7 @@ impl Greet {
                         .map(Message::Shot);
                 }
             }
+            Message::Leave => return iced::exit(),
             Message::Shot(capture) => {
                 if let Some(path) = self.screenshot.take()
                     && let Err(err) = shot::save(&path, &capture)
@@ -437,11 +460,26 @@ impl Greet {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick)
+        let tick = iced::time::every(Duration::from_secs(1)).map(|_| Message::Tick);
+        if !self.preview {
+            return tick;
+        }
+        let leave = keyboard::listen().filter_map(|event| match event {
+            keyboard::Event::KeyPressed {
+                key: Key::Named(Named::Escape),
+                ..
+            } => Some(Message::Leave),
+            _ => None,
+        });
+        Subscription::batch([tick, leave])
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let palette = self.palette;
+        style::within(self.look.font, || self.built())
+    }
+
+    fn built(&self) -> Element<'_, Message> {
+        let palette = self.look.palette;
         let picture: Element<'_, Message> = match &self.wallpaper {
             Some(handle) => image(handle.clone())
                 .width(Fill)
@@ -450,8 +488,19 @@ impl Greet {
                 .into(),
             None => Space::new().width(Fill).height(Fill).into(),
         };
-        let shade = container(Space::new().width(Fill).height(Fill))
-            .style(|_| container::background(style::color(Rgba::hex(0x0c0d10).alpha(0.35))));
+        let shade = container(Space::new().width(Fill).height(Fill)).style(|_| {
+            let dark = |alpha: f32| style::color(Rgba::hex(0x0c0d10).alpha(alpha));
+            container::Style {
+                background: Some(Background::Gradient(Gradient::Linear(
+                    Linear::new(Radians(std::f32::consts::PI))
+                        .add_stop(0.0, dark(0.4))
+                        .add_stop(0.25, dark(0.1))
+                        .add_stop(0.5, dark(0.1))
+                        .add_stop(1.0, dark(0.7)),
+                ))),
+                ..container::Style::default()
+            }
+        });
 
         let power = |glyph: Icon, action: &'static str| {
             button(container(icon(glyph, 16.0, neutral::text())).center(36))
@@ -487,6 +536,12 @@ impl Greet {
                 .font(style::light()),
         ]
         .spacing(0);
+        let centered = self.look.centered;
+        let clock = if centered {
+            clock.align_x(Alignment::Center)
+        } else {
+            clock
+        };
 
         let mut left = column![clock].spacing(22);
         if self.users.len() > 1 {
@@ -512,18 +567,24 @@ impl Greet {
             );
         }
 
-        stack![
-            picture,
-            shade,
+        let body = if centered {
+            column![
+                container(top).padding([28, 36]),
+                space::vertical(),
+                container(left.align_x(Alignment::Center)).center_x(Fill),
+                space::vertical(),
+                space().height(56),
+            ]
+        } else {
             column![
                 container(top).padding([28, 36]),
                 space::vertical(),
                 container(left).padding(iced::Padding::new(88.0).top(0.0)),
             ]
-            .width(Fill)
-            .height(Fill),
-        ]
-        .into()
+        };
+        container(stack![picture, shade, body.width(Fill).height(Fill)])
+            .style(|_| container::background(style::color(neutral::ink())))
+            .into()
     }
 
     fn field(&self, palette: Palette) -> Element<'_, Message> {
