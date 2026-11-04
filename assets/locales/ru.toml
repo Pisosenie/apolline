@@ -831,3 +831,5 @@
 "Game replays" = "Повторы в играх"
 "One strip, a pill for each side and the middle, or all of it in one pill" = "Одна полоса, островки по краям и в центре или всё в одной капсуле"
 "Pill" = "Капсула"
+"{percent}% left, about {left}. Time to plug in." = "Осталось {percent}%, примерно {left}. Пора подключить зарядку."
+"{percent}% left. Time to plug in." = "Осталось {percent}%. Пора подключить зарядку."

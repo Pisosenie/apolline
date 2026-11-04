@@ -169,7 +169,7 @@ impl Settings {
                 self.tested = None;
                 return Task::perform(
                     notify::send(
-                        "This is how a popup looks".into(),
+                        crate::i18n::t("This is how a popup looks").into(),
                         crate::i18n::count(
                             usize::from(self.config.alerts.seconds),
                             "It stays for 1 second",
@@ -262,27 +262,10 @@ impl Settings {
             Message::IdleSuspend(v) => self.stage(|e| e.set("idle", "suspend_after", i64::from(v))),
             Message::GreetPreview => {
                 self.greet_note = None;
-                let staged = crate::greet_look::stage(&self.config);
-                return match staged {
-                    Ok(files) => {
-                        let line = format!(
-                            "{} greet --preview --look '{}' &",
-                            crate::control::me(),
-                            files[0].display()
-                        );
-                        Task::future(async move {
-                            let _ = tokio::process::Command::new("sh")
-                                .args(["-c", &line])
-                                .status()
-                                .await;
-                        })
-                        .discard()
-                    }
-                    Err(err) => {
-                        self.greet_note = Some(Err(err));
-                        Task::none()
-                    }
-                };
+                match crate::greet_look::stage(&self.config) {
+                    Ok(files) => crate::greet_look::preview(&files[0]),
+                    Err(err) => self.greet_note = Some(Err(err)),
+                }
             }
             Message::GreetInstall => {
                 self.greet_note = None;

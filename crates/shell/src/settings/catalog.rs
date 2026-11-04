@@ -131,10 +131,9 @@ impl Settings {
                 .style(|_| container::background(style::color(neutral::ink())))
                 .into(),
         };
-        let installed = self
-            .themes
-            .iter()
-            .any(|(theme, _)| theme.name == entry.name);
+        let installed = self.themes.iter().any(|(theme, _)| {
+            apolline_config::slug(&theme.name) == apolline_config::slug(&entry.name)
+        });
         let busy = self.catalog_busy.as_deref() == Some(entry.folder.as_str());
         let action: Element<'a, Message> = if installed {
             row![

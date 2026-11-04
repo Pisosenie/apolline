@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 // Keys are the English text as written in the code, so anything missing stays English.
 const RUSSIAN: &str = include_str!("../../../assets/locales/ru.toml");
@@ -12,7 +11,34 @@ enum Entry {
     Count([&'static str; 3]),
 }
 
-static ON: AtomicBool = AtomicBool::new(false);
+#[cfg(not(test))]
+static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(not(test))]
+fn speak(russian: bool) {
+    ON.store(russian, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(not(test))]
+pub fn russian() -> bool {
+    ON.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// Each test thread speaks its own language, English unless it says otherwise.
+#[cfg(test)]
+thread_local! {
+    static ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn speak(russian: bool) {
+    ON.set(russian);
+}
+
+#[cfg(test)]
+pub fn russian() -> bool {
+    ON.get()
+}
 
 fn table() -> &'static HashMap<String, Entry> {
     static TABLE: OnceLock<HashMap<String, Entry>> = OnceLock::new();
@@ -45,6 +71,10 @@ fn parse(text: &str) -> HashMap<String, Entry> {
 // `language` from the config: "ru", "en", or "auto" and nothing for what the system speaks.
 pub fn choose(language: Option<&str>) {
     let system = || {
+        // Tests don't take the language of the machine they run on.
+        if cfg!(test) {
+            return String::new();
+        }
         ["LC_ALL", "LC_MESSAGES", "LANG"]
             .into_iter()
             .filter_map(std::env::var_os)
@@ -56,11 +86,7 @@ pub fn choose(language: Option<&str>) {
         Some(code) if code != "auto" => code.to_owned(),
         _ => system(),
     };
-    ON.store(wanted.starts_with("ru"), Ordering::Relaxed);
-}
-
-pub fn russian() -> bool {
-    ON.load(Ordering::Relaxed)
+    speak(wanted.starts_with("ru"));
 }
 
 pub fn find(english: &str) -> Option<&'static str> {
@@ -194,9 +220,6 @@ fn russian_form(n: usize) -> usize {
 mod tests {
     use super::*;
 
-    // The language is one switch for the whole program, so tests that flip it take turns.
-    static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     fn russian_counts_pick_the_right_form() {
         let forms: Vec<usize> = [1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111]
@@ -233,22 +256,20 @@ mod tests {
 
     #[test]
     fn days_and_months_take_their_russian_names() {
-        let _turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
         let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
-        ON.store(true, Ordering::Relaxed);
+        speak(true);
         let shown = |pattern: &str| day.format(&names(pattern, &day)).to_string();
         assert_eq!(shown("%A, %-d %B"), "Среда, 4 ноября");
         assert_eq!(shown("%B %Y"), "Ноябрь 2026");
         assert_eq!(shown("%a %-d %b"), "Ср 4 ноя");
         assert_eq!(shown("%-d %B"), "4 ноября");
-        ON.store(false, Ordering::Relaxed);
+        speak(false);
         assert_eq!(shown("%A, %-d %B"), "Wednesday, 4 November");
     }
 
     #[test]
     fn english_stays_english_and_counts_still_count() {
-        let _turn = TURN.lock().unwrap_or_else(|e| e.into_inner());
-        ON.store(false, Ordering::Relaxed);
+        speak(false);
         assert_eq!(t("Do not disturb"), "Do not disturb");
         assert_eq!(count(1, "1 result", "{n} results"), "1 result");
         assert_eq!(count(3, "1 result", "{n} results"), "3 results");

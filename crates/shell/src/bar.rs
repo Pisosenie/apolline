@@ -144,8 +144,7 @@ fn pill<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     for (index, zone) in zones.into_iter().enumerate() {
         if index > 0 {
             row = row.push(
-                container(space().width(4).height(4))
-                    .style(style::dot(neutral::text().alpha(0.3))),
+                container(space().width(4).height(4)).style(style::dot(neutral::text().alpha(0.3))),
             );
         }
         row = row.push(zone);
@@ -733,7 +732,7 @@ pub fn tray_icons<'a>(bar: &Bar<'a>) -> Vec<Element<'a, Message>> {
                 mouse_area(button)
                     .on_right_press(Message::TrayMenu(index))
                     .on_middle_press(Message::TrayPress(index, crate::tray::Press::Secondary)),
-                container(text(item.title.clone()).size(12))
+                container(style::verbatim(item.title.clone()).size(12))
                     .padding([4, 8])
                     .style(style::surface),
                 iced::widget::tooltip::Position::Bottom,

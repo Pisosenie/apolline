@@ -156,9 +156,17 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
 
 // Running low on battery; it stays until it's dismissed or the charger goes in.
 pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
-    let left = battery
-        .time_left()
-        .map_or_else(String::new, |left| format!(", about {left}"));
+    let percent = battery.percent;
+    let body = match battery.time_left() {
+        Some(left) => crate::i18n::fill(
+            "{percent}% left, about {left}. Time to plug in.",
+            &[("percent", &percent), ("left", &left)],
+        ),
+        None => crate::i18n::fill(
+            "{percent}% left. Time to plug in.",
+            &[("percent", &percent)],
+        ),
+    };
     Notification {
         id: BATTERY_CARD,
         app: "Battery".into(),
@@ -169,12 +177,13 @@ pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
         transient: false,
         resident: false,
         reply: None,
-        summary: if mark <= 5 {
-            "Battery almost empty".into()
+        summary: crate::i18n::t(if mark <= 5 {
+            "Battery almost empty"
         } else {
-            "Battery low".into()
-        },
-        body: format!("{}% left{left}. Time to plug in.", battery.percent),
+            "Battery low"
+        })
+        .into(),
+        body,
         urgency: Urgency::Critical,
         timeout: None,
         received: Instant::now(),
@@ -193,7 +202,7 @@ pub fn reminder_card(
     let mut said = vec![if wait > 0 {
         crate::i18n::fill("In {wait} min", &[("wait", &wait)])
     } else {
-        "Now".to_owned()
+        crate::i18n::t("Now").to_owned()
     }];
     if let (Some(start), Some(end)) = (occurrence.start, occurrence.end) {
         said.push(format!(
@@ -214,7 +223,7 @@ pub fn reminder_card(
         actions: occurrence
             .call
             .iter()
-            .map(|link| (link.to_string(), "Join".to_owned()))
+            .map(|link| (link.to_string(), crate::i18n::t("Join").to_owned()))
             .collect(),
         image: None,
         progress: None,
@@ -243,8 +252,8 @@ pub fn shot_card(path: &str) -> Notification {
         transient: false,
         resident: false,
         reply: None,
-        summary: "Screenshot copied".into(),
-        body: "Click to add arrows, boxes or hide a part".into(),
+        summary: crate::i18n::t("Screenshot copied").into(),
+        body: crate::i18n::t("Click to add arrows, boxes or hide a part").into(),
         urgency: Urgency::Normal,
         timeout: Some(Duration::from_secs(6)),
         received: Instant::now(),

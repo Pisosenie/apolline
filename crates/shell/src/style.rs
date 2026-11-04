@@ -148,6 +148,11 @@ pub fn text<'a>(content: impl iced::widget::text::IntoFragment<'a>) -> iced::wid
     iced::widget::text(content).font(regular())
 }
 
+// Someone's own words, a copied line or a message, shown as they are and never translated.
+pub fn verbatim<'a>(content: impl iced::widget::text::IntoFragment<'a>) -> iced::widget::Text<'a> {
+    iced::widget::text(content).font(regular())
+}
+
 pub fn choose_family(name: Option<String>) {
     if let Some(name) = name {
         let _ = FAMILY.set(Box::leak(name.into_boxed_str()));

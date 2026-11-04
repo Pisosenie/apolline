@@ -735,7 +735,9 @@ fn quiet_other_bars(config: &str) -> (String, Vec<usize>) {
         .enumerate()
         .map(|(index, line)| {
             let bare = line.trim();
-            if bare.starts_with("spawn-at-startup \"waybar\"") {
+            // Only a line that starts waybar and nothing else, so nothing else stops.
+            let node = bare.split("//").next().unwrap_or_default().trim();
+            if node == "spawn-at-startup \"waybar\"" {
                 quieted.push(index + 1);
                 let indent = &line[..line.len() - line.trim_start().len()];
                 let end = if line.ends_with('\n') { "\n" } else { "" };
@@ -995,12 +997,14 @@ xwayland-satellite { path "/tmp/evil"; }
         let dir = scratch("waybar");
         let niri = dir.join("config.kdl");
         let fragment = dir.join("apolline").join("niri.kdl");
-        let stock = "spawn-at-startup \"waybar\"\n// spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\n";
+        let stock = "spawn-at-startup \"waybar\"\n// spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\nspawn-at-startup \"waybar\"; spawn-at-startup \"swaync\"\nspawn-at-startup \"waybar\" \\\n    \"-c\" \"x\"\n";
         fs::write(&niri, stock).unwrap();
         let done = setup(&fragment, &niri, &look(&Config::default(), None)).unwrap();
         let text = fs::read_to_string(&niri).unwrap();
         assert!(text.starts_with("// spawn-at-startup \"waybar\" // Apolline draws the bar\n"));
         assert!(text.contains("\n// spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\n"));
+        assert!(text.contains("\nspawn-at-startup \"waybar\"; spawn-at-startup \"swaync\"\n"));
+        assert!(text.contains("\nspawn-at-startup \"waybar\" \\\n"));
         assert!(done.iter().any(|line| line.contains("line 1 ")));
         assert_eq!(
             fs::read_to_string(dir.join("config.kdl.before-apolline")).unwrap(),

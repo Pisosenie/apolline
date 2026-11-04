@@ -26,7 +26,13 @@ pub fn grant(data: &Path) -> Option<String> {
     }
     let path = overrides(data);
     let text = fs::read_to_string(&path).unwrap_or_default();
-    let (changed, added) = with(&text, &GRANTS, &[]);
+    // One added before and gone now was taken out by hand, and stays out.
+    let given = ledger().map(|l| read_ledger(&l)).unwrap_or_default();
+    let wanted: Vec<&str> = GRANTS
+        .into_iter()
+        .filter(|grant| !given.iter().any(|g| g == grant))
+        .collect();
+    let (changed, added) = with(&text, &wanted, &[]);
     if added.is_empty() {
         return None;
     }
@@ -92,20 +98,26 @@ fn with(text: &str, add: &[&str], drop: &[&str]) -> (String, Vec<String>) {
         .iter()
         .position(|l| l.trim_start().starts_with('['))
         .map_or(lines.len(), |at| context + 1 + at);
+    let value = |line: &str| {
+        line.split_once('=')
+            .filter(|(key, _)| key.trim() == "filesystems")
+            .map(|(_, value)| value.trim().to_owned())
+    };
     let found = lines[context + 1..end]
         .iter()
-        .position(|l| l.trim_start().starts_with("filesystems="))
+        .position(|l| value(l).is_some())
         .map(|at| context + 1 + at);
     let mut entries: Vec<String> = found
-        .map(|at| lines[at].trim_start()["filesystems=".len()..].to_owned())
+        .and_then(|at| value(&lines[at]))
         .unwrap_or_default()
         .split(';')
         .filter(|e| !e.is_empty())
         .map(str::to_owned)
         .collect();
+    // Whatever someone already says about a folder, writable or denied, stands.
     let added: Vec<String> = add
         .iter()
-        .filter(|grant| !entries.iter().any(|e| e == *grant))
+        .filter(|grant| !entries.iter().any(|e| folder(e) == folder(grant)))
         .map(|grant| (*grant).to_owned())
         .collect();
     entries.extend(added.iter().cloned());
@@ -120,6 +132,15 @@ fn with(text: &str, add: &[&str], drop: &[&str]) -> (String, Vec<String>) {
         (None, true) => {}
     }
     (lines.join("\n") + "\n", added)
+}
+
+// The folder an entry is about, without its access or a leading `!`.
+fn folder(entry: &str) -> &str {
+    let entry = entry.trim().trim_start_matches('!');
+    match entry.rsplit_once(':') {
+        Some((path, "ro" | "rw" | "create")) => path,
+        _ => entry,
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +158,14 @@ mod tests {
         assert!(granted.contains("GTK_THEME=Adwaita"));
         let (back, _) = with(&granted, &[], &GRANTS);
         assert_eq!(back, theirs);
+    }
+
+    #[test]
+    fn writable_or_denied_folders_are_left_as_they_are() {
+        let text = "[Context]\nfilesystems = xdg-config/gtk-3.0;!xdg-config/gtk-4.0;\n";
+        let (granted, added) = with(text, &GRANTS, &[]);
+        assert!(added.is_empty());
+        assert_eq!(granted.matches("filesystems").count(), 1);
     }
 
     #[test]

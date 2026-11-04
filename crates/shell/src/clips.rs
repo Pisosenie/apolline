@@ -247,7 +247,7 @@ fn glyph<'a>(clip: &Clip) -> Element<'a, Message> {
 fn entry(clip: &Clip, index: usize, selected: bool) -> Element<'_, Message> {
     let mut line = row![
         glyph(clip),
-        text(shorten(&clip.line(), 24))
+        style::verbatim(shorten(&clip.line(), 24))
             .size(13)
             .font(style::mono())
             .width(Fill),
@@ -352,11 +352,16 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
                 n => format!("{characters} characters · {n} lines"),
             };
             (
-                scrollable(text(value).size(13).font(style::mono()).line_height(1.5))
-                    .direction(style::thin())
-                    .style(style::scroller)
-                    .height(Fill)
-                    .into(),
+                scrollable(
+                    style::verbatim(value)
+                        .size(13)
+                        .font(style::mono())
+                        .line_height(1.5),
+                )
+                .direction(style::thin())
+                .style(style::scroller)
+                .height(Fill)
+                .into(),
                 meta,
             )
         }

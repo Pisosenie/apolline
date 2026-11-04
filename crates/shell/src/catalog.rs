@@ -61,19 +61,39 @@ pub async fn preview(entry: Entry) -> Option<Handle> {
 
 // Into the themes folder, the same as a folder added by hand; the theme's name comes back.
 pub async fn install(entry: Entry) -> Result<String, String> {
-    blocking(move || install_into(&crate::themes::dir(), &entry, |link| get(link, FILE_LIMIT)))
-        .await
+    blocking(move || {
+        let taken: Vec<String> = crate::themes::all()
+            .iter()
+            .map(|(theme, _)| slug(&theme.name))
+            .collect();
+        install_into(&crate::themes::dir(), &entry, &taken, |link| {
+            get(link, FILE_LIMIT)
+        })
+    })
+    .await
 }
+
+const MOST_FILES: usize = 16;
+const MOST_BYTES: usize = 48 * 1024 * 1024;
 
 fn install_into(
     dir: &Path,
     entry: &Entry,
+    taken: &[String],
     get: impl Fn(&str) -> Result<Vec<u8>, String>,
 ) -> Result<String, String> {
+    if entry.files.len() > MOST_FILES {
+        return Err("the theme has too many files".into());
+    }
     let base = format!("{}/{}", home(), entry.folder);
     let mut fetched = Vec::new();
+    let mut total = 0;
     for name in &entry.files {
         let bytes = get(&format!("{base}/{name}")).map_err(|err| format!("{name}: {err}"))?;
+        total += bytes.len();
+        if total > MOST_BYTES {
+            return Err("the theme is too big".into());
+        }
         fetched.push((name, bytes));
     }
     let theme = fetched
@@ -81,10 +101,32 @@ fn install_into(
         .find(|(name, _)| name.as_str() == "theme.toml")
         .ok_or("the theme has no theme.toml")?;
     let theme = Theme::parse(&String::from_utf8_lossy(&theme.1))?;
-    let target = dir.join(slug(&theme.name));
-    std::fs::create_dir_all(&target).map_err(|err| err.to_string())?;
-    for (name, bytes) in fetched {
-        std::fs::write(target.join(name), bytes).map_err(|err| format!("{name}: {err}"))?;
+    let name = slug(&theme.name);
+    if name.is_empty() || name != slug(&entry.name) {
+        return Err(format!(
+            "the catalog lists {} but the theme calls itself {}",
+            entry.name, theme.name
+        ));
+    }
+    let target = dir.join(&name);
+    if taken.contains(&name) || target.exists() {
+        return Err(format!("a theme called {} is already here", theme.name));
+    }
+    // All of it or nothing: written aside, then moved in at once.
+    let part = dir.join(format!(".{name}.part"));
+    let written = (|| -> std::io::Result<()> {
+        if part.exists() {
+            std::fs::remove_dir_all(&part)?;
+        }
+        std::fs::create_dir_all(&part)?;
+        for (file, bytes) in &fetched {
+            std::fs::write(part.join(file), bytes)?;
+        }
+        std::fs::rename(&part, &target)
+    })();
+    if let Err(err) = written {
+        let _ = std::fs::remove_dir_all(&part);
+        return Err(err.to_string());
     }
     Ok(theme.name)
 }
@@ -177,17 +219,27 @@ files = ["theme.toml", "../evil"]
     fn an_installed_theme_lands_in_a_folder_named_after_it() {
         let dir = std::env::temp_dir().join(format!("apolline-catalog-{}", std::process::id()));
         let entry = parse(INDEX).unwrap().remove(0);
-        let name = install_into(&dir, &entry, |link| {
+        let fetch = |link: &str| -> Result<Vec<u8>, String> {
             Ok(if link.ends_with("theme.toml") {
                 b"[theme]\nname = \"Dune\"\n\n[desktop]\nwallpaper = \"dune.jpg\"\n".to_vec()
             } else {
                 b"picture".to_vec()
             })
-        })
-        .unwrap();
+        };
+        let name = install_into(&dir, &entry, &[], fetch).unwrap();
         assert_eq!(name, "Dune");
         assert!(dir.join("dune/theme.toml").is_file());
         assert!(dir.join("dune/dune.jpg").is_file());
+        let again = install_into(&dir, &entry, &[], fetch).unwrap_err();
+        assert!(again.contains("already here"), "{again}");
+        let fog = Entry {
+            name: "Fog".into(),
+            ..entry.clone()
+        };
+        assert!(
+            install_into(&dir, &fog, &["fog".into()], fetch).is_err(),
+            "names must match"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

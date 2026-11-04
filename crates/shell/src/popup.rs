@@ -142,13 +142,13 @@ fn card<'a>(
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center),
-        text(shorten(&notification.summary, 34))
+        style::verbatim(shorten(&notification.summary, 34))
             .size(14)
             .font(iced::Font {
                 weight: iced::font::Weight::Semibold,
                 ..iced::Font::with_name(crate::style::family())
             }),
-        text(shorten(&notification.body, 44))
+        style::verbatim(shorten(&notification.body, 44))
             .size(font::SMALL)
             .color(muted),
     ]

@@ -1,3 +1,4 @@
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 
 use apolline_config::{Config, Editor, FontName};
@@ -100,33 +101,66 @@ fn picture(name: &str) -> (String, Option<PathBuf>) {
 }
 
 // Writes the greeter's files where only this user can see them; Settings previews and installs
-// from there.
+// from there. Root copies them, so nobody else may be able to put anything in that folder.
 pub fn stage(config: &Config) -> Result<Vec<PathBuf>, String> {
-    let dir = crate::control::runtime_dir().join("apolline-greet");
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .ok_or("XDG_RUNTIME_DIR isn't set, so there's no private place to prepare the files")?;
+    let dir = runtime.join("apolline-greet");
     let failed = |err: std::io::Error| format!("{}: {err}", dir.display());
-    std::fs::create_dir_all(&dir).map_err(failed)?;
+    if !dir.exists() {
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dir)
+            .map_err(failed)?;
+    }
+    private(&dir)?;
     for old in std::fs::read_dir(&dir).map_err(failed)?.flatten() {
         let _ = std::fs::remove_file(old.path());
     }
     let (name, copy) = picture(config.wallpaper(None));
     let mut files = vec![dir.join(FILE)];
     if let Some(from) = copy {
-        let to = dir.join(&name);
-        std::fs::copy(&from, &to).map_err(|err| format!("{}: {err}", from.display()))?;
-        files.push(to);
+        let bytes = std::fs::read(&from).map_err(|err| format!("{}: {err}", from.display()))?;
+        files.push(dir.join(&name));
+        fresh(&files[1], &bytes).map_err(failed)?;
     }
-    std::fs::write(&files[0], text(config, &name)).map_err(failed)?;
+    fresh(&files[0], text(config, &name).as_bytes()).map_err(failed)?;
     Ok(files)
 }
 
-// Only `install` runs as root: the files are already written.
+fn private(dir: &Path) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = std::fs::symlink_metadata(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    // SAFETY: getuid can't fail and touches nothing.
+    let me = unsafe { libc::getuid() };
+    if meta.is_dir() && meta.uid() == me && meta.mode() & 0o077 == 0 {
+        Ok(())
+    } else {
+        Err(format!("{} isn't a private folder of yours", dir.display()))
+    }
+}
+
+// A new file, never through a link.
+fn fresh(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o644)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?
+        .write_all(bytes)
+}
+
+// What runs as root, given the staged files: the folder readable by the greeter, the last
+// look's picture gone, the new files in.
+const AS_ROOT: &str = "set -e\ninstall -d -m 755 /etc/apolline\nrm -f /etc/apolline/greet-wallpaper.*\ninstall -m 644 -t /etc/apolline \"$@\"\n";
+
 pub async fn install(files: Vec<PathBuf>) -> Result<(), String> {
-    let dir = Path::new(SYSTEM)
-        .parent()
-        .unwrap_or(Path::new("/etc/apolline"));
     let out = tokio::process::Command::new("pkexec")
-        .args(["install", "-D", "-m", "644", "-t"])
-        .arg(dir)
+        .args(["sh", "-c", AS_ROOT, "sh"])
         .args(&files)
         .output()
         .await
@@ -136,6 +170,21 @@ pub async fn install(files: Vec<PathBuf>) -> Result<(), String> {
         Some(126) => Err("Not changed: the password was cancelled".into()),
         Some(127) => Err("Not changed: this account can't change the login screen".into()),
         _ => Err(String::from_utf8_lossy(&out.stderr).trim().to_owned()),
+    }
+}
+
+// The greeter in a window, with the staged look.
+pub fn preview(file: &Path) {
+    let me = std::env::current_exe().unwrap_or_else(|_| "apolline".into());
+    let started = std::process::Command::new(me)
+        .args(["greet", "--preview", "--look"])
+        .arg(file)
+        .stdin(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = started {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
     }
 }
 

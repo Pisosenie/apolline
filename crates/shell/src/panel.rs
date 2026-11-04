@@ -870,7 +870,7 @@ fn entry<'a>(
                 .size(11)
                 .color(style::color(style::faint())),
         ],
-        text(shorten(&notification.summary, 40))
+        style::verbatim(shorten(&notification.summary, 40))
             .size(13)
             .font(style::semibold()),
     ]
@@ -878,7 +878,7 @@ fn entry<'a>(
     .width(Fill);
     if !notification.body.is_empty() {
         words = words.push(
-            text(shorten(&notification.body, 48))
+            style::verbatim(shorten(&notification.body, 48))
                 .size(12)
                 .color(style::color(style::faint())),
         );
