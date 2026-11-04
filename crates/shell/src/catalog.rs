@@ -103,14 +103,17 @@ fn install_into(
     let theme = Theme::parse(&String::from_utf8_lossy(&theme.1))?;
     let name = slug(&theme.name);
     if name.is_empty() || name != slug(&entry.name) {
-        return Err(format!(
-            "the catalog lists {} but the theme calls itself {}",
-            entry.name, theme.name
+        return Err(crate::i18n::fill(
+            "the catalog lists {listed} but the theme calls itself {named}",
+            &[("listed", &entry.name), ("named", &theme.name)],
         ));
     }
     let target = dir.join(&name);
     if taken.contains(&name) || target.exists() {
-        return Err(format!("a theme called {} is already here", theme.name));
+        return Err(crate::i18n::fill(
+            "a theme called {theme} is already here",
+            &[("theme", &theme.name)],
+        ));
     }
     // All of it or nothing: written aside, then moved in at once.
     let part = dir.join(format!(".{name}.part"));
