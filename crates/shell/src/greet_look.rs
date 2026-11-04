@@ -105,6 +105,7 @@ fn picture(name: &str) -> (String, Option<PathBuf>) {
 pub fn stage(config: &Config) -> Result<Vec<PathBuf>, String> {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
         .ok_or("XDG_RUNTIME_DIR isn't set, so there's no private place to prepare the files")?;
     let dir = runtime.join("apolline-greet");
     let failed = |err: std::io::Error| format!("{}: {err}", dir.display());

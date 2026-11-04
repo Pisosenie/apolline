@@ -104,9 +104,7 @@ impl Recording {
 }
 
 fn videos() -> Option<PathBuf> {
-    std::env::var_os("XDG_VIDEOS_DIR")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Videos")))
+    apolline_config::xdg_dir("XDG_VIDEOS_DIR", "Videos")
 }
 
 // The last few seconds of the screen and the sound, kept in memory by gpu-screen-recorder

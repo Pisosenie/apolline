@@ -109,11 +109,7 @@ pub fn remember(clips: &mut Vec<Clip>, clip: Clip) {
 
 // What you pinned outlives the session; the rest of the history is only ever in memory.
 fn kept_path() -> Option<std::path::PathBuf> {
-    let data = std::env::var_os("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".local/share"))
-        })?;
+    let data = apolline_config::xdg_dir("XDG_DATA_HOME", ".local/share")?;
     Some(data.join("apolline").join("pinned.json"))
 }
 

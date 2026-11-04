@@ -103,6 +103,7 @@ pub fn latest() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
     let pictures = std::env::var_os("XDG_PICTURES_DIR")
         .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
         .unwrap_or_else(|| home.join("Pictures"));
     std::fs::read_dir(pictures.join("Screenshots"))
         .ok()?

@@ -184,15 +184,11 @@ pub fn cursors() -> Vec<String> {
 }
 
 fn data_home() -> Option<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))
+    apolline_config::xdg_dir("XDG_DATA_HOME", ".local/share")
 }
 
 fn config_home() -> Option<PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+    apolline_config::xdg_dir("XDG_CONFIG_HOME", ".config")
 }
 
 fn import(gtk: &Path) -> Option<String> {

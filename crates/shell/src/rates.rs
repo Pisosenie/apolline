@@ -56,9 +56,7 @@ pub async fn load() -> Result<Arc<Rates>, String> {
 }
 
 fn cache_file() -> Option<PathBuf> {
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+    let cache = apolline_config::xdg_dir("XDG_CACHE_HOME", ".cache")?;
     Some(cache.join("apolline").join("rates.json"))
 }
 

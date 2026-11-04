@@ -49,6 +49,7 @@ impl Command {
 pub fn runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
         .unwrap_or_else(std::env::temp_dir)
 }
 

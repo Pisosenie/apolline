@@ -45,3 +45,21 @@ jobs:
           useradd -m ci
           su ci -c "tools/niri-session.sh /tmp/session.jsonl"
           APOLLINE_NIRI_SESSION=/tmp/session.jsonl cargo test -p apolline-niri live_session
+
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install what makepkg needs
+        run: pacman -Syu --noconfirm --needed base-devel git rust clang pam libxkbcommon niri hicolor-icon-theme
+      - uses: actions/checkout@v4
+      - name: makepkg builds and installs it the way people will, with Arch's own flags
+        run: |
+          useradd -m builder
+          git config --system --add safe.directory '*'
+          cp -r packaging/arch /home/builder/pkg
+          sed -i "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" /home/builder/pkg/PKGBUILD
+          chown -R builder /home/builder/pkg
+          su builder -c "cd /home/builder/pkg && makepkg --noconfirm --nocheck"
+          pacman -U --noconfirm /home/builder/pkg/apolline-git-*.pkg.tar.zst
+          su builder -c "apolline check"

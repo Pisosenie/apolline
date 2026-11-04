@@ -1035,11 +1035,17 @@ impl ModeSettings {
     }
 }
 
-pub fn config_home() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
+// An XDG folder: the variable when it holds an absolute path, as the spec asks, otherwise its default
+// under the home folder.
+pub fn xdg_dir(variable: &str, default: &str) -> Option<PathBuf> {
+    std::env::var_os(variable)
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .unwrap_or_default()
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))
+}
+
+pub fn config_home() -> PathBuf {
+    xdg_dir("XDG_CONFIG_HOME", ".config").unwrap_or_default()
 }
 
 pub fn default_path() -> PathBuf {

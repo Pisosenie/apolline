@@ -101,9 +101,7 @@ pub fn resolve(name: &str) -> Source {
 }
 
 fn search_dirs() -> Vec<PathBuf> {
-    let data = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")));
+    let data = apolline_config::xdg_dir("XDG_DATA_HOME", ".local/share");
     let mut dirs: Vec<PathBuf> = data
         .map(|d| d.join("apolline/wallpapers"))
         .into_iter()
@@ -205,9 +203,7 @@ fn cache_file(path: &Path) -> Option<PathBuf> {
     path.hash(&mut hasher);
     meta.len().hash(&mut hasher);
     meta.modified().ok()?.hash(&mut hasher);
-    let cache = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+    let cache = apolline_config::xdg_dir("XDG_CACHE_HOME", ".cache")?;
     Some(
         cache
             .join("apolline/thumbs")

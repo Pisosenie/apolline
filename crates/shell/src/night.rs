@@ -200,6 +200,7 @@ mod wayland {
     fn memfd() -> Result<std::fs::File, String> {
         let dir = std::env::var_os("XDG_RUNTIME_DIR")
             .map(std::path::PathBuf::from)
+            .filter(|path| path.is_absolute())
             .unwrap_or_else(std::env::temp_dir);
         let path = dir.join(format!("apolline-gamma-{}", std::process::id()));
         let file = std::fs::OpenOptions::new()

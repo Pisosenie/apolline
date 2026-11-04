@@ -293,11 +293,7 @@ pub fn accounts(passwd: &str, (first, last): (u32, u32)) -> Vec<Account> {
 
 // The greeter's own home, e.g. /var/lib/greetd, keeps who logged in last and how.
 fn last_file() -> Option<PathBuf> {
-    let state = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-        })?;
+    let state = apolline_config::xdg_dir("XDG_STATE_HOME", ".local/state")?;
     Some(state.join("apolline").join("last-login"))
 }
 

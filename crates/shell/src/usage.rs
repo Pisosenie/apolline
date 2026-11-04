@@ -75,11 +75,7 @@ pub fn now() -> u64 {
 }
 
 fn path() -> Option<PathBuf> {
-    let state = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
-        })?;
+    let state = apolline_config::xdg_dir("XDG_STATE_HOME", ".local/state")?;
     Some(state.join("apolline/launches.json"))
 }
 
