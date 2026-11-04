@@ -9,7 +9,14 @@ impl Settings {
                 self.recording = None;
                 self.recording_mode_key = false;
                 self.armed = false;
+                if page == Page::About && self.machine.is_none() {
+                    return Task::perform(crate::doctor::gather(), Message::Machine);
+                }
             }
+            Message::CheckMachine => {
+                return Task::perform(crate::doctor::gather(), Message::Machine);
+            }
+            Message::Machine(lines) => self.machine = Some(lines),
             Message::Select(index) => {
                 self.selected = index;
                 self.adding = false;

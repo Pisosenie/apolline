@@ -256,9 +256,36 @@ impl Settings {
             check.push(warning(&line));
         }
 
-        column![hero, group("Status", rows), group("Health", check)]
-            .spacing(26)
-            .into()
+        let machine = match &self.machine {
+            None => vec![note("Looking…")],
+            Some(lines) => lines
+                .iter()
+                .map(|line| {
+                    let (glyph, tint) = match line.state {
+                        crate::doctor::State::Good => (Icon::Done, style::GOOD),
+                        crate::doctor::State::Optional => (Icon::Info, style::faint()),
+                        crate::doctor::State::Bad => (Icon::Warning, style::WARN),
+                    };
+                    setting_owned(line.what, Some(line.said.clone()), icon(glyph, 15.0, tint))
+                })
+                .chain([setting(
+                    "Look again",
+                    "After installing something; the same as  apolline doctor",
+                    button(text("Check").size(13))
+                        .padding([7, 14])
+                        .style(style::secondary)
+                        .on_press(Message::CheckMachine),
+                )])
+                .collect(),
+        };
+        column![
+            hero,
+            group("Status", rows),
+            group("Health", check),
+            group("This machine", machine)
+        ]
+        .spacing(26)
+        .into()
     }
 }
 

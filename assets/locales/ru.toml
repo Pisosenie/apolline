@@ -839,3 +839,7 @@
 "a theme called {theme} is already here" = "тема {theme} уже есть"
 "XDG_RUNTIME_DIR isn't set, so there's no private place to prepare the files" = "XDG_RUNTIME_DIR не задан, поэтому файлы негде подготовить"
 "Saved the last second to Videos/Replays" = "Сохранена последняя секунда в Видео/Replays"
+"This machine" = "Эта машина"
+"Look again" = "Проверить снова"
+"After installing something; the same as  apolline doctor" = "После установки чего-нибудь; то же, что  apolline doctor"
+"Check" = "Проверить"

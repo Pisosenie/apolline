@@ -3,18 +3,19 @@ use std::process::ExitCode;
 
 use crate::i18n::{fill, t};
 
-#[derive(Clone, Copy, PartialEq)]
-enum State {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum State {
     Good,
     // Something works without it, it just does less.
     Optional,
     Bad,
 }
 
-struct Line {
-    state: State,
-    what: &'static str,
-    said: String,
+#[derive(Clone, Debug)]
+pub struct Line {
+    pub state: State,
+    pub what: &'static str,
+    pub said: String,
 }
 
 fn line(state: State, what: &'static str, said: impl Into<String>) -> Line {
@@ -25,11 +26,23 @@ fn line(state: State, what: &'static str, said: impl Into<String>) -> Line {
     }
 }
 
-// `apolline doctor`: what works on this machine, and what to install for the rest.
-pub fn main() -> ExitCode {
+// What works on this machine, and what to install for the rest.
+pub async fn gather() -> Vec<Line> {
     let mut lines = vec![niri(), setup(), config(), pam()];
     lines.extend(programs());
-    lines.extend(services());
+    lines.extend(services().await);
+    lines
+}
+
+// `apolline doctor`, the same list in a terminal.
+pub fn main() -> ExitCode {
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return ExitCode::FAILURE;
+    };
+    let lines = runtime.block_on(gather());
     let width = lines
         .iter()
         .map(|l| t(l.what).chars().count())
@@ -166,57 +179,49 @@ const SERVICES: [(&str, &str, &str); 6] = [
     ("Fingerprint", "net.reactivated.Fprint", "fprintd"),
 ];
 
-fn services() -> Vec<Line> {
-    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    else {
-        return Vec::new();
-    };
-    runtime.block_on(async {
-        let system = zbus::Connection::system().await.ok();
-        let session = zbus::Connection::session().await.ok();
-        let mut lines = Vec::new();
-        for (what, name, package) in SERVICES {
-            let here = match &system {
-                Some(bus) => there(bus, name).await,
-                None => false,
-            };
-            lines.push(if here {
-                line(State::Good, what, name)
-            } else {
-                line(
-                    State::Optional,
-                    what,
-                    fill(
-                        "nothing answers: pacman -S {package}, then enable its service",
-                        &[("package", &package)],
-                    ),
-                )
-            });
-        }
-        if let Some(bus) = &session {
-            lines.push(match owner(bus, "org.freedesktop.Notifications").await {
-                Some(who) if who == "apolline" => {
-                    line(State::Good, "Notifications", t("Apolline shows them"))
-                }
-                Some(who) => line(
-                    State::Optional,
-                    "Notifications",
-                    fill(
-                        "{app} shows them; Apolline stays out of the way",
-                        &[("app", &who)],
-                    ),
+async fn services() -> Vec<Line> {
+    let system = zbus::Connection::system().await.ok();
+    let session = zbus::Connection::session().await.ok();
+    let mut lines = Vec::new();
+    for (what, name, package) in SERVICES {
+        let here = match &system {
+            Some(bus) => there(bus, name).await,
+            None => false,
+        };
+        lines.push(if here {
+            line(State::Good, what, name)
+        } else {
+            line(
+                State::Optional,
+                what,
+                fill(
+                    "nothing answers: pacman -S {package}, then enable its service",
+                    &[("package", &package)],
                 ),
-                None => line(
-                    State::Optional,
-                    "Notifications",
-                    t("nobody shows them until Apolline runs"),
+            )
+        });
+    }
+    if let Some(bus) = &session {
+        lines.push(match owner(bus, "org.freedesktop.Notifications").await {
+            Some(who) if who == "apolline" => {
+                line(State::Good, "Notifications", t("Apolline shows them"))
+            }
+            Some(who) => line(
+                State::Optional,
+                "Notifications",
+                fill(
+                    "{app} shows them; Apolline stays out of the way",
+                    &[("app", &who)],
                 ),
-            });
-        }
-        lines
-    })
+            ),
+            None => line(
+                State::Optional,
+                "Notifications",
+                t("nobody shows them until Apolline runs"),
+            ),
+        });
+    }
+    lines
 }
 
 async fn there(bus: &zbus::Connection, name: &str) -> bool {
