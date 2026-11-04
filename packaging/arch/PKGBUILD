@@ -26,6 +26,8 @@ makedepends=('cargo' 'clang' 'git')
 provides=("$_name")
 conflicts=("$_name")
 backup=('etc/pam.d/apolline')
+# ring's C parts come out of gcc as LTO objects, which rust's linker (lld) can't read.
+options=('!lto')
 install=apolline.install
 source=("$_name::git+$url.git")
 sha256sums=('SKIP')

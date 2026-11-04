@@ -29,6 +29,7 @@ pkgbase = apolline-git
 	optdepends = wf-recorder: screen recording from the launcher
 	provides = apolline
 	conflicts = apolline
+	options = !lto
 	backup = etc/pam.d/apolline
 	source = apolline::git+https://github.com/Pisosenie/apolline.git
 	sha256sums = SKIP
