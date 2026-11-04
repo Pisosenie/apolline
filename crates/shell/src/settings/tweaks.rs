@@ -147,7 +147,7 @@ impl Settings {
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
             Message::BarShape(shape) => self.edit(|e| match shape {
                 apolline_config::Shape::Bar => e.unset("bar", "shape"),
-                apolline_config::Shape::Islands => e.set("bar", "shape", "islands"),
+                shape => e.set("bar", "shape", shape.key()),
             }),
             Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
             Message::BarBlur(on) => self.edit(|e| {

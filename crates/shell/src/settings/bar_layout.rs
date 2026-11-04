@@ -293,11 +293,12 @@ impl Settings {
                     ),
                     setting(
                         "Shape",
-                        "One strip, or a pill for each side and the middle",
+                        "One strip, a pill for each side and the middle, or all of it in one pill",
                         segmented(
                             [
                                 (apolline_config::Shape::Bar, "Bar", None),
                                 (apolline_config::Shape::Islands, "Islands", None),
+                                (apolline_config::Shape::Pill, "Pill", None),
                             ],
                             look.shape,
                             Message::BarShape,

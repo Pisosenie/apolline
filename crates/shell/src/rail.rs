@@ -13,6 +13,9 @@ use crate::style;
 // The bar down a side of the screen: the same pieces, stacked, with words cut down to what fits.
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
     let look = bar.look;
+    if look.shape == Shape::Pill {
+        return pill(&bar);
+    }
     let islands = look.shape == Shape::Islands;
     let zone = |pieces: &[Piece]| -> Element<'_, Message> {
         let parts: Vec<Element<'_, Message>> =
@@ -57,6 +60,30 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .style(style::glass(look.opacity, look.floating, bar.radius))
             .into()
     }
+}
+
+// One pill down the middle of the side, with everything in it.
+fn pill<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
+    let look = bar.look;
+    let parts: Vec<Element<'a, Message>> = [&look.left, &look.center, &look.right]
+        .into_iter()
+        .flat_map(|pieces| pieces.iter().filter_map(|p| piece(bar, p)))
+        .collect();
+    container(
+        container(
+            Column::with_children(parts)
+                .spacing(10)
+                .align_x(Alignment::Center),
+        )
+        .width(Fill)
+        .padding([10, 0])
+        .align_x(Alignment::Center)
+        .style(style::glass(look.opacity, true, bar.radius)),
+    )
+    .width(style::RAIL)
+    .height(Fill)
+    .center_y(Fill)
+    .into()
 }
 
 fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {

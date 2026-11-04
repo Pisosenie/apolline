@@ -193,7 +193,7 @@ impl Theme {
         editor.set("bar", "floating", self.bar.floating);
         match self.bar.shape {
             crate::Shape::Bar => editor.unset("bar", "shape"),
-            crate::Shape::Islands => editor.set("bar", "shape", "islands"),
+            shape => editor.set("bar", "shape", shape.key()),
         }
         editor.set("bar", "opacity", round(self.bar.opacity));
         if self.bar.blur {

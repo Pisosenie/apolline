@@ -409,6 +409,7 @@ impl Reader<'_> {
                     let shapes = [
                         ("bar", crate::Shape::Bar),
                         ("islands", crate::Shape::Islands),
+                        ("pill", crate::Shape::Pill),
                     ];
                     if let Some(v) = self.choice(key, value, &shapes) {
                         bar.shape = v

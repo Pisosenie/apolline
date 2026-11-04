@@ -66,6 +66,9 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
         return crate::rail::view(bar);
     }
     let look = bar.look;
+    if look.shape == apolline_config::Shape::Pill {
+        return pill(&bar);
+    }
     let islands = look.shape == apolline_config::Shape::Islands;
     let zone = |pieces: &[Piece], spacing: f32| -> Element<'_, Message> {
         let parts: Vec<Element<'_, Message>> =
@@ -116,6 +119,48 @@ pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
             .style(style::glass(look.opacity, look.floating, bar.radius))
             .into()
     }
+}
+
+// Everything in one pill of glass in the middle, the three zones apart by a faint dot.
+fn pill<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
+    let look = bar.look;
+    let zones: Vec<Element<'a, Message>> = [&look.left, &look.center, &look.right]
+        .into_iter()
+        .map(|pieces| {
+            pieces
+                .iter()
+                .filter_map(|p| piece(bar, p))
+                .collect::<Vec<_>>()
+        })
+        .filter(|parts| !parts.is_empty())
+        .map(|parts| {
+            Row::with_children(parts)
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
+        })
+        .collect();
+    let mut row = Row::new().spacing(12).align_y(Alignment::Center);
+    for (index, zone) in zones.into_iter().enumerate() {
+        if index > 0 {
+            row = row.push(
+                container(space().width(4).height(4))
+                    .style(style::dot(neutral::text().alpha(0.3))),
+            );
+        }
+        row = row.push(zone);
+    }
+    container(
+        container(row)
+            .height(Fill)
+            .padding([0, 8])
+            .align_y(Alignment::Center)
+            .style(style::glass(look.opacity, true, bar.radius)),
+    )
+    .width(Fill)
+    .height(metrics::BAR_HEIGHT)
+    .center_x(Fill)
+    .into()
 }
 
 fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {

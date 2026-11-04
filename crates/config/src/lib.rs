@@ -451,12 +451,24 @@ impl Edge {
     }
 }
 
-// One strip of glass, or a pill for each side and the middle with the wallpaper between them.
+// One strip of glass, a pill for each side and the middle with the wallpaper between them, or
+// everything in one pill in the middle.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Shape {
     #[default]
     Bar,
     Islands,
+    Pill,
+}
+
+impl Shape {
+    pub fn key(self) -> &'static str {
+        match self {
+            Shape::Bar => "bar",
+            Shape::Islands => "islands",
+            Shape::Pill => "pill",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
