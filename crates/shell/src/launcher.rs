@@ -715,7 +715,7 @@ fn runnable(program: &str) -> bool {
     found
 }
 
-fn on_path(program: &str) -> bool {
+pub fn on_path(program: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|path| {
         std::env::split_paths(&path).any(|dir| {
             std::fs::metadata(dir.join(program)).is_ok_and(|meta| {

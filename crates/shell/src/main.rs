@@ -14,6 +14,7 @@ mod clipboard;
 mod clips;
 mod control;
 mod controls;
+mod doctor;
 mod drag;
 mod events;
 mod files;
@@ -96,7 +97,8 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline fragment [CONFIG] [MODE]
        apolline settings [--page NAME]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
-       apolline check [FILE]";
+       apolline check [FILE]
+       apolline doctor";
 
 #[derive(Default)]
 struct Options {
@@ -114,6 +116,7 @@ fn main() -> ExitCode {
     i18n::choose(config.language.as_deref());
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
+        Some("doctor") => return doctor::main(),
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {
             return command(&args.join(" "));
         }
