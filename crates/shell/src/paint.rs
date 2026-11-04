@@ -13,7 +13,11 @@ pub fn apply(palette: Palette, scheme: &Scheme) -> Vec<String> {
     let (Some(config), Some(data)) = (config_home(), data_home()) else {
         return Vec::new();
     };
+    let before = read_css(&config);
     let notes = write(&config, &data, palette, scheme);
+    if read_css(&config) != before {
+        gsettings::nudge("gtk-theme");
+    }
     gsettings::set(
         "color-scheme",
         if scheme.light {
@@ -24,6 +28,10 @@ pub fn apply(palette: Palette, scheme: &Scheme) -> Vec<String> {
     );
     gsettings::set("accent-color", gnome_accent(palette.accent));
     notes
+}
+
+fn read_css(config: &Path) -> Option<String> {
+    fs::read_to_string(config.join("gtk-4.0").join(CSS)).ok()
 }
 
 pub fn remove() {

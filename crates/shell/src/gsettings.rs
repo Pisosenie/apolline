@@ -8,6 +8,8 @@ const SCHEMA: &str = "org.gnome.desktop.interface";
 enum Change {
     Set(String, String),
     Restore(String),
+    // Away and back, so running apps take the key up again: it isn't written down as Apolline's.
+    Nudge(String),
 }
 
 // What a key held before Apolline touched it, and what Apolline put there.
@@ -26,6 +28,11 @@ pub fn restore(key: &str) {
     send(Change::Restore(key.to_owned()));
 }
 
+// Running GTK apps read their CSS again when the theme changes, so it changes and comes back.
+pub fn nudge(key: &str) {
+    send(Change::Nudge(key.to_owned()));
+}
+
 // One worker, so a set and a restore of the same key land in the order they were asked.
 fn send(change: Change) {
     static WORKER: OnceLock<Sender<Change>> = OnceLock::new();
@@ -33,6 +40,14 @@ fn send(change: Change) {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             for change in rx {
+                if let Change::Nudge(key) = &change {
+                    if let Some(now) = get(key) {
+                        put(key, "''");
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        put(key, &now);
+                    }
+                    continue;
+                }
                 let path = ledger();
                 let mut kept = path
                     .as_ref()
@@ -95,6 +110,8 @@ fn apply(
                 .is_some_and(|now| bare(&now) == bare(&entry.ours))
                 .then_some((key, entry.theirs))
         }
+        // Handled before the ledger is read.
+        Change::Nudge(_) => None,
     }
 }
 
