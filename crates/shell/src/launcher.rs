@@ -1,9 +1,10 @@
+use crate::style::text;
 use apolline_theme::{Palette, neutral};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
     Column, Row, button, column, container, image, mouse_area, opaque, row, scrollable, space, svg,
-    text, text_input,
+    text_input,
 };
 use iced::{Alignment, Element, Fill, Length, Task};
 

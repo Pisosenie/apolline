@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use crate::style::text;
 use apolline_theme::{Palette, font, metrics, neutral};
 use iced::widget::{
-    button, column, container, image, keyed_column, progress_bar, row, space, text, text_input,
+    button, column, container, image, keyed_column, progress_bar, row, space, text_input,
 };
 use iced::{Background, Border, ContentFit, Element, Fill, Theme};
 

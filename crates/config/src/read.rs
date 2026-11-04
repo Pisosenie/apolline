@@ -206,14 +206,20 @@ impl Reader<'_> {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
                                     "size" => surface.size = self.fraction(key, value, 0.8..=1.5),
+                                    "font" => {
+                                        surface.font = self
+                                            .string(key, value)
+                                            .filter(|v| !v.trim().is_empty())
+                                            .map(crate::FontName::new)
+                                    }
                                     "grid" if launcher => grid = self.boolean(key, value),
                                     _ => self.unknown(
                                         key,
                                         "option",
                                         if launcher {
-                                            &["radius", "opacity", "size", "grid"]
+                                            &["radius", "opacity", "size", "font", "grid"]
                                         } else {
-                                            &["radius", "opacity", "size"]
+                                            &["radius", "opacity", "size", "font"]
                                         },
                                     ),
                                 }

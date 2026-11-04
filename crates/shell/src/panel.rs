@@ -1,8 +1,8 @@
+use crate::style::text;
 use apolline_config::ModeSettings;
 use apolline_theme::{Palette, metrics, neutral};
 use iced::widget::{
     Column, Row, button, column, container, mouse_area, opaque, row, scrollable, slider, space,
-    text,
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
@@ -907,7 +907,7 @@ fn devices_row<'a>(
     let chips = Row::with_children(devices.iter().map(|device| {
         let label = text(device.name.as_str())
             .size(12)
-            .wrapping(text::Wrapping::None);
+            .wrapping(iced::widget::text::Wrapping::None);
         button(label)
             .padding([5, 10])
             .style(style::choice(device.default))

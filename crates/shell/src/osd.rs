@@ -1,5 +1,6 @@
+use crate::style::text;
 use apolline_theme::{Palette, Rgba, neutral};
-use iced::widget::{Space, container, row, text};
+use iced::widget::{Space, container, row};
 use iced::{Alignment, Element, Fill, Length};
 
 use crate::controls::Osd;

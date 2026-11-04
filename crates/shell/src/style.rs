@@ -115,8 +115,32 @@ fn lifted(depth: f32) -> Shadow {
 
 static FAMILY: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
 
+thread_local! {
+    // The font of the surface being built, while it is.
+    static SCOPE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
+
+// Builds a surface's widgets in its own font, when it has one.
+pub fn within<T>(font: Option<apolline_config::FontName>, build: impl FnOnce() -> T) -> T {
+    let was = SCOPE.replace(font.map(apolline_config::FontName::name));
+    let built = build();
+    SCOPE.set(was);
+    built
+}
+
 pub fn family() -> &'static str {
-    FAMILY.get().copied().unwrap_or(font::UI)
+    SCOPE
+        .get()
+        .unwrap_or_else(|| FAMILY.get().copied().unwrap_or(font::UI))
+}
+
+pub fn regular() -> Font {
+    Font::with_name(family())
+}
+
+// Text in the font of the surface it's on.
+pub fn text<'a>(content: impl iced::widget::text::IntoFragment<'a>) -> iced::widget::Text<'a> {
+    iced::widget::text(content).font(regular())
 }
 
 pub fn choose_family(name: Option<String>) {

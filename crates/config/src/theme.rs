@@ -118,6 +118,7 @@ impl Theme {
             theirs.radius.is_none_or(|r| Some(r) == mine.radius)
                 && theirs.opacity.is_none_or(|o| Some(o) == mine.opacity)
                 && theirs.size.is_none_or(|z| Some(z) == mine.size)
+                && theirs.font.is_none_or(|f| Some(f) == mine.font)
         };
         differ(
             "surfaces",
@@ -150,6 +151,7 @@ impl Theme {
             mine.radius = theirs.radius.or(mine.radius);
             mine.opacity = theirs.opacity.or(mine.opacity);
             mine.size = theirs.size.or(mine.size);
+            mine.font = theirs.font.or(mine.font);
         };
         fill(&mut config.style.bar, self.style.bar);
         fill(&mut config.style.launcher, self.style.launcher);
@@ -240,6 +242,9 @@ impl Theme {
                 if let Some(value) = value {
                     editor.set_in(&path, key, round(value));
                 }
+            }
+            if let Some(font) = surface.font {
+                editor.set_in(&path, "font", font.name());
             }
         }
         for (key, value) in [

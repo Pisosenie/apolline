@@ -1,7 +1,8 @@
+use crate::style::text;
 use apolline_config::{ModeSettings, Piece, TrayItem, Workspaces};
 use apolline_theme::{Palette, metrics, neutral};
 use chrono::{DateTime, Local};
-use iced::widget::{Row, button, column, container, mouse_area, row, space, text};
+use iced::widget::{Row, button, column, container, mouse_area, row, space};
 use iced::{Alignment, Background, Element, Fill, Theme};
 
 use crate::apps::{self, App};

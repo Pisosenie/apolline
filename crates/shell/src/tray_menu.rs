@@ -1,5 +1,6 @@
+use crate::style::text;
 use apolline_theme::{Palette, metrics, neutral};
-use iced::widget::{Column, button, column, container, mouse_area, opaque, row, space, text};
+use iced::widget::{Column, button, column, container, mouse_area, opaque, row, space};
 use iced::{Alignment, Element, Fill};
 
 use crate::icon::{Icon, icon};

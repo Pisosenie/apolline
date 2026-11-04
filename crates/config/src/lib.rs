@@ -178,6 +178,32 @@ pub struct Surface {
     pub radius: Option<u16>,
     pub opacity: Option<f32>,
     pub size: Option<f32>,
+    pub font: Option<FontName>,
+}
+
+// A font family by name, kept once for the life of the program: the renderer wants names that
+// last, and a config read again and again names the same few.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FontName(&'static str);
+
+impl FontName {
+    pub fn new(name: &str) -> FontName {
+        static KNOWN: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+        let name = name.trim();
+        let Ok(mut known) = KNOWN.lock() else {
+            return FontName(Box::leak(name.to_owned().into_boxed_str()));
+        };
+        if let Some(kept) = known.iter().find(|kept| **kept == name) {
+            return FontName(kept);
+        }
+        let kept: &'static str = Box::leak(name.to_owned().into_boxed_str());
+        known.push(kept);
+        FontName(kept)
+    }
+
+    pub fn name(self) -> &'static str {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -997,6 +1023,18 @@ pub fn default_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_surface_can_have_its_own_font() {
+        let (config, problems) = parse("[style.bar]\nfont = \"JetBrains Mono\"\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        let font = config.style.bar.font.unwrap();
+        assert_eq!(font.name(), "JetBrains Mono");
+        assert!(
+            std::ptr::eq(font.name(), FontName::new("JetBrains Mono").name()),
+            "kept once"
+        );
+    }
 
     #[test]
     fn the_desktop_clock_goes_where_it_is_put() {

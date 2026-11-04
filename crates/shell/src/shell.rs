@@ -1875,6 +1875,10 @@ impl Shell {
     }
 
     pub fn osd_view(&self) -> Option<Element<'_, Message>> {
+        style::within(self.config.style.osd.font, || self.built_osd())
+    }
+
+    fn built_osd(&self) -> Option<Element<'_, Message>> {
         self.osd
             .as_ref()
             .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode), self.config.style.osd))
@@ -2422,6 +2426,21 @@ impl Shell {
     }
 
     pub fn overlay_view(&self) -> Element<'_, Message> {
+        style::within(self.overlay_font(), || self.built_overlay())
+    }
+
+    // Quick settings and what opens from the bar take their font; the rest keep the shell's.
+    fn overlay_font(&self) -> Option<apolline_config::FontName> {
+        match self.overlay {
+            Some(Overlay::Launcher) => self.config.style.launcher.font,
+            Some(Overlay::Panel | Overlay::Calendar | Overlay::TrayMenu) => {
+                self.config.style.panel.font
+            }
+            _ => None,
+        }
+    }
+
+    fn built_overlay(&self) -> Element<'_, Message> {
         let palette = self.config.palette(self.mode);
         match self.overlay {
             Some(Overlay::Switcher) => switcher::view(self.mode, &self.config, &self.thumbs),
@@ -2501,6 +2520,10 @@ impl Shell {
 
     // At the bottom of the screen the newest card is the one nearest the edge.
     pub fn popups(&self) -> Element<'_, Message> {
+        style::within(self.config.style.cards.font, || self.built_popups())
+    }
+
+    fn built_popups(&self) -> Element<'_, Message> {
         let mut cards = self.shown_cards();
         if self.config.alerts.position.bottom() {
             cards.reverse();
@@ -2721,6 +2744,10 @@ impl Shell {
     }
 
     pub fn bar(&self, output: Option<&str>) -> Element<'_, Message> {
+        style::within(self.config.style.bar.font, || self.built_bar(output))
+    }
+
+    fn built_bar(&self, output: Option<&str>) -> Element<'_, Message> {
         let (status, active) = match &self.niri {
             Some(state) => {
                 let status = Status::from_niri(state, output);

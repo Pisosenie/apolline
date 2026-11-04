@@ -40,6 +40,7 @@ const CLOCK_SPOTS: [(&str, &str); 8] = [
     ("bottom-right", "Bottom right"),
 ];
 const BUILT_IN_FONT: &str = "Geist, built in";
+const SAME_FONT: &str = "The desktop's font";
 const WALLS: usize = 11;
 const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
@@ -321,6 +322,7 @@ enum Message {
     SetNight,
     NightWarmth(u16),
     Style(Part, Knob, u16),
+    SurfaceFont(Part, String),
     LauncherGrid(bool),
     CardsCorner(Corner),
     Radius(u16),
@@ -1136,6 +1138,13 @@ impl Settings {
             Message::NightWarmth(kelvin) => {
                 self.stage(|e| e.set("night", "temperature", i64::from(kelvin)))
             }
+            Message::SurfaceFont(look, family) => self.edit(|e| {
+                if family == SAME_FONT {
+                    e.unset_in(&["style", look.key()], "font");
+                } else {
+                    e.set_in(&["style", look.key()], "font", family.as_str());
+                }
+            }),
             Message::Style(look, knob, v) => self.stage(|e| match knob {
                 Knob::Corners => e.set_in(&["style", look.key()], "radius", i64::from(v)),
                 Knob::Glass => e.set_in(&["style", look.key()], "opacity", hundredths(v)),
@@ -3247,11 +3256,34 @@ impl Settings {
                         "%",
                         palette,
                     ),
+                    self.font_picker(look, surface.font),
                 ]
                 .spacing(6),
             ));
         }
         group("Launcher, quick settings and popups", rows)
+    }
+
+    // The fonts on this computer, or the one everything else uses.
+    fn font_picker(
+        &self,
+        look: Part,
+        font: Option<apolline_config::FontName>,
+    ) -> Element<'_, Message> {
+        iced::widget::pick_list(
+            std::iter::once(SAME_FONT.to_owned())
+                .chain(self.families.iter().cloned())
+                .collect::<Vec<_>>(),
+            Some(
+                font.map_or(SAME_FONT, apolline_config::FontName::name)
+                    .to_owned(),
+            ),
+            move |family| Message::SurfaceFont(look, family),
+        )
+        .text_size(13)
+        .padding([7, 12])
+        .width(240)
+        .into()
     }
 
     fn windows(&self) -> Element<'_, Message> {
@@ -3902,6 +3934,11 @@ impl Settings {
                             "%",
                             palette,
                         ),
+                    ),
+                    setting(
+                        "Font",
+                        "For what the bar says",
+                        self.font_picker(Part::Bar, self.config.style.bar.font),
                     ),
                     setting(
                         "Corners",

@@ -1,5 +1,6 @@
+use crate::style::text;
 use apolline_theme::Palette;
-use iced::widget::{container, image, svg, text};
+use iced::widget::{container, image, svg};
 use iced::{Background, Border, Element};
 
 use crate::apps::{self, App, Picture};
