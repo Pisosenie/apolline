@@ -101,6 +101,10 @@ pub fn main(args: &[String]) -> ExitCode {
         crate::i18n::choose(look.language.as_deref());
     }
     let socket = std::env::var("GREETD_SOCK").ok();
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() && std::env::var_os("DISPLAY").is_none() {
+        eprintln!("apolline greet: it needs a screen; greetd starts it with --kiosk, in cage");
+        return ExitCode::from(2);
+    }
     if socket.is_none() && !preview && screenshot.is_none() {
         eprintln!("apolline greet: run it from greetd, or add --preview");
         return ExitCode::from(2);

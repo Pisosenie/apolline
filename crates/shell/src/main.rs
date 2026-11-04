@@ -117,6 +117,10 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("doctor") => return doctor::main(),
+        Some("help" | "--help" | "-h") => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay") => {
             return command(&args.join(" "));
         }
