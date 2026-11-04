@@ -252,5 +252,5 @@ fn attributes<'a>(url: &'a str, user: &'a str) -> HashMap<&'a str, &'a str> {
 }
 
 fn said(err: zbus::Error) -> String {
-    format!("The keyring said: {err}")
+    crate::i18n::fill("The keyring said: {err}", &[("err", &err)])
 }

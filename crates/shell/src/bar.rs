@@ -194,9 +194,13 @@ fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     let mut clock = row![].spacing(10).align_y(Alignment::Center);
     if bar.look.date {
         clock = clock.push(
-            text(bar.now.format("%a %-d %b").to_string())
-                .size(13)
-                .color(style::color(neutral::muted())),
+            text(
+                bar.now
+                    .format(&crate::i18n::names("%a %-d %b", &bar.now))
+                    .to_string(),
+            )
+            .size(13)
+            .color(style::color(neutral::muted())),
         );
     }
     let time = if bar.look.seconds {

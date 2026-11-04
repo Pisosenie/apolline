@@ -197,10 +197,11 @@ impl Settings {
         } else {
             row![
                 icon(Icon::Warning, 14.0, style::WARN),
-                text(match problems {
-                    1 => "1 problem in the config".to_owned(),
-                    n => format!("{n} problems in the config"),
-                })
+                text(crate::i18n::count(
+                    problems,
+                    "1 problem in the config",
+                    "{n} problems in the config",
+                ))
                 .size(12)
                 .color(style::color(style::WARN)),
             ]

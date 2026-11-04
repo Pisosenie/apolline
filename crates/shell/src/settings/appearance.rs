@@ -115,12 +115,15 @@ impl Settings {
         }
         let walls = grid;
         let own = row![
-            text_input("A picture or a folder of them", &self.wallpaper_draft)
-                .on_input(Message::WallpaperDraft)
-                .on_submit(Message::UseWallpaper)
-                .padding([8, 12])
-                .size(13)
-                .style(style::field(palette)),
+            text_input(
+                crate::i18n::t("A picture or a folder of them"),
+                &self.wallpaper_draft
+            )
+            .on_input(Message::WallpaperDraft)
+            .on_submit(Message::UseWallpaper)
+            .padding([8, 12])
+            .size(13)
+            .style(style::field(palette)),
             button(text("Add").size(13))
                 .padding([8, 16])
                 .style(style::secondary)
@@ -158,9 +161,12 @@ impl Settings {
             column = column.push(
                 row![
                     icon(Icon::Image, 14.0, style::faint()),
-                    text(format!("Using your file {name}"))
-                        .size(12)
-                        .color(style::color(style::faint())),
+                    text(crate::i18n::fill(
+                        "Using your file {name}",
+                        &[("name", &name)]
+                    ))
+                    .size(12)
+                    .color(style::color(style::faint())),
                 ]
                 .spacing(8),
             );

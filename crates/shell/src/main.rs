@@ -8,6 +8,7 @@ mod calc;
 mod caldav;
 mod calendar;
 mod capture;
+mod catalog;
 mod child;
 mod clipboard;
 mod clips;
@@ -17,12 +18,14 @@ mod drag;
 mod events;
 mod files;
 mod fingerprint;
+mod flatpak;
 mod fonts;
 mod fragment;
 mod greet;
 mod greet_look;
 mod greetd;
 mod gsettings;
+mod i18n;
 mod icon;
 mod idle;
 mod keymap;
@@ -108,6 +111,7 @@ fn main() -> ExitCode {
     let (config, _) = Config::load(&apolline_config::default_path());
     apolline_theme::set_scheme(config.scheme(config.start()));
     style::choose_family(config.desktop.font);
+    i18n::choose(config.language.as_deref());
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys") => {

@@ -200,7 +200,7 @@ impl Settings {
                     )),
                     row![
                         text_input(
-                            "x",
+                            crate::i18n::t("x"),
                             if self.place.0 == name {
                                 &self.place.1
                             } else {
@@ -216,7 +216,7 @@ impl Settings {
                         .width(70)
                         .style(style::field(palette)),
                         text_input(
-                            "y",
+                            crate::i18n::t("y"),
                             if self.place.0 == name {
                                 &self.place.2
                             } else {
@@ -281,7 +281,7 @@ impl Settings {
                 "Hours",
                 Some("From and until, like 21:00-07:00".to_owned()),
                 row![
-                    text_input("21:00-07:00", &draft)
+                    text_input(crate::i18n::t("21:00-07:00"), &draft)
                         .on_input(Message::NightDraft)
                         .on_submit(Message::SetNight)
                         .padding([8, 12])

@@ -17,6 +17,8 @@ pub use theme::Theme;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     pub mode: Option<String>,
+    // "ru", "en" or none for the system's.
+    pub language: Option<String>,
     pub theme: Option<(String, Option<String>)>,
     pub desktop: Desktop,
     pub layout: Layout,
@@ -798,6 +800,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             mode: None,
+            language: None,
             theme: None,
             desktop: Desktop {
                 clock: None,

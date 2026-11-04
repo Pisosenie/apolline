@@ -139,7 +139,7 @@ impl Settings {
         .spacing(2);
         rules.push(
             row![
-                text_input("app id, like pavucontrol", &self.rule.app)
+                text_input(crate::i18n::t("app id, like pavucontrol"), &self.rule.app)
                     .on_input(Message::RuleApp)
                     .on_submit(Message::AddRule)
                     .padding([8, 12])

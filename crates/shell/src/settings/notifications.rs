@@ -6,14 +6,20 @@ impl Settings {
         let alerts = &self.config.alerts;
         let palette = self.palette();
         let test_state: Element<'_, Message> = match &self.tested {
-            Some(Ok(())) => text(format!("Sent — look {}", where_cards(alerts.position)))
-                .size(12)
-                .color(style::color(style::GOOD))
-                .into(),
-            Some(Err(err)) => text(format!("Nothing shows them yet: {err}"))
-                .size(12)
-                .color(style::color(style::WARN))
-                .into(),
+            Some(Ok(())) => text(crate::i18n::fill(
+                "Sent — look {where}",
+                &[("where", &crate::i18n::t(where_cards(alerts.position)))],
+            ))
+            .size(12)
+            .color(style::color(style::GOOD))
+            .into(),
+            Some(Err(err)) => text(crate::i18n::fill(
+                "Nothing shows them yet: {err}",
+                &[("err", &err)],
+            ))
+            .size(12)
+            .color(style::color(style::WARN))
+            .into(),
             None => space().into(),
         };
         let mut per_mode: Vec<Element<'_, Message>> = self
@@ -121,7 +127,7 @@ impl Settings {
         rows.push(
             row![
                 text_input(
-                    "~/calendar.ics, or an https or webcal link",
+                    crate::i18n::t("~/calendar.ics, or an https or webcal link"),
                     &self.calendar_draft
                 )
                 .on_input(Message::CalendarDraft)
@@ -251,7 +257,7 @@ fn heard_line(heard: Option<&Heard>) -> String {
         at.format(if today { "%H:%M" } else { "%-d %b, %H:%M" })
     };
     match heard.map(|heard| (heard.read, heard.error.as_deref())) {
-        Some((Some(read), None)) => format!("Read at {}", at(read)),
+        Some((Some(read), None)) => crate::i18n::fill("Read at {time}", &[("time", &at(read))]),
         Some((Some(read), Some(error))) => {
             format!("{error}. Still showing what it said at {}", at(read))
         }

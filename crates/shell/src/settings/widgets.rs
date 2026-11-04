@@ -18,10 +18,14 @@ pub(super) fn group<'a>(
         }
     }
     column![
-        text(title.as_ref().to_uppercase())
-            .size(11)
-            .font(style::semibold())
-            .color(style::color(style::faint())),
+        text(
+            crate::i18n::find(title.as_ref())
+                .unwrap_or(title.as_ref())
+                .to_uppercase(),
+        )
+        .size(11)
+        .font(style::semibold())
+        .color(style::color(style::faint())),
         container(body).width(Fill).style(style::card),
     ]
     .spacing(10)

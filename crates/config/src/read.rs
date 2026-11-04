@@ -14,6 +14,8 @@ use crate::{
 type Key<'i> = Spanned<DeString<'i>>;
 type Value<'i> = Spanned<DeValue<'i>>;
 
+const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru")];
+
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
@@ -309,7 +311,12 @@ impl Reader<'_> {
                         self.start = Some(self.line(value.span()));
                     }
                 }
-                _ => self.unknown(key, "option", &["mode"]),
+                "language" => {
+                    if let Some(code) = self.choice(key, value, &LANGUAGES) {
+                        config.language = (code != "auto").then(|| code.to_owned());
+                    }
+                }
+                _ => self.unknown(key, "option", &["mode", "language"]),
             }
         }
     }

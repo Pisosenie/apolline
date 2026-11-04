@@ -19,6 +19,7 @@ pub struct Look {
     pub font: Option<FontName>,
     pub centered: bool,
     pub blur: bool,
+    pub language: Option<String>,
 }
 
 impl Default for Look {
@@ -29,6 +30,7 @@ impl Default for Look {
             font: None,
             centered: false,
             blur: false,
+            language: None,
         }
     }
 }
@@ -54,6 +56,7 @@ impl Look {
             font: config.desktop.font.as_deref().map(FontName::new),
             centered: config.lock.centered,
             blur: config.lock.blur,
+            language: config.language.clone(),
         }
     }
 }
@@ -71,6 +74,9 @@ pub fn text(config: &Config, picture: &str) -> String {
     }
     if config.lock.blur {
         out.set("lock", "blur", true);
+    }
+    if let Some(language) = &config.language {
+        out.set("general", "language", language.as_str());
     }
     format!(
         "# Written by Apolline Settings → Lock screen. The login screen reads it.\n\n{}",

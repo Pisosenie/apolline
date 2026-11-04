@@ -1,5 +1,6 @@
 mod appearance;
 mod bar_layout;
+mod catalog;
 mod displays;
 mod file;
 mod frame;
@@ -20,6 +21,7 @@ mod windows;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use crate::style::text;
 use apolline_config::{
     Accent, Appear, Blur, Calendar, Center, Config, Corner, Diagnostic, Edge, Editor, ModeSettings,
     Motion, Notifications, Piece, Rule, Shortcut, Switch, TEMPLATES, Theme as Look, TrayItem,
@@ -30,7 +32,7 @@ use iced::keyboard;
 use iced::widget::text::Span;
 use iced::widget::{
     Column, Row, Space, button, container, image, pick_list, responsive, rich_text, row,
-    scrollable, slider, space, span, stack, text, text_input, toggler,
+    scrollable, slider, space, span, stack, text_input, toggler,
 };
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Length, Shadow, Subscription,
@@ -207,7 +209,9 @@ impl Page {
             Page::Bar => "What the bar at the top shows.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
-            Page::Keyboard => "Layouts, how to switch them and how keys repeat.",
+            Page::Keyboard => {
+                "The language, keyboard layouts, how to switch them and how keys repeat."
+            }
             Page::Pointer => "Tapping, scrolling and pointer speed.",
             Page::Shortcuts => "Keys that open Apolline, and what they replace.",
             Page::About => "Version, setup and a health check of your config.",
@@ -397,6 +401,12 @@ enum Message {
     LockBlur(bool),
     LockFingerprint(bool),
     LockNow,
+    Language(&'static str),
+    Browse,
+    Catalog(Result<Vec<crate::catalog::Entry>, String>),
+    CatalogPicture(String, Option<image::Handle>),
+    CatalogInstall(usize),
+    CatalogInstalled(Result<String, String>),
     GreetPreview,
     GreetInstall,
     GreetDone(Result<(), String>),
@@ -469,6 +479,10 @@ struct Settings {
     recording_mode_key: bool,
     rule: Rule,
     themes: Vec<(Look, Option<PathBuf>)>,
+    // None until asked; an empty error while it's on its way.
+    catalog: Option<Result<Vec<crate::catalog::Entry>, String>>,
+    catalog_pictures: std::collections::HashMap<String, image::Handle>,
+    catalog_busy: Option<String>,
     theme_name: String,
     theme_path: String,
     theme_note: Option<Result<String, String>>,
@@ -555,6 +569,9 @@ impl Settings {
                 opacity: None,
             },
             themes: themes::all(),
+            catalog: None,
+            catalog_pictures: std::collections::HashMap::new(),
+            catalog_busy: None,
             theme_name: String::new(),
             theme_path: String::new(),
             theme_note: None,
@@ -634,6 +651,7 @@ impl Settings {
         if scheme != apolline_theme::scheme() {
             apolline_theme::set_scheme(scheme);
         }
+        crate::i18n::choose(self.config.language.as_deref());
         task
     }
 
@@ -678,12 +696,17 @@ impl Settings {
 
     fn scan_library(&mut self) -> Task<Message> {
         self.library = wallpaper::library(&self.config.desktop.folders);
-        self.queue = self
-            .library
-            .iter()
+        // Themes from folders bring their own wallpapers, which the gallery shows too.
+        let mut wanted = self.library.clone();
+        for (theme, _) in &self.themes {
+            if !wanted.contains(&theme.wallpaper) {
+                wanted.push(theme.wallpaper.clone());
+            }
+        }
+        self.queue = wanted
+            .into_iter()
             .rev()
             .filter(|name| self.thumb(name).is_none())
-            .cloned()
             .collect();
         Task::batch([self.next_thumb(), self.next_thumb()])
     }

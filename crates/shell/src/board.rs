@@ -1,5 +1,6 @@
+use crate::style::text;
 use apolline_theme::{Palette, neutral};
-use iced::widget::{container, mouse_area, pin, responsive, space, stack, text};
+use iced::widget::{container, mouse_area, pin, responsive, space, stack};
 use iced::{Background, Border, Element, Fill, Point, Rectangle, Shrink, Vector, mouse};
 
 use crate::drag::drag;

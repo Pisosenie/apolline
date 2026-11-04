@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::style::text;
 use chrono::{DateTime, Local};
 use iced::keyboard::{self, Key, key::Named};
-use iced::widget::{column, container, image, space, stack, text};
+use iced::widget::{column, container, image, space, stack};
 use iced::{Alignment, ContentFit, Element, Fill, Padding, Task, window};
 
 use crate::apps::{self, App};
@@ -610,6 +611,7 @@ impl Shell {
         if scheme != apolline_theme::scheme() {
             apolline_theme::set_scheme(scheme);
         }
+        crate::i18n::choose(self.config.language.as_deref());
         task
     }
 
@@ -777,7 +779,10 @@ impl Shell {
                 let content = clipboard::Content::Text(hex.clone());
                 clipboard::copy(&content);
                 clipboard::remember(&mut self.clips, Clip::new(content));
-                return self.show(Osd::Note(format!("Copied {hex}")));
+                return self.show(Osd::Note(crate::i18n::fill(
+                    "Copied {hex}",
+                    &[("hex", &hex)],
+                )));
             }
             Message::Picked(None) => {}
             Message::StopRecording => return self.stop_recording(),
@@ -1432,7 +1437,10 @@ impl Shell {
                 if let Some(profiles) = &mut self.profiles {
                     profiles.active = previous;
                 }
-                return self.show(Osd::Note(format!("Power: {err}")));
+                return self.show(Osd::Note(crate::i18n::fill(
+                    "Power: {err}",
+                    &[("err", &err)],
+                )));
             }
             Message::Volume(volume) => {
                 if self
@@ -2145,7 +2153,10 @@ impl Shell {
                     if matches!(event, Event::Save | Event::Both) {
                         crate::marks::save(&file, &png)?;
                         let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
-                        said.push(format!("Saved {}", name.unwrap_or_default()));
+                        said.push(crate::i18n::fill(
+                            "Saved {name}",
+                            &[("name", &name.unwrap_or_default())],
+                        ));
                     }
                     Ok::<_, String>(said.join(" · "))
                 })
@@ -2180,7 +2191,10 @@ impl Shell {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        self.show(Osd::Note(format!("Saved {name}")))
+        self.show(Osd::Note(crate::i18n::fill(
+            "Saved {name}",
+            &[("name", &name)],
+        )))
     }
 
     fn night_scheduled(&self) -> bool {
@@ -2658,10 +2672,14 @@ impl Shell {
                 .font(style::light())
                 .line_height(0.95)
                 .color(style::color(ink)),
-            text(self.now.format("%A, %-d %B").to_string())
-                .size(18)
-                .font(style::medium())
-                .color(style::color(ink.alpha(0.8))),
+            text(
+                self.now
+                    .format(&crate::i18n::names("%A, %-d %B", &self.now))
+                    .to_string()
+            )
+            .size(18)
+            .font(style::medium())
+            .color(style::color(ink.alpha(0.8))),
         ]
         .spacing(2)
         .align_x(x);

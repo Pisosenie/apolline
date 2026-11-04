@@ -21,9 +21,9 @@ impl Battery {
     pub fn time_left(&self) -> Option<String> {
         let minutes = self.left?;
         Some(match (minutes / 60, minutes % 60) {
-            (0, m) => format!("{m} min"),
-            (h, 0) => format!("{h} h"),
-            (h, m) => format!("{h} h {m} min"),
+            (0, m) => crate::i18n::fill("{m} min", &[("m", &m)]),
+            (h, 0) => crate::i18n::fill("{h} h", &[("h", &h)]),
+            (h, m) => crate::i18n::fill("{h} h {m} min", &[("h", &h), ("m", &m)]),
         })
     }
 }

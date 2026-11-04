@@ -296,10 +296,16 @@ impl Settings {
             .align_y(Alignment::Center);
         if let Some((index, (theme, _))) = theme.filter(|_| !tweaks.is_empty()) {
             line = line.push(
-                button(text(format!("Back to {}", theme.name)).size(12))
-                    .padding([6, 12])
-                    .style(style::secondary)
-                    .on_press(Message::ApplyTheme(index)),
+                button(
+                    text(crate::i18n::fill(
+                        "Back to {theme}",
+                        &[("theme", &theme.name)],
+                    ))
+                    .size(12),
+                )
+                .padding([6, 12])
+                .style(style::secondary)
+                .on_press(Message::ApplyTheme(index)),
             );
         }
         Some(
@@ -350,6 +356,7 @@ impl Settings {
         };
         column![
             gallery,
+            self.catalog(),
             group(
                 "Make your own",
                 vec![
@@ -357,7 +364,7 @@ impl Settings {
                         "Save my look",
                         "Wallpaper, accent, corners, gaps, borders, shadows, opacity, animations and the bar",
                         row![
-                            text_input("Name it", &self.theme_name)
+                            text_input(crate::i18n::t("Name it"), &self.theme_name)
                                 .on_input(Message::ThemeName)
                                 .on_submit(Message::SaveTheme)
                                 .padding([8, 12])
@@ -378,7 +385,7 @@ impl Settings {
                         "Add someone's theme",
                         "A theme.toml, or a folder with one and its pictures",
                         row![
-                            text_input("~/Downloads/look.toml", &self.theme_path)
+                            text_input(crate::i18n::t("~/Downloads/look.toml"), &self.theme_path)
                                 .on_input(Message::ThemePath)
                                 .on_submit(Message::ImportTheme)
                                 .padding([8, 12])

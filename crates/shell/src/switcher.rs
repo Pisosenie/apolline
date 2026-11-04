@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
+use crate::style::text;
 use apolline_config::{Accent, Config, ModeSettings, Notifications};
 use apolline_theme::{Palette, font, neutral};
 use iced::gradient::Linear;
 use iced::widget::{
-    Column, Row, button, column, container, image, mouse_area, opaque, row, space, stack, text,
+    Column, Row, button, column, container, image, mouse_area, opaque, row, space, stack,
 };
 use iced::{Alignment, Background, Border, Color, Element, Fill, Font, Gradient, Radians, Theme};
 
@@ -40,7 +41,10 @@ pub fn summary(mode: Option<&ModeSettings>) -> Vec<String> {
             .iter()
             .map(|a| a.split_whitespace().next().unwrap_or(a))
             .collect();
-        lines.push(format!("Opens {}", apps.join(", ")));
+        lines.push(crate::i18n::fill(
+            "Opens {apps}",
+            &[("apps", &apps.join(", "))],
+        ));
     }
     lines.push(
         match mode.notifications {

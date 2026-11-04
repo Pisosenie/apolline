@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::style::text;
 use apolline_theme::Palette;
 use iced::futures::channel::{mpsc, oneshot};
 use iced::futures::{SinkExt, Stream, StreamExt};
-use iced::widget::{Row, button, column, container, mouse_area, opaque, row, text, text_input};
+use iced::widget::{Row, button, column, container, mouse_area, opaque, row, text_input};
 use iced::{Alignment, Element, Fill, Padding, Subscription};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use zbus::{Connection, fdo};
@@ -375,7 +376,7 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
     let placeholder = dialog
         .asks
         .clone()
-        .unwrap_or_else(|| format!("Password for {user}"));
+        .unwrap_or_else(|| crate::i18n::fill("Password for {user}", &[("user", &user)]));
     let field = text_input(&placeholder, &dialog.password)
         .id(FIELD)
         .secure(true)

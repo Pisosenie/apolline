@@ -170,7 +170,11 @@ impl Settings {
                 return Task::perform(
                     notify::send(
                         "This is how a popup looks".into(),
-                        format!("It stays for {} seconds", self.config.alerts.seconds),
+                        crate::i18n::count(
+                            usize::from(self.config.alerts.seconds),
+                            "It stays for 1 second",
+                            "It stays for {n} seconds",
+                        ),
                     ),
                     Message::Tested,
                 );

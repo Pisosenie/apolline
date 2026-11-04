@@ -75,6 +75,7 @@ fn write(config: &Path, data: &Path, palette: Palette, scheme: &Scheme) -> Vec<S
             notes.push(format!("{}: {err}", schemes.display()));
         }
     }
+    notes.extend(crate::flatpak::grant(data));
     notes
 }
 
@@ -107,6 +108,7 @@ fn erase(config: &Path, data: &Path) -> bool {
     }
     ours |= fs::remove_file(config.join("qt6ct/colors/apolline.conf")).is_ok();
     ours |= fs::remove_file(data.join("color-schemes").join(KDE)).is_ok();
+    ours |= crate::flatpak::revoke(data);
     ours
 }
 
@@ -118,6 +120,8 @@ pub fn files() -> Vec<String> {
         "~/.config/qt6ct/colors/apolline.conf, if you use qt6ct".into(),
         "~/.local/share/color-schemes/Apolline.colors, if you use KDE apps or qt6ct".into(),
         "gsettings color-scheme and accent-color".into(),
+        "Flatpak apps may read ~/.config/gtk-3.0 and gtk-4.0, in ~/.local/share/flatpak/overrides/global"
+            .into(),
     ]
 }
 

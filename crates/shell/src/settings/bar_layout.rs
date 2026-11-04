@@ -37,13 +37,16 @@ impl Settings {
             .collect();
         rows.push(
             row![
-                text_input("A command, like  date +%A", &self.module_draft)
-                    .on_input(Message::ModuleDraft)
-                    .on_submit(Message::AddModule)
-                    .padding([8, 12])
-                    .size(13)
-                    .font(style::mono())
-                    .style(style::field(palette)),
+                text_input(
+                    crate::i18n::t("A command, like  date +%A"),
+                    &self.module_draft
+                )
+                .on_input(Message::ModuleDraft)
+                .on_submit(Message::AddModule)
+                .padding([8, 12])
+                .size(13)
+                .font(style::mono())
+                .style(style::field(palette)),
                 button(text("Add").size(13))
                     .padding([8, 14])
                     .style(style::secondary)
@@ -112,7 +115,7 @@ impl Settings {
         }
         rows.push(
             column![
-                text_input("Find an app to pin", &self.pin_query)
+                text_input(crate::i18n::t("Find an app to pin"), &self.pin_query)
                     .on_input(Message::PinQuery)
                     .padding([8, 12])
                     .size(13)
@@ -367,8 +370,7 @@ impl Settings {
                         "Weather",
                         "A city, or latitude,longitude. Open-Meteo is asked every 30 minutes; nothing is sent until you set one",
                         row![
-                            text_input(
-                                "Lisbon",
+                            text_input(crate::i18n::t("Lisbon"),
                                 self.weather_draft
                                     .as_deref()
                                     .or(self.config.weather.as_deref())

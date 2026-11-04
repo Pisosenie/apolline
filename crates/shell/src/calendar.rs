@@ -50,10 +50,14 @@ pub fn view<'a>(
             .on_press(Message::CalendarMonth(offset + by))
     };
     let mut title = row![
-        text(first.format("%B %Y").to_string())
-            .size(16)
-            .font(style::semibold())
-            .width(Fill),
+        text(
+            first
+                .format(&crate::i18n::names("%B %Y", &first))
+                .to_string()
+        )
+        .size(16)
+        .font(style::semibold())
+        .width(Fill),
     ]
     .align_y(Alignment::Center)
     .spacing(2);
@@ -113,10 +117,10 @@ pub fn view<'a>(
     }
 
     let mut top = column![
-        text(now.format("%A").to_string())
+        text(now.format(&crate::i18n::names("%A", &now)).to_string())
             .size(12)
             .color(style::color(palette.accent)),
-        text(now.format("%-d %B").to_string())
+        text(now.format(&crate::i18n::names("%-d %B", &now)).to_string())
             .size(22)
             .font(style::semibold()),
     ]
@@ -188,13 +192,18 @@ fn day_list<'a>(
     let heading = if day == today {
         "Today".to_owned()
     } else {
-        day.format("%A, %-d %B").to_string()
+        day.format(&crate::i18n::names("%A, %-d %B", &day))
+            .to_string()
     };
     let mut list = column![
-        text(heading.to_uppercase())
-            .size(10)
-            .font(style::semibold())
-            .color(style::color(style::faint()))
+        text(
+            crate::i18n::find(&heading)
+                .unwrap_or(&heading)
+                .to_uppercase()
+        )
+        .size(10)
+        .font(style::semibold())
+        .color(style::color(style::faint()))
     ]
     .spacing(8);
     let items = agenda.on(day);
@@ -213,7 +222,9 @@ fn day_list<'a>(
                 format!("{} – {}", start.format("%H:%M"), end.format("%H:%M"))
             }
             (Some(start), None) => start.format("%H:%M").to_string(),
-            (None, Some(end)) => format!("Until {}", end.format("%H:%M")),
+            (None, Some(end)) => {
+                crate::i18n::fill("Until {time}", &[("time", &end.format("%H:%M"))])
+            }
             (None, None) => "All day".to_owned(),
         };
         let mut what = column![
@@ -279,9 +290,13 @@ fn forecast(weather: &Weather, palette: Palette) -> Element<'_, Message> {
     let days = Row::with_children(weather.days.iter().skip(1).take(3).map(|day| {
         let (glyph, _) = weather::describe(day.code);
         column![
-            text(day.date.format("%a").to_string())
-                .size(11)
-                .color(style::color(style::faint())),
+            text(
+                day.date
+                    .format(&crate::i18n::names("%a", &day.date))
+                    .to_string()
+            )
+            .size(11)
+            .color(style::color(style::faint())),
             icon(glyph, 16.0, neutral::text()),
             text(format!("{:.0}° {:.0}°", day.high, day.low)).size(11),
         ]

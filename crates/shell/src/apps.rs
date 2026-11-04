@@ -112,14 +112,23 @@ fn parse(id: &str, text: &str) -> Option<App> {
     {
         return None;
     }
-    let name = field("Name")?;
+    // In Russian, the entry's own Russian lines first; the English name stays searchable.
+    let local = |want: &str| {
+        crate::i18n::russian()
+            .then(|| field(&format!("{want}[ru_RU]")).or_else(|| field(&format!("{want}[ru]"))))
+            .flatten()
+    };
+    let english = field("Name")?;
+    let name = local("Name").unwrap_or_else(|| english.clone());
     let exec = clean_exec(&field("Exec")?);
     if exec.is_empty() {
         return None;
     }
     let categories = field("Categories").unwrap_or_default();
     let game = categories.split(';').any(|c| c == "Game") || exec.contains("steam://rungameid/");
-    let about = field("GenericName")
+    let about = local("GenericName")
+        .or_else(|| local("Comment"))
+        .or_else(|| field("GenericName"))
         .or_else(|| field("Comment"))
         .unwrap_or_default();
     let icon = field("Icon").filter(|i| !i.is_empty()).map(|icon| {
@@ -137,7 +146,12 @@ fn parse(id: &str, text: &str) -> Option<App> {
         exec,
         icon,
         game,
-        keywords: field("Keywords").unwrap_or_default().replace(';', " "),
+        keywords: [local("Keywords"), field("Keywords"), Some(english)]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace(';', " "),
         class: field("StartupWMClass"),
         actions: field("Actions")
             .unwrap_or_default()

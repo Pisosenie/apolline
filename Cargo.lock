@@ -152,6 +152,7 @@ dependencies = [
  "serde_json",
  "tiny-skia",
  "tokio",
+ "toml",
  "ureq",
  "wayland-client",
  "wayland-protocols",

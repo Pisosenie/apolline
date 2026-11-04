@@ -473,6 +473,15 @@ impl Settings {
                     }
                 }
             }
+            Message::Language(code) => self.edit(|e| match code {
+                "auto" => e.unset("general", "language"),
+                code => e.set("general", "language", code),
+            }),
+            message @ (Message::Browse
+            | Message::Catalog(_)
+            | Message::CatalogPicture(..)
+            | Message::CatalogInstall(_)
+            | Message::CatalogInstalled(_)) => return self.browse(message),
             message => return self.tweak(message),
         }
         Task::none()

@@ -1,9 +1,10 @@
+use crate::style::text;
 use apolline_theme::{Palette, Rgba, neutral};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
     Column, Space, button, column, container, image, mouse_area, opaque, row, scrollable, space,
-    text, text_input,
+    text_input,
 };
 use iced::{Alignment, Background, Border, ContentFit, Element, Fill, Length, Padding, Task};
 
@@ -79,14 +80,18 @@ impl Picker {
     pub fn view<'a>(&'a self, clips: &'a [Clip], palette: Palette) -> Element<'a, Message> {
         let visible = self.visible(clips);
         let pinned = clips.iter().filter(|c| c.pinned).count();
-        let count = match (clips.len(), pinned) {
-            (1, 0) => "1 item".to_owned(),
-            (n, 0) => format!("{n} items"),
-            (n, p) => format!("{n} items · {p} pinned"),
+        let count = match pinned {
+            0 => crate::i18n::count(clips.len(), "1 item", "{n} items"),
+            p => crate::i18n::count(
+                clips.len(),
+                "1 item · {pinned} pinned",
+                "{n} items · {pinned} pinned",
+            )
+            .replace("{pinned}", &p.to_string()),
         };
         let header = row![
             icon(Icon::Search, 18.0, style::faint()),
-            text_input("Search clipboard", &self.query)
+            text_input(crate::i18n::t("Search clipboard"), &self.query)
                 .id(SEARCH)
                 .on_input(Message::ClipQuery)
                 .on_submit(Message::ClipCopy(None))
@@ -105,7 +110,10 @@ impl Picker {
                     text(if clips.is_empty() {
                         "Copy something and it shows up here".to_owned()
                     } else {
-                        format!("Nothing matches “{}”", self.query.trim())
+                        crate::i18n::fill(
+                            "Nothing matches “{query}”",
+                            &[("query", &self.query.trim())],
+                        )
                     })
                     .size(14)
                     .color(style::color(style::soft_text())),
@@ -356,7 +364,9 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
             let meta = match &clip.content {
                 crate::clipboard::Content::Png(bytes) => match png_size(bytes) {
                     Some((w, h)) => format!("{w}×{h} PNG · {} KB", bytes.len() / 1024),
-                    None => format!("PNG · {} KB", bytes.len() / 1024),
+                    None => {
+                        crate::i18n::fill("PNG · {size} KB", &[("size", &(bytes.len() / 1024))])
+                    }
                 },
                 crate::clipboard::Content::Text(_) => String::new(),
             };

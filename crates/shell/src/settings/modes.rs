@@ -86,13 +86,16 @@ impl Settings {
                 .into()
         });
 
-        let name = text_input("Name", self.name_draft.as_deref().unwrap_or(&mode.name))
-            .on_input(Message::ModeName)
-            .on_submit(Message::ModeNameDone)
-            .padding([8, 12])
-            .size(14)
-            .width(260)
-            .style(style::field(palette));
+        let name = text_input(
+            crate::i18n::t("Name"),
+            self.name_draft.as_deref().unwrap_or(&mode.name),
+        )
+        .on_input(Message::ModeName)
+        .on_submit(Message::ModeNameDone)
+        .padding([8, 12])
+        .size(14)
+        .width(260)
+        .style(style::field(palette));
         let rename = button(text("Rename").size(13))
             .padding([8, 14])
             .style(style::secondary)
@@ -149,7 +152,7 @@ impl Settings {
         }
         apps = apps.push(
             row![
-                text_input("firefox --new-window", &self.draft)
+                text_input(crate::i18n::t("firefox --new-window"), &self.draft)
                     .on_input(Message::Draft)
                     .on_submit(Message::Add)
                     .padding([8, 12])
@@ -185,9 +188,10 @@ impl Settings {
                     "Taken by “{}”, so it won't work; pick other keys",
                     fragment::action(shortcut).0
                 )),
-                (None, Some((_, action))) => {
-                    Some(format!("Replaces {action} while this mode is on"))
-                }
+                (None, Some((_, action))) => Some(crate::i18n::fill(
+                    "Replaces {action} while this mode is on",
+                    &[("action", &action)],
+                )),
                 _ => None,
             };
             let mut words = column![text(command.as_str()).size(13).font(style::mono())].spacing(3);
@@ -238,7 +242,7 @@ impl Settings {
             row![
                 container(capture).width(Length::Fixed(200.0)),
                 text_input(
-                    "command, like  steam  or  niri msg action fullscreen-window",
+                    crate::i18n::t("command, like  steam  or  niri msg action fullscreen-window"),
                     &self.key_command
                 )
                 .on_input(Message::KeyCommand)

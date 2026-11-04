@@ -154,7 +154,9 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         },
         "Do not disturb",
         match (panel.do_not_disturb, panel.quiet_until) {
-            (true, Some(until)) => format!("Until {}", until.format("%H:%M")),
+            (true, Some(until)) => {
+                crate::i18n::fill("Until {time}", &[("time", &until.format("%H:%M"))])
+            }
             (true, None) => "Only urgent".to_owned(),
             (false, _) => "Off".to_owned(),
         },
@@ -292,9 +294,12 @@ fn header<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
             .spacing(8)
             .align_y(Alignment::Center);
             let said = match (battery.charging, battery.time_left()) {
-                (true, Some(left)) => Some(format!("charging, full in {left}")),
-                (true, None) => Some("charging".to_owned()),
-                (false, Some(left)) => Some(format!("{left} left")),
+                (true, Some(left)) => Some(crate::i18n::fill(
+                    "charging, full in {left}",
+                    &[("left", &left)],
+                )),
+                (true, None) => Some(crate::i18n::t("charging").to_owned()),
+                (false, Some(left)) => Some(crate::i18n::fill("{left} left", &[("left", &left)])),
                 (false, None) => None,
             };
             if let Some(said) = said {
@@ -527,9 +532,12 @@ fn quiet_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
     if let (true, Some(until)) = (panel.do_not_disturb, panel.quiet_until) {
         list = list.push(
             container(
-                text(format!("On until {}", until.format("%H:%M")))
-                    .size(12)
-                    .color(style::color(palette.accent)),
+                text(crate::i18n::fill(
+                    "On until {time}",
+                    &[("time", &until.format("%H:%M"))],
+                ))
+                .size(12)
+                .color(style::color(palette.accent)),
             )
             .padding([4, 10]),
         );
@@ -696,7 +704,7 @@ fn modes<'a>(
             .map(|(index, mode)| chip(&mode.name, Icon::named(&mode.icon), Some(index))),
     );
     column![
-        text("MODE")
+        text(crate::i18n::t("Mode").to_uppercase())
             .size(10)
             .font(style::semibold())
             .color(style::color(style::faint())),
@@ -786,7 +794,7 @@ fn history<'a>(
     palette: Palette,
 ) -> Element<'a, Message> {
     let mut header = row![
-        text("NOTIFICATIONS")
+        text(crate::i18n::t("Notifications").to_uppercase())
             .size(10)
             .font(style::semibold())
             .color(style::color(style::faint())),
@@ -1031,7 +1039,7 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
         {
             list = list.push(
                 row![
-                    iced::widget::text_input("Password", password)
+                    iced::widget::text_input(crate::i18n::t("Password"), password)
                         .id(PASSWORD)
                         .secure(true)
                         .on_input(Message::NetPassword)
@@ -1219,7 +1227,11 @@ fn ask_card<'a>(
     };
     let body: Column<'a, Message> = match &ask.what {
         Asking::Confirm(number) => column![
-            text(format!("Pair with {device}?")).size(13),
+            text(crate::i18n::fill(
+                "Pair with {device}?",
+                &[("device", &device)]
+            ))
+            .size(13),
             text("It should show the same code")
                 .size(12)
                 .color(style::color(style::faint())),
@@ -1227,7 +1239,11 @@ fn ask_card<'a>(
             buttons("Pair", true),
         ],
         Asking::Type(number) => column![
-            text(format!("Type this on {device}, then press Enter")).size(13),
+            text(crate::i18n::fill(
+                "Type this on {device}, then press Enter",
+                &[("device", &device)],
+            ))
+            .size(13),
             code(number),
             row![
                 space::horizontal(),
@@ -1238,14 +1254,18 @@ fn ask_card<'a>(
             ],
         ],
         Asking::Allow => column![
-            text(format!("Pair with {device}?")).size(13),
+            text(crate::i18n::fill(
+                "Pair with {device}?",
+                &[("device", &device)]
+            ))
+            .size(13),
             buttons("Pair", true),
         ],
         Asking::Pin | Asking::Passkey => column![
             text(if ask.what == Asking::Pin {
-                format!("The PIN for {device}")
+                crate::i18n::fill("The PIN for {device}", &[("device", &device)])
             } else {
-                format!("The code {device} shows")
+                crate::i18n::fill("The code {device} shows", &[("device", &device)])
             })
             .size(13),
             text(if ask.what == Asking::Pin {
@@ -1255,7 +1275,7 @@ fn ask_card<'a>(
             })
             .size(12)
             .color(style::color(style::faint())),
-            iced::widget::text_input("PIN", pin)
+            iced::widget::text_input(crate::i18n::t("PIN"), pin)
                 .id(PIN)
                 .on_input(Message::PinTyped)
                 .on_submit_maybe((!pin.is_empty()).then_some(Message::PairReply(true)))

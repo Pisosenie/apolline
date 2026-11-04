@@ -45,7 +45,12 @@ fn fetch(url: &str, user: &str, password: &str, today: NaiveDate) -> Result<Stri
         .new_agent();
     let mut response = agent
         .run(request(url, user, password, today)?)
-        .map_err(|err| format!("Couldn't reach {}: {err}", shown(url)))?;
+        .map_err(|err| {
+            crate::i18n::fill(
+                "Couldn't reach {url}: {err}",
+                &[("url", &shown(url)), ("err", &err)],
+            )
+        })?;
     let status = response.status().as_u16();
     if !matches!(status, 200 | 207) {
         return Err(refused(status));
@@ -118,7 +123,7 @@ fn refused(status: u16) -> String {
         403 => "This account may not read that calendar".into(),
         404 => "There's no calendar at this address".into(),
         300..=399 => "This address points elsewhere; use the calendar's own address".into(),
-        _ => format!("The server answered {status}"),
+        _ => crate::i18n::fill("The server answered {status}", &[("status", &status)]),
     }
 }
 

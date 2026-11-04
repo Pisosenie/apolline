@@ -85,7 +85,28 @@ impl Settings {
 
         let delay = keyboard.repeat_delay.unwrap_or(600);
         let rate = keyboard.repeat_rate.unwrap_or(25);
+        let language = segmented(
+            [
+                ("auto", "Same as the system", None),
+                ("en", "English", None),
+                ("ru", "Русский", None),
+            ],
+            match self.config.language.as_deref() {
+                Some("en") => "en",
+                Some("ru") => "ru",
+                _ => "auto",
+            },
+            Message::Language,
+        );
         column![
+            group(
+                "Language",
+                vec![setting(
+                    "Apolline speaks",
+                    "The bar, quick settings, the launcher and this window",
+                    language
+                )]
+            ),
             group("Layouts", vec![padded(layouts)]),
             group("Switching", switch_rows),
             group(
@@ -102,7 +123,7 @@ impl Settings {
                         value_slider(10..=60, rate, Message::RepeatRate, "/s", palette),
                     ),
                     padded(
-                        text_input("Hold a key here to try it…", &self.typing)
+                        text_input(crate::i18n::t("Hold a key here to try it…"), &self.typing)
                             .on_input(Message::Typing)
                             .padding([10, 12])
                             .size(14)
@@ -216,7 +237,12 @@ impl Settings {
                 .niri_binds
                 .iter()
                 .find(|(bind, _)| keys::same(bind, combo))
-                .map(|(_, action)| format!("Replaces {action} from your niri config"));
+                .map(|(_, action)| {
+                    crate::i18n::fill(
+                        "Replaces {action} from your niri config",
+                        &[("action", &action)],
+                    )
+                });
             rows.push(setting_owned(title, replaced, controls));
         }
         if let Some(error) = &self.shortcut_error {

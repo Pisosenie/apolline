@@ -138,8 +138,13 @@ pub fn regular() -> Font {
     Font::with_name(family())
 }
 
-// Text in the font of the surface it's on.
+// Text in the font of the surface it's on, and in the language the shell speaks.
 pub fn text<'a>(content: impl iced::widget::text::IntoFragment<'a>) -> iced::widget::Text<'a> {
+    let content = content.into_fragment();
+    let content = match crate::i18n::find(&content) {
+        Some(said) => std::borrow::Cow::Borrowed(said),
+        None => content,
+    };
     iced::widget::text(content).font(regular())
 }
 

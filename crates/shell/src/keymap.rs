@@ -58,7 +58,7 @@ pub fn entries(config: &Config, mode: Option<usize>, niri_config: &str) -> Vec<E
                 .filter(|(combo, _)| !taken(combo))
                 .map(|(combo, command)| Entry {
                     keys: combo.clone(),
-                    what: format!("Run {command}"),
+                    what: crate::i18n::fill("Run {command}", &[("command", &command)]),
                     group: Group::Mode,
                 }),
         );
@@ -119,10 +119,18 @@ pub fn describe(action: &str) -> (Group, String) {
         "spawn" => {
             return (
                 Group::System,
-                format!("Open {}", argument.split(' ').next().unwrap_or("")),
+                crate::i18n::fill(
+                    "Open {app}",
+                    &[("app", &argument.split(' ').next().unwrap_or(""))],
+                ),
             );
         }
-        "spawn-sh" => return (Group::System, format!("Run {argument}")),
+        "spawn-sh" => {
+            return (
+                Group::System,
+                crate::i18n::fill("Run {command}", &[("command", &argument)]),
+            );
+        }
         "close-window" => "Close the window".into(),
         "fullscreen-window" => "Fullscreen".into(),
         "maximize-column" => "Make the column full width".into(),
@@ -136,19 +144,15 @@ pub fn describe(action: &str) -> (Group, String) {
         "reset-window-height" => "Reset the window height".into(),
         "expand-column-to-available-width" => "Widen to the free space".into(),
         "set-column-width" | "set-window-height" => {
-            let what = if name == "set-column-width" {
-                "column"
-            } else {
-                "window"
+            let template = match (name == "set-column-width", argument.starts_with('-')) {
+                (true, true) => "Narrow the column by {amount}",
+                (true, false) => "Widen the column by {amount}",
+                (false, true) => "Narrow the window by {amount}",
+                (false, false) => "Widen the window by {amount}",
             };
-            let verb = if argument.starts_with('-') {
-                "Narrow"
-            } else {
-                "Widen"
-            };
-            format!(
-                "{verb} the {what} by {}",
-                argument.trim_start_matches(['+', '-'])
+            crate::i18n::fill(
+                template,
+                &[("amount", &argument.trim_start_matches(['+', '-']))],
             )
         }
         "toggle-overview" => return (Group::Workspaces, "Overview of everything".into()),
@@ -167,11 +171,19 @@ pub fn describe(action: &str) -> (Group, String) {
             return (Group::System, "Let the app have every key".into());
         }
         "switch-layout" => return (Group::System, "Next keyboard layout".into()),
-        "focus-workspace" => return (Group::Workspaces, format!("Go to workspace {argument}")),
+        "focus-workspace" => {
+            return (
+                Group::Workspaces,
+                crate::i18n::fill("Go to workspace {number}", &[("number", &argument)]),
+            );
+        }
         "move-column-to-workspace" | "move-window-to-workspace" => {
             return (
                 Group::Workspaces,
-                format!("Move the window to workspace {argument}"),
+                crate::i18n::fill(
+                    "Move the window to workspace {number}",
+                    &[("number", &argument)],
+                ),
             );
         }
         _ if name.starts_with("focus-workspace") => {
@@ -248,10 +260,10 @@ pub fn view<'a>(
     query: &'a str,
     palette: apolline_theme::Palette,
 ) -> iced::Element<'a, crate::shell::Message> {
+    use crate::style::text;
     use apolline_theme::neutral;
     use iced::widget::{
-        Column, Row, Space, column, container, mouse_area, opaque, row, scrollable, text,
-        text_input,
+        Column, Row, Space, column, container, mouse_area, opaque, row, scrollable, text_input,
     };
     use iced::{Alignment, Element, Fill, Padding};
 
@@ -298,7 +310,7 @@ pub fn view<'a>(
                 .collect();
             (!rows.is_empty()).then(|| {
                 column![
-                    text(group.title().to_uppercase())
+                    text(crate::i18n::t(group.title()).to_uppercase())
                         .size(10)
                         .font(style::semibold())
                         .color(style::color(palette.accent)),
@@ -322,9 +334,12 @@ pub fn view<'a>(
     let right = Column::with_children(right).spacing(22);
     let body: Element<'a, Message> = if empty {
         container(
-            text(format!("No shortcut does “{}”", query.trim()))
-                .size(14)
-                .color(style::color(style::soft_text())),
+            text(crate::i18n::fill(
+                "No shortcut does “{query}”",
+                &[("query", &query.trim())],
+            ))
+            .size(14)
+            .color(style::color(style::soft_text())),
         )
         .center_x(Fill)
         .padding([40, 0])
@@ -342,7 +357,7 @@ pub fn view<'a>(
     };
     let search = row![
         icon(Icon::Search, 18.0, style::faint()),
-        text_input("What do you want to do?", query)
+        text_input(crate::i18n::t("What do you want to do?"), query)
             .id(SEARCH)
             .on_input(Message::KeysQuery)
             .size(16)

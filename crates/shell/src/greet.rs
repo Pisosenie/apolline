@@ -2,13 +2,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
+use crate::style::text;
 use apolline_theme::{Palette, Rgba, neutral};
 use chrono::{DateTime, Local};
 use iced::gradient::{Gradient, Linear};
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::focus;
 use iced::widget::{
-    Row, Space, button, column, container, image, pick_list, row, space, stack, text, text_input,
+    Row, Space, button, column, container, image, pick_list, row, space, stack, text_input,
 };
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Radians, Subscription, Task,
@@ -96,6 +97,9 @@ pub fn main(args: &[String]) -> ExitCode {
             .and_then(|i| args.get(i + 1))
             .map_or_else(|| PathBuf::from(greet_look::SYSTEM), PathBuf::from),
     );
+    if look.language.is_some() {
+        crate::i18n::choose(look.language.as_deref());
+    }
     let socket = std::env::var("GREETD_SOCK").ok();
     if socket.is_none() && !preview && screenshot.is_none() {
         eprintln!("apolline greet: run it from greetd, or add --preview");
@@ -527,10 +531,15 @@ impl Greet {
             .push(power(Icon::Power, "poweroff"));
 
         let clock = column![
-            text(self.now.format("%A, %-d %B").to_string().to_uppercase())
-                .size(14)
-                .font(style::medium())
-                .color(style::color(neutral::text().alpha(0.86))),
+            text(
+                self.now
+                    .format(&crate::i18n::names("%A, %-d %B", &self.now))
+                    .to_string()
+                    .to_uppercase()
+            )
+            .size(14)
+            .font(style::medium())
+            .color(style::color(neutral::text().alpha(0.86))),
             text(self.now.format("%H:%M").to_string())
                 .size(200)
                 .font(style::light()),
@@ -599,7 +608,7 @@ impl Greet {
             .unwrap_or_default();
         let checking = self.state == State::Checking;
         let who: Element<'_, Message> = if self.users.is_empty() {
-            let mut login = text_input("Username", &self.login)
+            let mut login = text_input(crate::i18n::t("Username"), &self.login)
                 .id(LOGIN)
                 .width(120)
                 .size(14)
@@ -615,7 +624,7 @@ impl Greet {
             text(name).size(14).font(style::medium()).into()
         };
         let mut input = text_input(
-            if checking { "Checking…" } else { "Password" },
+            crate::i18n::t(if checking { "Checking…" } else { "Password" }),
             &self.password,
         )
         .id(FIELD)

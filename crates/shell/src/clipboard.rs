@@ -76,7 +76,10 @@ impl Clip {
                 .unwrap_or_default()
                 .to_owned(),
             Content::Png(bytes) => match png_size(bytes) {
-                Some((width, height)) => format!("Image {width}×{height}"),
+                Some((width, height)) => crate::i18n::fill(
+                    "Image {width}×{height}",
+                    &[("width", &width), ("height", &height)],
+                ),
                 None => "Image".to_owned(),
             },
         }

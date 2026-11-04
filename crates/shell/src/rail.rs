@@ -301,7 +301,10 @@ fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     }
     let words = match bar.next {
         Some((what, wait)) => crate::events::when(what, wait),
-        None => bar.now.format("%A, %-d %B").to_string(),
+        None => bar
+            .now
+            .format(&crate::i18n::names("%A, %-d %B", &bar.now))
+            .to_string(),
     };
     hint(
         button(lines)

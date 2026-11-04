@@ -328,7 +328,7 @@ impl Launcher {
                         score + 40,
                         Entry {
                             title: window.title.clone(),
-                            about: format!("Open window · {name}"),
+                            about: crate::i18n::fill("Open window · {name}", &[("name", &name)]),
                             picture: Pic::App(
                                 app.and_then(|app| app.icon.as_ref()),
                                 app.map(|app| app.name.as_str()),
@@ -342,7 +342,7 @@ impl Launcher {
             let modes = self.modes.iter().enumerate().map(|(index, (name, glyph))| {
                 (
                     name.clone(),
-                    format!("Switch to the {name} mode"),
+                    crate::i18n::fill("Switch to the {name} mode", &[("name", &name)]),
                     Icon::named(glyph),
                     Target::Mode(Some(index)),
                 )
@@ -441,13 +441,16 @@ impl Launcher {
 
         let search = row![
             icon(Icon::Search, 20.0, style::faint()),
-            text_input("Search apps, games and actions", &self.query)
-                .id(SEARCH)
-                .on_input(Message::Query)
-                .on_submit(Message::Submit)
-                .size(18)
-                .padding(0)
-                .style(style::bare_field(palette)),
+            text_input(
+                crate::i18n::t("Search apps, games and actions"),
+                &self.query
+            )
+            .id(SEARCH)
+            .on_input(Message::Query)
+            .on_submit(Message::Submit)
+            .size(18)
+            .padding(0)
+            .style(style::bare_field(palette)),
             mode.map(|(name, glyph)| {
                 container(
                     row![
@@ -470,9 +473,12 @@ impl Launcher {
             container(
                 column![
                     icon(Icon::Search, 28.0, style::faint()),
-                    text(format!("Nothing called “{}”", self.query.trim()))
-                        .size(14)
-                        .color(style::color(style::soft_text())),
+                    text(crate::i18n::fill(
+                        "Nothing called “{query}”",
+                        &[("query", &self.query.trim())]
+                    ))
+                    .size(14)
+                    .color(style::color(style::soft_text())),
                 ]
                 .spacing(10)
                 .align_x(Alignment::Center),
@@ -517,14 +523,10 @@ impl Launcher {
         let caption = if self.query.trim().is_empty() {
             match games {
                 0 => "Apps".to_owned(),
-                1 => "1 game · apps".to_owned(),
-                n => format!("{n} games · apps"),
+                n => crate::i18n::count(n, "1 game · apps", "{n} games · apps"),
             }
         } else {
-            match entries.len() {
-                1 => "1 result".to_owned(),
-                n => format!("{n} results"),
-            }
+            crate::i18n::count(entries.len(), "1 result", "{n} results")
         };
 
         let footer = row![
@@ -678,14 +680,14 @@ fn fallbacks(query: &str) -> Vec<Entry<'static>> {
     }
     let program = query.split_whitespace().next().unwrap_or_default();
     let run = runnable(program).then(|| Entry {
-        title: format!("Run “{query}”"),
+        title: crate::i18n::fill("Run “{query}”", &[("query", &query)]),
         about: "As a command, in the background".to_owned(),
         picture: Pic::Icon(Icon::Terminal),
         target: Target::Run(query.to_owned()),
         game: false,
     });
     let web = Entry {
-        title: format!("Search the web for “{query}”"),
+        title: crate::i18n::fill("Search the web for “{query}”", &[("query", &query)]),
         about: "DuckDuckGo, in the browser".to_owned(),
         picture: Pic::Icon(Icon::Globe),
         target: Target::Web(query.to_owned()),

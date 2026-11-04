@@ -2,12 +2,13 @@ use std::io::{BufRead, IsTerminal};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 
+use crate::style::text;
 use apolline_theme::{Palette, neutral};
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::{focus, scroll_to};
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{
-    Column, button, column, container, mouse_area, opaque, row, scrollable, space, text, text_input,
+    Column, button, column, container, mouse_area, opaque, row, scrollable, space, text_input,
 };
 use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task};
 

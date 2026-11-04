@@ -191,7 +191,7 @@ pub fn reminder_card(
     let begins = occurrence.begins().unwrap_or(now);
     let wait = ((begins - now).num_seconds() + 59) / 60;
     let mut said = vec![if wait > 0 {
-        format!("In {wait} min")
+        crate::i18n::fill("In {wait} min", &[("wait", &wait)])
     } else {
         "Now".to_owned()
     }];

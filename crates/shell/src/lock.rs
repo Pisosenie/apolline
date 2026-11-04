@@ -1,13 +1,14 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::style::text;
 use apolline_config::Config;
 use apolline_theme::{Palette, Rgba, neutral};
 use chrono::{DateTime, Local};
 use iced::gradient::Linear;
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::focus;
-use iced::widget::{Space, button, column, container, image, row, space, stack, text, text_input};
+use iced::widget::{Space, button, column, container, image, row, space, stack, text_input};
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Gradient, Radians,
     Subscription, Task, Theme, window,
@@ -379,10 +380,15 @@ impl Lock {
             .padding([32, 40]);
 
         let clock = column![
-            text(self.now.format("%A, %-d %B").to_string().to_uppercase())
-                .size(14)
-                .font(style::medium())
-                .color(style::color(neutral::text().alpha(0.86))),
+            text(
+                self.now
+                    .format(&crate::i18n::names("%A, %-d %B", &self.now))
+                    .to_string()
+                    .to_uppercase()
+            )
+            .size(14)
+            .font(style::medium())
+            .color(style::color(neutral::text().alpha(0.86))),
             text(self.now.format("%H:%M").to_string())
                 .size(232)
                 .font(style::light())
@@ -429,10 +435,11 @@ impl Lock {
             right = right.push(player(track, palette));
         }
         if self.waiting > 0 {
-            let line = match self.waiting {
-                1 => "1 notification · hidden until you unlock".to_owned(),
-                n => format!("{n} notifications · hidden until you unlock"),
-            };
+            let line = crate::i18n::count(
+                self.waiting,
+                "1 notification · hidden until you unlock",
+                "{n} notifications · hidden until you unlock",
+            );
             right = right.push(
                 row![
                     icon(Icon::Lock, 12.0, neutral::text().alpha(0.8)),
@@ -551,7 +558,7 @@ impl Lock {
         };
         let checking = self.state == State::Checking;
         let mut input = text_input(
-            if checking { "Checking…" } else { "Password" },
+            crate::i18n::t(if checking { "Checking…" } else { "Password" }),
             &self.password,
         )
         .id(FIELD)
@@ -845,7 +852,10 @@ fn authenticate(login: &str, password: &str) -> Result<(), String> {
         Code::Acct_Expired | Code::AuthTok_Expired | Code::New_Authtok_Reqd => {
             "Your password has expired".into()
         }
-        other => format!("Can't unlock: {other:?}"),
+        other => crate::i18n::fill(
+            "Can't unlock: {reason}",
+            &[("reason", &format!("{other:?}"))],
+        ),
     })
 }
 
