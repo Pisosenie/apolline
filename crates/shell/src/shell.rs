@@ -278,6 +278,7 @@ pub struct Shell {
     night: (bool, Option<bool>),
     module_text: Vec<(usize, String)>,
     recording: Option<crate::capture::Recording>,
+    replay: Option<crate::capture::Replay>,
     marks: Option<crate::marks::Marks>,
     shot: Option<String>,
     ticks: u64,
@@ -388,6 +389,7 @@ impl Shell {
             night: (false, None),
             module_text: Vec::new(),
             recording: None,
+            replay: None,
             marks: None,
             shot: None,
             ticks: 0,
@@ -836,6 +838,7 @@ impl Shell {
             Message::Control(Command::Panel) => return self.toggle(Overlay::Panel),
             Message::Control(Command::Clipboard) => return self.toggle(Overlay::Clipboard),
             Message::Control(Command::Keys) => return self.toggle(Overlay::Keys),
+            Message::Control(Command::Replay) => return self.save_replay(),
             Message::KeysQuery(query) => self.keys_query = query,
             Message::FocusWindow(id) => {
                 if self.niri.is_some() {
@@ -2291,7 +2294,48 @@ impl Shell {
         self.dress();
         self.sync();
         self.release_held();
-        Task::batch([self.load_wallpaper(), self.open_apps(), profile])
+        let note = self.keep_replay();
+        Task::batch([self.load_wallpaper(), self.open_apps(), profile, note])
+    }
+
+    // Keeps the last moments while the mode wants them, for as long as it says.
+    fn keep_replay(&mut self) -> Task<Message> {
+        let wanted = self.current().map_or(0, |m| m.replay);
+        if self.replay.as_ref().map_or(0, |r| r.seconds) == wanted {
+            return Task::none();
+        }
+        self.replay = None;
+        if wanted == 0 {
+            return Task::none();
+        }
+        match crate::capture::Replay::start(wanted) {
+            Some(Ok(replay)) => {
+                self.replay = Some(replay);
+                Task::none()
+            }
+            Some(Err(err)) => self.show(Osd::Note(err)),
+            None => Task::none(),
+        }
+    }
+
+    fn save_replay(&mut self) -> Task<Message> {
+        let saved = self
+            .replay
+            .as_mut()
+            .is_some_and(|r| r.running() && r.save());
+        let note = match &self.replay {
+            Some(replay) if saved => crate::i18n::count(
+                usize::from(replay.seconds),
+                "Saved the last second to Videos/Replays",
+                "Saved the last {n} seconds to Videos/Replays",
+            ),
+            Some(_) => {
+                crate::i18n::t("gpu-screen-recorder stopped; switch the mode again").to_owned()
+            }
+            None => crate::i18n::t("Nothing is kept: turn on “Keep the last moments” in a mode")
+                .to_owned(),
+        };
+        self.show(Osd::Note(note))
     }
 
     fn dress(&mut self) {

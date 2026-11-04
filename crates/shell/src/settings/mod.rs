@@ -330,6 +330,7 @@ enum Message {
     Notifications(usize, Notifications),
     Performance(bool),
     KeepAwake(bool),
+    Replay(u16),
     ModeTheme(Option<String>),
     WhenGame(bool),
     WhenBattery(bool),

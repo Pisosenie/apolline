@@ -816,3 +816,16 @@
 "Apolline shows them" = "показывает Apolline"
 "{app} shows them; Apolline stays out of the way" = "показывает {app}; Apolline не мешает"
 "nobody shows them until Apolline runs" = "некому показывать, пока Apolline не запущен"
+
+# Replays
+"Keep the last moments" = "Хранить последние мгновения"
+"{key} saves them to Videos/Replays; needs gpu-screen-recorder" = "{key} сохраняет их в Видео/Replays; нужен gpu-screen-recorder"
+"15 s" = "15 с"
+"30 s" = "30 с"
+"1 min" = "1 мин"
+"2 min" = "2 мин"
+"Save the last moments" = "Сохранить последние мгновения"
+"Saved the last {n} seconds to Videos/Replays" = ["Сохранена последняя {n} секунда в Видео/Replays", "Сохранены последние {n} секунды в Видео/Replays", "Сохранены последние {n} секунд в Видео/Replays"]
+"gpu-screen-recorder stopped; switch the mode again" = "gpu-screen-recorder остановился; переключите режим ещё раз"
+"Nothing is kept: turn on “Keep the last moments” in a mode" = "Ничего не хранится: включите «Хранить последние мгновения» в режиме"
+"Game replays" = "Повторы в играх"

@@ -504,6 +504,7 @@ pub struct Shortcuts {
     pub lock: String,
     pub clipboard: String,
     pub keys: String,
+    pub replay: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -514,16 +515,18 @@ pub enum Shortcut {
     Lock,
     Clipboard,
     Keys,
+    Replay,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 6] = [
+    pub const ALL: [Shortcut; 7] = [
         Shortcut::Keys,
         Shortcut::Launcher,
         Shortcut::Panel,
         Shortcut::Clipboard,
         Shortcut::Switch,
         Shortcut::Lock,
+        Shortcut::Replay,
     ];
 
     pub fn key(self) -> &'static str {
@@ -534,6 +537,7 @@ impl Shortcut {
             Shortcut::Lock => "lock",
             Shortcut::Clipboard => "clipboard",
             Shortcut::Keys => "keys",
+            Shortcut::Replay => "replay",
         }
     }
 }
@@ -564,6 +568,7 @@ impl Shortcuts {
             Shortcut::Lock => &self.lock,
             Shortcut::Clipboard => &self.clipboard,
             Shortcut::Keys => &self.keys,
+            Shortcut::Replay => &self.replay,
         }
     }
 
@@ -575,6 +580,7 @@ impl Shortcuts {
             Shortcut::Lock => &mut self.lock,
             Shortcut::Clipboard => &mut self.clipboard,
             Shortcut::Keys => &mut self.keys,
+            Shortcut::Replay => &mut self.replay,
         }
     }
 }
@@ -588,6 +594,7 @@ impl Default for Shortcuts {
             lock: "Super+Alt+L".into(),
             clipboard: "Mod+Alt+V".into(),
             keys: "Mod+Slash".into(),
+            replay: "Mod+Alt+R".into(),
         }
     }
 }
@@ -626,6 +633,8 @@ pub struct ModeSettings {
     pub keys: Vec<(String, String)>,
     pub when: Vec<Trigger>,
     pub theme: Option<String>,
+    // Seconds of the screen kept while the mode is on, for `apolline replay` to save; 0 is off.
+    pub replay: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -964,6 +973,7 @@ impl ModeSettings {
             keys: Vec::new(),
             when: Vec::new(),
             theme: None,
+            replay: 0,
         }
     }
 
@@ -986,6 +996,7 @@ impl ModeSettings {
                 open: vec!["steam".into()],
                 performance: true,
                 keep_awake: true,
+                replay: 30,
                 ..blank
             },
             "evening" => Self {

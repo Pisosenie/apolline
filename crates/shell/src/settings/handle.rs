@@ -397,6 +397,10 @@ impl Settings {
             Message::Notifications(index, n) => self.edit(|e| e.set_mode_notifications(index, n)),
             Message::Performance(on) => self.edit(|e| e.set_mode(index, "performance", on)),
             Message::KeepAwake(on) => self.edit(|e| e.set_mode(index, "keep_awake", on)),
+            Message::Replay(0) => self.edit(|e| e.unset_mode(index, "replay")),
+            Message::Replay(seconds) => {
+                self.edit(|e| e.set_mode(index, "replay", i64::from(seconds)))
+            }
             Message::ModeTheme(theme) => self.edit(|e| match &theme {
                 Some(name) => e.set_mode(index, "theme", name.as_str()),
                 None => e.unset_mode(index, "theme"),

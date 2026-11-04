@@ -144,7 +144,8 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   https/webcal links, and CalDAV with the password in the Secret Service — done. Tried against
   Radicale and GNOME Keyring; Nextcloud and Fastmail are still to come.
 - Capture: screenshots, a color picker, screen recording and marks on a screenshot (arrows, boxes, pen,
-  marker, text, numbered steps, hidden parts) are done; "save the last 30 seconds" is next.
+  marker, text, numbered steps, hidden parts) are done, and a mode can keep the last moments for one
+  key to save (gpu-screen-recorder's replay); still to be seen on a real GPU.
 - A bar module of your own — done (`[[module]]`: command, every, click).
 
 ### 6. Getting it to people
@@ -165,6 +166,6 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   most of what people write plugins for; when plugins come, each gets a CPU and memory budget.
 - **A dock.** niri's strip plus windows and pinned apps on the bar already do its job.
 - **An AI panel, a process monitor, a notepad.** Other apps do these well.
-- **Later:** screen recording with "save the last 30 seconds" for games, and live wallpapers (video,
+- **Later:** live wallpapers (video,
   shaders) in `apolline-wall`, a program and repository of its own that the shell will drive over JSON
   lines on stdin and stdout; pictures with crossfades already work there.

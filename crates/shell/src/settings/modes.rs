@@ -386,6 +386,24 @@ impl Settings {
                         "No idle lock, no screen off, no sleep while this mode is on",
                         switch(mode.keep_awake, Message::KeepAwake, palette),
                     ),
+                    setting_owned(
+                        "Keep the last moments",
+                        Some(crate::i18n::fill(
+                            "{key} saves them to Videos/Replays; needs gpu-screen-recorder",
+                            &[("key", &self.config.shortcuts.replay)],
+                        )),
+                        segmented(
+                            [
+                                (0, "Off", None),
+                                (15, "15 s", None),
+                                (30, "30 s", None),
+                                (60, "1 min", None),
+                                (120, "2 min", None),
+                            ],
+                            mode.replay,
+                            Message::Replay,
+                        ),
+                    ),
                     setting(
                         "Start in this mode",
                         "Apolline switches to it when you log in",

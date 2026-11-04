@@ -55,10 +55,7 @@ pub struct Recording {
 
 impl Recording {
     pub fn start(output: Option<&str>) -> Result<Self, String> {
-        let dir = std::env::var_os("XDG_VIDEOS_DIR")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Videos")))
-            .ok_or("no home folder")?;
+        let dir = videos().ok_or("no home folder")?;
         std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
         let file = dir.join(format!(
             "Recording {}.mp4",
@@ -104,6 +101,87 @@ impl Recording {
         });
         file
     }
+}
+
+fn videos() -> Option<PathBuf> {
+    std::env::var_os("XDG_VIDEOS_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Videos")))
+}
+
+// The last few seconds of the screen and the sound, kept in memory by gpu-screen-recorder
+// while a mode asks for it; `save` writes them out.
+pub struct Replay {
+    child: Option<Child>,
+    pub seconds: u16,
+}
+
+impl Replay {
+    // None when gpu-screen-recorder isn't installed: `apolline doctor` says so, not every mode switch.
+    pub fn start(seconds: u16) -> Option<Result<Self, String>> {
+        if !crate::launcher::on_path("gpu-screen-recorder") {
+            return None;
+        }
+        let dir = videos()?.join("Replays");
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            return Some(Err(format!("{}: {err}", dir.display())));
+        }
+        let child = crate::child::tie(&mut Command::new("gpu-screen-recorder"), libc::SIGINT)
+            .args([
+                "-w",
+                "screen",
+                "-f",
+                "60",
+                "-c",
+                "mp4",
+                "-a",
+                "default_output",
+            ])
+            .arg("-r")
+            .arg(seconds.to_string())
+            .arg("-o")
+            .arg(&dir)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|err| format!("gpu-screen-recorder: {err}"));
+        Some(child.map(|child| Self {
+            child: Some(child),
+            seconds,
+        }))
+    }
+
+    pub fn running(&mut self) -> bool {
+        self.child
+            .as_mut()
+            .is_some_and(|child| child.try_wait().is_ok_and(|status| status.is_none()))
+    }
+
+    pub fn save(&self) -> bool {
+        self.child
+            .as_ref()
+            .is_some_and(|child| signal(child, libc::SIGUSR1))
+    }
+}
+
+impl Drop for Replay {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            signal(&child, libc::SIGINT);
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+        }
+    }
+}
+
+fn signal(child: &Child, signal: i32) -> bool {
+    let Ok(pid) = i32::try_from(child.id()) else {
+        return false;
+    };
+    // SAFETY: plain syscall on our own child, which isn't reaped while we hold it.
+    unsafe { libc::kill(pid, signal) == 0 }
 }
 
 #[cfg(test)]

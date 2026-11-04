@@ -91,6 +91,9 @@ impl Editor {
         table.insert("open", Item::Value(open.into()));
         table.insert("performance", mode.performance.into());
         table.insert("keep_awake", mode.keep_awake.into());
+        if mode.replay > 0 {
+            table.insert("replay", i64::from(mode.replay).into());
+        }
         if !mode.keys.is_empty() {
             table.insert("keys", Item::Value(keys(&mode.keys).into()));
         }

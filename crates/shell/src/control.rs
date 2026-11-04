@@ -20,6 +20,7 @@ pub enum Command {
     Panel,
     Clipboard,
     Keys,
+    Replay,
     Nudge(Nudge),
 }
 
@@ -32,6 +33,7 @@ impl Command {
             ["panel"] => Ok(Command::Panel),
             ["clipboard"] => Ok(Command::Clipboard),
             ["keys"] => Ok(Command::Keys),
+            ["replay"] => Ok(Command::Replay),
             words @ ["volume" | "mic" | "brightness", _] => Nudge::parse(words)
                 .map(Command::Nudge)
                 .ok_or_else(|| format!("unknown command “{}”", line.trim())),

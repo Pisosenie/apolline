@@ -112,11 +112,17 @@ fn pam() -> Line {
 }
 
 // What each program is for, and the package that has it.
-const PROGRAMS: [(&str, &str, &str, bool); 7] = [
+const PROGRAMS: [(&str, &str, &str, bool); 8] = [
     ("Volume", "wpctl", "wireplumber", true),
     ("Volume on the bar", "pactl", "libpulse", false),
     ("Brightness", "brightnessctl", "brightnessctl", false),
     ("Screen recording", "wf-recorder", "wf-recorder", false),
+    (
+        "Game replays",
+        "gpu-screen-recorder",
+        "gpu-screen-recorder",
+        false,
+    ),
     ("Login screen", "cage", "cage greetd", false),
     ("Login screen look", "pkexec", "polkit", false),
     ("Flatpak apps", "flatpak", "flatpak", false),
