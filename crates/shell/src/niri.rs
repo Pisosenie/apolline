@@ -44,8 +44,26 @@ fn stream() -> impl Stream<Item = Message> {
         let Some(path) = apolline_niri::socket() else {
             return;
         };
+        let mut told = false;
         loop {
-            if let Ok(stream) = UnixStream::connect(&path).await {
+            let stream = match UnixStream::connect(&path).await {
+                Ok(stream) => {
+                    told = false;
+                    Some(stream)
+                }
+                Err(err) => {
+                    // Without niri there are no screens to put the bar and wallpaper on.
+                    if !told {
+                        eprintln!(
+                            "apolline: can't reach niri at {}: {err}; trying again",
+                            path.display()
+                        );
+                        told = true;
+                    }
+                    None
+                }
+            };
+            if let Some(stream) = stream {
                 let (read, mut write) = stream.into_split();
                 if write
                     .write_all(Request::EventStream.line().as_bytes())
