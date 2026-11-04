@@ -21,6 +21,7 @@ Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar
 ```sh
 cd packaging/arch && makepkg -si   # apolline-git: the binary, the PAM file, the settings entry and icon
 apolline setup                     # once, as your user: adds Apolline to your niri config
+                                   # (and comments out niri's stock waybar line, so there's one bar)
 ```
 
 ## Try it

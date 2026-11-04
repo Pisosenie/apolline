@@ -1,5 +1,5 @@
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use apolline_config::{
@@ -689,28 +689,62 @@ pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<St
     replace(path, &render(fragment))?;
     done.push(format!("wrote {}", path.display()));
 
+    let (mut next, quieted) = quiet_other_bars(&current);
+    for line in quieted {
+        done.push(format!(
+            "commented out line {line} of {}, so Apolline's bar is the only one",
+            niri.display()
+        ));
+    }
     let include = format!("include \"{}\"", path.display());
-    if current.lines().any(|line| line.trim() == include) {
+    if next.lines().any(|line| line.trim() == include) {
         done.push(format!("{} already includes it", niri.display()));
+    } else {
+        if !next.is_empty() && !next.ends_with('\n') {
+            next.push('\n');
+        }
+        next.push_str(&format!("\n{include}\n"));
+        done.push(format!(
+            "added the include at the end of {}",
+            niri.display()
+        ));
+    }
+    if next == current {
         return Ok(done);
     }
-
     let backup = niri.with_extension("kdl.before-apolline");
-    fs::copy(niri, &backup)?;
-    done.push(format!("saved your niri config as {}", backup.display()));
-
-    let gap = if current.is_empty() || current.ends_with('\n') {
-        ""
+    if !backup.exists() {
+        fs::copy(niri, &backup)?;
+        done.push(format!("saved your niri config as {}", backup.display()));
+    }
+    // A config that's a dotfiles link is written through, not swapped for a plain file.
+    if niri.is_symlink() {
+        fs::write(niri, &next)?;
     } else {
-        "\n"
-    };
-    let mut file = OpenOptions::new().append(true).open(niri)?;
-    write!(file, "{gap}\n{include}\n")?;
-    done.push(format!(
-        "added the include at the end of {}",
-        niri.display()
-    ));
+        replace(niri, &next)?;
+    }
     Ok(done)
+}
+
+// niri's stock config starts waybar; with Apolline's bar too there would be two.
+fn quiet_other_bars(config: &str) -> (String, Vec<usize>) {
+    let mut quieted = Vec::new();
+    let text = config
+        .split_inclusive('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            let bare = line.trim();
+            if bare.starts_with("spawn-at-startup \"waybar\"") {
+                quieted.push(index + 1);
+                let indent = &line[..line.len() - line.trim_start().len()];
+                let end = if line.ends_with('\n') { "\n" } else { "" };
+                format!("{indent}// {bare} // Apolline draws the bar{end}")
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect();
+    (text, quieted)
 }
 
 fn replace(path: &Path, text: &str) -> io::Result<()> {
@@ -903,7 +937,11 @@ mod tests {
             text.trim_end()
                 .ends_with(&format!("include \"{}\"", fragment.display()))
         );
-        assert!(again.last().unwrap().contains("already includes it"));
+        assert!(
+            again
+                .iter()
+                .any(|line| line.contains("already includes it"))
+        );
         assert!(fs::read_to_string(&fragment).unwrap().contains("#f2b35c"));
         assert!(dir.join("config.kdl.before-apolline").exists());
         fs::remove_dir_all(dir).unwrap();
@@ -949,6 +987,25 @@ xwayland-satellite { path "/tmp/evil"; }
         assert!(part.contains("return vec4(1.0); }\n        \"\n    }\n}"));
         assert!(part.ends_with("window-rule { match app-id=\"firefox\"; opacity 0.95; }"));
         assert_eq!(nodes("a 1; b { c; }\nd").len(), 3);
+    }
+
+    #[test]
+    fn setup_quiets_the_stock_waybar_and_nothing_else() {
+        let dir = scratch("waybar");
+        let niri = dir.join("config.kdl");
+        let fragment = dir.join("apolline").join("niri.kdl");
+        let stock = "spawn-at-startup \"waybar\"\n// spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\n";
+        fs::write(&niri, stock).unwrap();
+        let done = setup(&fragment, &niri, &look(&Config::default(), None)).unwrap();
+        let text = fs::read_to_string(&niri).unwrap();
+        assert!(text.starts_with("// spawn-at-startup \"waybar\" // Apolline draws the bar\n"));
+        assert!(text.contains("\n// spawn-at-startup \"waybar\"\nspawn-at-startup \"mako\"\n"));
+        assert!(done.iter().any(|line| line.contains("line 1 ")));
+        assert_eq!(
+            fs::read_to_string(dir.join("config.kdl.before-apolline")).unwrap(),
+            stock
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
