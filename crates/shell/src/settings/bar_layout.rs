@@ -1,0 +1,491 @@
+use super::*;
+use iced::widget::column;
+
+impl Settings {
+    pub(super) fn module_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let mut rows: Vec<Element<'_, Message>> = self
+            .config
+            .modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| {
+                let mut about = Vec::new();
+                if let Some(every) = module.every {
+                    about.push(format!("every {every} s"));
+                }
+                if module.click.is_some() {
+                    about.push("clickable".to_owned());
+                }
+                row![
+                    text(module.command.as_str())
+                        .size(12)
+                        .font(style::mono())
+                        .width(Fill),
+                    text(about.join(" · "))
+                        .size(11)
+                        .color(style::color(style::faint())),
+                    button(icon(Icon::X, 14.0, style::faint()))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::RemoveModule(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([8, 16])
+                .into()
+            })
+            .collect();
+        rows.push(
+            row![
+                text_input("A command, like  date +%A", &self.module_draft)
+                    .on_input(Message::ModuleDraft)
+                    .on_submit(Message::AddModule)
+                    .padding([8, 12])
+                    .size(13)
+                    .font(style::mono())
+                    .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::secondary)
+                    .on_press_maybe(
+                        (!self.module_draft.trim().is_empty()).then_some(Message::AddModule)
+                    ),
+            ]
+            .spacing(8)
+            .padding([12, 16])
+            .into(),
+        );
+        rows.push(note(
+            "Each line the command prints shows on the bar. One that prints once and exits can rerun with every = seconds, and click = a command runs on a click; both go in the file.",
+        ));
+        rows
+    }
+
+    pub(super) fn pinned_apps(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let mut rows: Vec<Element<'_, Message>> = self
+            .config
+            .pinned
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let name = apps::find(&self.apps, id).map_or(id.as_str(), |app| app.name.as_str());
+                row![
+                    crate::windows::picture(&self.apps, id, 20.0, palette).map(|_| Message::Noop),
+                    text(name).size(13).width(Fill),
+                    button(icon(Icon::X, 14.0, style::faint()))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(Message::UnpinApp(index)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([8, 16])
+                .into()
+            })
+            .collect();
+        let query = self.pin_query.trim();
+        let mut found = Row::new().spacing(6);
+        if !query.is_empty() {
+            let mut matches: Vec<(u32, &App)> = self
+                .apps
+                .iter()
+                .filter(|app| !self.config.pinned.contains(&app.id))
+                .filter_map(|app| apps::score(query, app).map(|score| (score, app)))
+                .collect();
+            matches.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+            for (_, app) in matches.into_iter().take(4) {
+                found = found.push(
+                    button(
+                        row![
+                            crate::windows::picture(&self.apps, &app.id, 16.0, palette)
+                                .map(|_| Message::Noop),
+                            text(app.name.as_str()).size(12),
+                        ]
+                        .spacing(6)
+                        .align_y(Alignment::Center),
+                    )
+                    .padding([6, 10])
+                    .style(style::secondary)
+                    .on_press(Message::PinApp(app.id.clone())),
+                );
+            }
+        }
+        rows.push(
+            column![
+                text_input("Find an app to pin", &self.pin_query)
+                    .on_input(Message::PinQuery)
+                    .padding([8, 12])
+                    .size(13)
+                    .style(style::field(palette)),
+                found,
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+        );
+        rows.push(note(
+            "Pinned apps sit before the open windows. A click jumps to the app or starts it; right-click any icon on the bar to pin or unpin it.",
+        ));
+        rows
+    }
+
+    // The bar's pieces and the quick settings button's icons, arranged by dragging.
+    // What the bar shows where and what's off it, and the quick settings button's icons.
+    pub(super) fn boards(&self) -> (board::Board, board::Board) {
+        let bar = &self.config.bar;
+        let placed: Vec<String> = [&bar.left, &bar.center, &bar.right]
+            .iter()
+            .flat_map(|zone| zone.iter().map(|p| p.name().to_owned()))
+            .collect();
+        let named = self.config.modules.iter().filter_map(|m| m.name.clone());
+        let spare = Piece::NAMED
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .chain(named)
+            .filter(|name| !placed.contains(name))
+            .collect();
+        let zone = |pieces: &[Piece]| pieces.iter().map(|p| p.name().to_owned()).collect();
+        let pieces = board::Board {
+            zones: vec![zone(&bar.left), zone(&bar.center), zone(&bar.right)],
+            spare,
+        };
+        let tray = board::Board {
+            zones: vec![bar.tray.iter().map(|i| i.name().to_owned()).collect()],
+            spare: TrayItem::ALL
+                .iter()
+                .filter(|(_, item)| !bar.tray.contains(item))
+                .map(|(name, _)| (*name).to_owned())
+                .collect(),
+        };
+        (pieces, tray)
+    }
+
+    pub(super) fn layout_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
+        let (pieces, tray) = self.boards();
+        vec![
+            column![
+                text("What the bar shows, and where")
+                    .size(13)
+                    .font(style::medium()),
+                board::view(
+                    pieces,
+                    &["Left", "Center", "Right"],
+                    piece_label,
+                    palette,
+                    self.bar_held.clone(),
+                    Message::BarHold,
+                    Message::BoardMove,
+                    Message::BarDrop,
+                ),
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+            column![
+                text("The quick settings button")
+                    .size(13)
+                    .font(style::medium()),
+                board::view(
+                    tray,
+                    &["Shown"],
+                    tray_label,
+                    palette,
+                    self.tray_held.clone(),
+                    Message::TrayHold,
+                    Message::BoardMove,
+                    Message::TrayDrop,
+                ),
+            ]
+            .spacing(10)
+            .padding([12, 16])
+            .into(),
+            note(
+                "Drag a piece to move it along the bar or between its sides, and below the bar to take it off. Mode, media, notifications and recording show only when there's something to show.",
+            ),
+        ]
+    }
+
+    pub(super) fn bar(&self) -> Element<'_, Message> {
+        let look = &self.config.bar;
+        let palette = self.palette();
+        let status = &self.sample;
+        let tall = if look.position.vertical() {
+            300.0
+        } else {
+            96.0
+        };
+        let preview = self.preview(&self.config.desktop.wallpaper, tall, {
+            let bar = bar::view(bar::Bar {
+                mode: None,
+                has_modes: !self.config.modes.is_empty(),
+                palette,
+                active: status.active,
+                status: status.clone(),
+                battery: status.battery,
+                track: None,
+                controls: &self.controls,
+                held: 2,
+                do_not_disturb: self.config.alerts.do_not_disturb,
+                awake: false,
+                apps: &self.apps,
+                now: chrono::Local::now(),
+                look,
+                radius: style::bar_size(&self.config.style).1,
+                panel_open: false,
+                pinned: self
+                    .config
+                    .pinned
+                    .iter()
+                    .map(|id| bar::Pinned {
+                        id: id.clone(),
+                        running: false,
+                        focused: false,
+                    })
+                    .collect(),
+                dragging: None,
+                tray: &[],
+                icons: None,
+                modules: Vec::new(),
+                recording: None,
+                next: None,
+                stats: crate::stats::Stats::default(),
+            })
+            .map(|_| Message::Noop);
+            let inset = if look.floating { 10.0 } else { 0.0 };
+            container(bar)
+                .padding(inset)
+                .width(Fill)
+                .height(Fill)
+                .align_x(if look.position == Edge::Right {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                })
+                .align_y(if look.position == Edge::Bottom {
+                    Alignment::End
+                } else {
+                    Alignment::Start
+                })
+                .into()
+        });
+        column![
+            preview,
+            group("Layout", self.layout_rows(palette)),
+            group(
+                "Place and look",
+                vec![
+                    setting(
+                        "Edge",
+                        "",
+                        segmented(
+                            [
+                                (Edge::Top, "Top", None),
+                                (Edge::Bottom, "Bottom", None),
+                                (Edge::Left, "Left", None),
+                                (Edge::Right, "Right", None),
+                            ],
+                            look.position,
+                            Message::BarEdge,
+                        ),
+                    ),
+                    setting(
+                        "Shape",
+                        "One strip, or a pill for each side and the middle",
+                        segmented(
+                            [
+                                (apolline_config::Shape::Bar, "Bar", None),
+                                (apolline_config::Shape::Islands, "Islands", None),
+                            ],
+                            look.shape,
+                            Message::BarShape,
+                        ),
+                    ),
+                    setting(
+                        "Style",
+                        "An island with a gap around it, or flush with the screen edge",
+                        segmented(
+                            [(true, "Floating", None), (false, "Edge to edge", None)],
+                            look.floating,
+                            Message::BarFloating,
+                        ),
+                    ),
+                    setting(
+                        "Frosted",
+                        "Blur what's behind the bar, like frosted glass",
+                        switch(look.blur, Message::BarBlur, palette),
+                    ),
+                    setting(
+                        "Size",
+                        "Its height, with the text and icons in it",
+                        value_slider(
+                            80..=150,
+                            (self.config.style.bar.size.unwrap_or(1.0) * 100.0).round() as u16,
+                            |v| Message::Style(Part::Bar, Knob::Size, v),
+                            "%",
+                            palette,
+                        ),
+                    ),
+                    setting(
+                        "Font",
+                        "For what the bar says",
+                        self.font_picker(Part::Bar, self.config.style.bar.font),
+                    ),
+                    setting(
+                        "Corners",
+                        "Of the island, when it floats",
+                        value_slider(
+                            0..=24,
+                            self.config
+                                .style
+                                .bar
+                                .radius
+                                .unwrap_or(apolline_theme::metrics::RADIUS_BAR as u16),
+                            |v| Message::Style(Part::Bar, Knob::Corners, v),
+                            "px",
+                            palette,
+                        ),
+                    ),
+                    setting(
+                        "Glass",
+                        "How solid the bar is over the wallpaper",
+                        value_slider(
+                            0..=100,
+                            (look.opacity * 100.0).round() as u16,
+                            Message::BarOpacity,
+                            "%",
+                            palette,
+                        ),
+                    ),
+                ]
+            ),
+            group("Pinned apps", self.pinned_apps(palette)),
+            group("Your modules", self.module_rows(palette)),
+            group(
+                "Calendar",
+                vec![
+                    setting(
+                        "Weather",
+                        "A city, or latitude,longitude. Open-Meteo is asked every 30 minutes; nothing is sent until you set one",
+                        row![
+                            text_input(
+                                "Lisbon",
+                                self.weather_draft
+                                    .as_deref()
+                                    .or(self.config.weather.as_deref())
+                                    .unwrap_or(""),
+                            )
+                            .on_input(Message::WeatherDraft)
+                            .on_submit(Message::SetWeather)
+                            .padding([8, 12])
+                            .size(13)
+                            .width(180)
+                            .style(style::field(palette)),
+                            button(text("Save").size(13))
+                                .padding([8, 14])
+                                .style(style::secondary)
+                                .on_press_maybe(self.weather_draft.is_some().then_some(Message::SetWeather)),
+                        ]
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                    ),
+                ]
+                .into_iter()
+                .chain(self.calendar_rows(palette))
+                .collect()
+            ),
+            group(
+                "Workspaces",
+                vec![setting(
+                    "Show workspaces as",
+                    "Dots stay calm, numbers match Mod+1…9",
+                    segmented(
+                        [
+                            (Workspaces::Dots, "Dots", None),
+                            (Workspaces::Numbers, "Numbers", None)
+                        ],
+                        look.workspaces,
+                        Message::Workspaces,
+                    ),
+                )]
+            ),
+            group(
+                "The machine",
+                vec![setting(
+                    "Show on the bar",
+                    "Read every few seconds while shown; the bar repaints only when a number changes",
+                    {
+                        let stats = self.config.bar.stats;
+                        let chip = |name: &'static str, label: &'static str, on: bool| {
+                            button(text(label).size(12))
+                                .padding([6, 12])
+                                .style(style::choice(on))
+                                .on_press(Message::Stat(name, !on))
+                        };
+                        row![
+                            chip("cpu", "CPU", stats.cpu),
+                            chip("memory", "Memory", stats.memory),
+                            chip("temperature", "Temperature", stats.temperature),
+                        ]
+                        .spacing(6)
+                    },
+                )],
+            ),
+            group(
+                "Clock",
+                vec![
+                    setting(
+                        "Date",
+                        "Weekday, day and month next to the time",
+                        switch(look.date, Message::Date, palette),
+                    ),
+                    setting(
+                        "Seconds",
+                        "",
+                        switch(look.seconds, Message::Seconds, palette)
+                    ),
+                ]
+            ),
+            group(
+                "Battery",
+                vec![setting(
+                    "Percentage",
+                    "Next to the battery icon",
+                    switch(look.battery_percent, Message::BatteryPercent, palette),
+                )]
+            ),
+        ]
+        .spacing(22)
+        .into()
+    }
+}
+
+pub(super) fn piece_label(name: &str) -> String {
+    match name {
+        "mode" => "Mode",
+        "workspaces" => "Workspaces",
+        "windows" => "Apps and windows",
+        "clock" => "Clock",
+        "media" => "Now playing",
+        "notifications" => "Notifications",
+        "recording" => "Recording",
+        "stats" => "CPU and memory",
+        "tray" => "Quick settings",
+        "apps" => "App icons",
+        "modules" => "Your modules",
+        name => return name.to_owned(),
+    }
+    .to_owned()
+}
+
+pub(super) fn tray_label(name: &str) -> String {
+    match name {
+        "keyboard" => "Layout",
+        "awake" => "Awake",
+        "wifi" => "Wi-Fi",
+        "bluetooth" => "Bluetooth",
+        "volume" => "Volume",
+        "battery" => "Battery",
+        name => return name.to_owned(),
+    }
+    .to_owned()
+}

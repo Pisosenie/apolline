@@ -1,0 +1,257 @@
+use super::*;
+use apolline_config::{Mouse, Touchpad};
+
+#[test]
+fn the_bar_can_show_the_machine() {
+    let dir = std::env::temp_dir().join(format!("apolline-stats-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::Stat("temperature", true));
+    let _ = settings.update(Message::Stat("cpu", true));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains(r#"stats = ["cpu", "temperature"]"#), "{text}");
+    assert!(settings.config.bar.stats.cpu && !settings.config.bar.stats.memory);
+    let _ = settings.update(Message::Stat("cpu", false));
+    let _ = settings.update(Message::Stat("temperature", false));
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("stats"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn night_light_gets_its_hours_and_warmth() {
+    let dir = std::env::temp_dir().join(format!("apolline-night-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[layout]\ngaps = 8\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+
+    let _ = settings.update(Message::NightSchedule(true));
+    assert_eq!(settings.config.night.hours, Some((21 * 60, 7 * 60)));
+    let _ = settings.update(Message::NightDraft("22:30-6:00".into()));
+    let _ = settings.update(Message::SetNight);
+    assert_eq!(settings.config.night.hours, Some((22 * 60 + 30, 6 * 60)));
+    let _ = settings.update(Message::NightDraft("late".into()));
+    let _ = settings.update(Message::SetNight);
+    assert_eq!(
+        settings.config.night.hours,
+        Some((22 * 60 + 30, 6 * 60)),
+        "nonsense is kept out"
+    );
+    let _ = settings.update(Message::NightWarmth(3500));
+    let _ = settings.update(Message::Commit);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("[night]\nhours = \"22:30-06:00\"\ntemperature = 3500"),
+        "{text}"
+    );
+    let _ = settings.update(Message::NightSchedule(false));
+    assert_eq!(settings.config.night.hours, None);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_monitor_can_have_its_own_wallpaper_and_give_it_back() {
+    let dir = std::env::temp_dir().join(format!("apolline-monitors-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[desktop]\nwallpaper = \"fog.jpg\"\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    settings.monitors = vec!["eDP-1".into(), "HDMI-A-1".into()];
+
+    let _ = settings.update(Message::ForMonitor(Some("HDMI-A-1".into())));
+    let _ = settings.update(Message::DesktopWallpaper("night.jpg".into()));
+    assert_eq!(
+        settings.config.desktop.outputs,
+        [("HDMI-A-1".to_owned(), "night.jpg".to_owned())]
+    );
+    assert_eq!(settings.config.desktop.wallpaper, "fog.jpg");
+
+    let _ = settings.update(Message::DesktopWallpaper("fog.jpg".into()));
+    assert!(
+        settings.config.desktop.outputs.is_empty(),
+        "same as everywhere drops the line"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn going_back_on_a_display_change_leaves_other_changes_alone() {
+    let dir = std::env::temp_dir().join(format!("apolline-revert-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[layout]\nshadows = true\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+
+    let _ = settings.update(Message::DisplayTurn("eDP-1".into(), "normal"));
+    assert!(
+        settings.revert.is_none(),
+        "nothing changed, nothing to take back"
+    );
+
+    let _ = settings.update(Message::DisplayScale("eDP-1".into(), 125));
+    let _ = settings.update(Message::Shadows(false));
+    let _ = settings.update(Message::RevertDisplays);
+    assert!(settings.config.displays.is_empty());
+    assert!(!settings.config.layout.shadows, "the other change stays");
+    assert!(settings.revert.is_none());
+
+    let _ = settings.update(Message::DisplayVrr("eDP-1".into(), true));
+    let _ = settings.update(Message::DisplayVrr("eDP-1".into(), false));
+    assert!(
+        settings.config.displays.is_empty(),
+        "off goes back to games-only"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn undo_walks_the_file_back_and_redo_forward() {
+    let dir = std::env::temp_dir().join(format!("apolline-undo-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "# mine\n[layout]\ngaps = 10\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+
+    let _ = settings.update(Message::Gaps(20));
+    let _ = settings.update(Message::Commit);
+    let _ = settings.update(Message::ApplyTheme(1));
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+
+    let _ = settings.update(Message::Undo);
+    assert_eq!(settings.config.desktop.theme, None);
+    assert_eq!(settings.config.layout.gaps, 20);
+    let _ = settings.update(Message::Undo);
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "# mine\n[layout]\ngaps = 10\n"
+    );
+    let _ = settings.update(Message::Undo);
+    assert_eq!(settings.config.layout.gaps, 10, "nothing left to undo");
+
+    let _ = settings.update(Message::Redo);
+    assert_eq!(settings.config.layout.gaps, 20);
+    let _ = settings.update(Message::Gaps(4));
+    let _ = settings.update(Message::Commit);
+    assert!(
+        settings.redo.is_empty(),
+        "a new change drops what was undone"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn clicks_end_up_in_the_file_and_comments_survive() {
+    let dir = std::env::temp_dir().join(format!("apolline-settings-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, include_str!("../../../../assets/config.toml")).unwrap();
+
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::AddMode("Work"));
+    let _ = settings.update(Message::AddMode("Evening"));
+    assert_eq!(settings.selected, 1);
+    let _ = settings.update(Message::ModeAccent(Some(Accent::Fixed(Rgba::hex(
+        0xf472b6,
+    )))));
+    let _ = settings.update(Message::Notifications(1, Notifications::Hold));
+    let _ = settings.update(Message::ModeName("Night Owl".into()));
+    let _ = settings.update(Message::ModeNameDone);
+    let _ = settings.update(Message::StartHere(true));
+    let _ = settings.update(Message::RecordModeKey);
+    let _ = settings.update(Message::Key(keyboard::Event::KeyPressed {
+        key: keyboard::Key::Character("n".into()),
+        modified_key: keyboard::Key::Character("n".into()),
+        physical_key: keyboard::key::Physical::Unidentified(
+            keyboard::key::NativeCode::Unidentified,
+        ),
+        location: keyboard::Location::Standard,
+        modifiers: keyboard::Modifiers::LOGO,
+        text: None,
+        repeat: false,
+    }));
+    let _ = settings.update(Message::KeyCommand("foot -e btop".into()));
+    let _ = settings.update(Message::AddModeKey);
+    let _ = settings.update(Message::MoveMode(-1));
+    assert_eq!(settings.selected, 0);
+    let _ = settings.update(Message::Draft("mpv --shuffle ~/Music".into()));
+    let _ = settings.update(Message::Add);
+    let _ = settings.update(Message::Draft("foot".into()));
+    let _ = settings.update(Message::Add);
+    let _ = settings.update(Message::Remove(0));
+    let _ = settings.update(Message::Gaps(14));
+    let _ = settings.update(Message::Commit);
+    let _ = settings.update(Message::AddLayout(Layout("ru", "Russian")));
+    let _ = settings.update(Message::Switch(Switch::Caps));
+    let _ = settings.update(Message::Tap(false));
+    let _ = settings.update(Message::TouchSpeed(0.25));
+    let _ = settings.update(Message::Commit);
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    let (config, problems) = Config::parse(&text);
+    assert_eq!(problems, vec![]);
+    let evening = &config.modes[0];
+    assert_eq!(evening.name, "Night Owl");
+    assert_eq!(evening.accent, Some(Accent::Fixed(Rgba::hex(0xf472b6))));
+    assert_eq!(evening.notifications, Notifications::Hold);
+    assert_eq!(evening.open, ["foot"]);
+    assert_eq!(
+        evening.keys,
+        [("Mod+N".to_owned(), "foot -e btop".to_owned())]
+    );
+    assert_eq!(config.start(), Some(0));
+    assert_eq!(config.modes[1].name, "Work");
+
+    let _ = settings.update(Message::RemoveMode);
+    let _ = settings.update(Message::RemoveMode);
+    let (config, problems) = Config::load(&path);
+    assert_eq!(problems, vec![]);
+    assert_eq!(config.modes.len(), 1);
+    assert_eq!(config.start(), None, "deleting the start mode clears it");
+    assert_eq!(config.layout.gaps, 14);
+    assert_eq!(config.keyboard.layouts, ["ru"]);
+    assert_eq!(config.keyboard.switch, Some(Switch::Caps));
+    assert_eq!(
+        config.touchpad,
+        Some(Touchpad {
+            tap: false,
+            speed: 0.25,
+            ..Touchpad::default()
+        })
+    );
+    assert_eq!(config.mouse, None::<Mouse>);
+    assert!(text.contains("# Check it at any time with:  apolline check"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_shortcut_cannot_take_keys_another_one_uses() {
+    let dir = std::env::temp_dir().join(format!("apolline-keys-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    settings.record(Shortcut::Panel, "Super+Space".into());
+    assert!(
+        settings
+            .shortcut_error
+            .as_deref()
+            .unwrap()
+            .contains("Search apps")
+    );
+    settings.record(Shortcut::Panel, "Mod+Shift+A".into());
+    assert_eq!(settings.shortcut_error, None);
+    let (config, _) = Config::load(&path);
+    assert_eq!(config.shortcuts.panel, "Mod+Shift+A");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn comments_inside_strings_are_not_comments() {
+    assert_eq!(
+        split_comment(r##" "#86bdf0" # a color"##),
+        (r##" "#86bdf0" "##, "# a color")
+    );
+    assert_eq!(split_comment(" 10"), (" 10", ""));
+}
