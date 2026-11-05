@@ -238,7 +238,6 @@ impl Settings {
                     .collect(),
                 dragging: None,
                 tray: &[],
-                icons: None,
                 modules: Vec::new(),
                 recording: None,
                 timers: Vec::new(),

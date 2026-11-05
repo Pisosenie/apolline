@@ -224,7 +224,6 @@ impl Shell {
             apps: &self.apps,
             pinned: self.pinned(),
             tray: &self.tray,
-            icons: self.config.desktop.icons.as_deref(),
             dragging: self
                 .dragging
                 .as_ref()

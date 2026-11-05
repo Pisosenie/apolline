@@ -10,6 +10,10 @@ use zbus::object_server::SignalEmitter;
 use zbus::{Connection, MatchRule, MessageStream, connection};
 use zbus::{OwnedObjectPath, OwnedVariant as OwnedValue, Variant as Value};
 
+use iced::widget::{image, svg};
+
+use crate::apps::Picture;
+
 // The icons apps put in the tray: Steam, Discord, Telegram, VPN clients and the like, over
 // StatusNotifierItem. The shell is the watcher apps register with, unless another one already is,
 // and the host that shows them.
@@ -25,6 +29,8 @@ pub struct Item {
     pub path: String,
     pub title: String,
     pub icon: Icon,
+    // The icon ready to draw, found once by the shell rather than on every frame.
+    pub glyph: Option<Glyph>,
     pub attention: bool,
     // Some apps only offer a menu, no action of their own.
     pub menu_only: bool,
@@ -39,6 +45,15 @@ pub enum Icon {
     Pixels(u32, u32, Vec<u8>),
     None,
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Glyph {
+    Raster(image::Handle),
+    Vector(svg::Handle),
+}
+
+// Pixels are kept no bigger than this: a 16 point icon on a screen at twice the scale.
+const PIXELS: u32 = 32;
 
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -500,20 +515,78 @@ async fn read(connection: &Connection, service: &str, path: &str) -> Option<Item
         path: path.to_owned(),
         title,
         icon,
+        glyph: None,
         attention,
         menu_only,
         menu,
     })
 }
 
-// The biggest picture of the set, ARGB in network order, as RGBA.
+// The smallest picture of the set that's big enough, else the biggest, ARGB in network order, as
+// RGBA and no bigger than it's drawn.
 fn pixmap(value: OwnedValue) -> Option<Icon> {
-    let sizes = Vec::<(i32, i32, Vec<u8>)>::try_from(value).ok()?;
-    let (w, h, data) = sizes
+    let sizes: Vec<(i32, i32, Vec<u8>)> = Vec::<(i32, i32, Vec<u8>)>::try_from(value)
+        .ok()?
         .into_iter()
         .filter(|(w, h, data)| *w > 0 && *h > 0 && data.len() >= (*w * *h * 4) as usize)
-        .max_by_key(|(w, ..)| *w)?;
-    Some(Icon::Pixels(w as u32, h as u32, argb_to_rgba(&data)))
+        .collect();
+    let (w, h, data) = sizes
+        .iter()
+        .filter(|(w, h, _)| (*w).min(*h) as u32 >= PIXELS)
+        .min_by_key(|(w, ..)| *w)
+        .or_else(|| sizes.iter().max_by_key(|(w, ..)| *w))?;
+    let (w, h) = (*w as u32, *h as u32);
+    let rgba = argb_to_rgba(&data[..(w * h * 4) as usize]);
+    Some(fit(w, h, rgba))
+}
+
+fn fit(w: u32, h: u32, rgba: Vec<u8>) -> Icon {
+    if w.max(h) <= PIXELS {
+        return Icon::Pixels(w, h, rgba);
+    }
+    let Some(picture) = ::image::RgbaImage::from_raw(w, h, rgba) else {
+        return Icon::None;
+    };
+    let scale = |side: u32| (side * PIXELS / w.max(h)).max(1);
+    let small = ::image::imageops::resize(
+        &picture,
+        scale(w),
+        scale(h),
+        ::image::imageops::FilterType::Triangle,
+    );
+    Icon::Pixels(small.width(), small.height(), small.into_raw())
+}
+
+// Each item's icon made ready to draw: kept from before when it's the same icon, since a theme
+// search is many file checks and a new picture is uploaded again.
+pub fn draw(items: Vec<Item>, before: &[Item], theme: Option<&str>) -> Vec<Item> {
+    items
+        .into_iter()
+        .map(|item| {
+            let glyph = match before.iter().find(|b| b.icon == item.icon) {
+                Some(known) => known.glyph.clone(),
+                None => glyph(&item.icon, theme),
+            };
+            Item { glyph, ..item }
+        })
+        .collect()
+}
+
+fn glyph(icon: &Icon, theme: Option<&str>) -> Option<Glyph> {
+    match icon {
+        Icon::Pixels(w, h, rgba) => Some(Glyph::Raster(image::Handle::from_rgba(
+            *w,
+            *h,
+            rgba.clone(),
+        ))),
+        Icon::Named(name, folder) => {
+            match crate::apps::icon_named(name, theme, folder.as_deref())? {
+                Picture::Vector(path) => Some(Glyph::Vector(svg::Handle::from_path(path))),
+                Picture::Raster(path) => Some(Glyph::Raster(image::Handle::from_path(path))),
+            }
+        }
+        Icon::None => None,
+    }
 }
 
 fn argb_to_rgba(data: &[u8]) -> Vec<u8> {
@@ -687,6 +760,50 @@ mod tests {
             Some(Icon::Pixels(2, 1, vec![4, 5, 6, 128, 7, 8, 9, 255])),
             "the biggest one"
         );
+    }
+
+    #[test]
+    fn big_pixmaps_are_brought_down_to_the_size_drawn() {
+        let square = |side: i32| (side, side, vec![255u8; (side * side * 4) as usize]);
+        let sizes = vec![square(16), square(48), square(256)];
+        let value = OwnedValue::try_from(Value::from(sizes)).unwrap();
+        let Some(Icon::Pixels(w, h, rgba)) = pixmap(value) else {
+            panic!("no pixels");
+        };
+        assert_eq!((w, h), (32, 32), "from the 48, not the 256");
+        assert_eq!(rgba.len(), 32 * 32 * 4);
+        let Icon::Pixels(w, h, _) = fit(64, 16, vec![0; 64 * 16 * 4]) else {
+            panic!("no pixels");
+        };
+        assert_eq!((w, h), (32, 8), "the shape is kept");
+    }
+
+    #[test]
+    fn an_icon_seen_before_keeps_its_picture() {
+        let item = |icon: Icon| Item {
+            service: ":1.7".into(),
+            path: DEFAULT_ITEM_PATH.into(),
+            title: "Telegram".into(),
+            icon,
+            glyph: None,
+            attention: false,
+            menu_only: false,
+            menu: None,
+        };
+        let dot = Icon::Pixels(1, 1, vec![1, 2, 3, 255]);
+        let first = draw(vec![item(dot.clone())], &[], None);
+        let again = draw(vec![item(dot)], &first, None);
+        assert!(first[0].glyph.is_some());
+        assert_eq!(
+            again[0].glyph, first[0].glyph,
+            "the same picture, not a new upload"
+        );
+        let other = draw(
+            vec![item(Icon::Pixels(1, 1, vec![9, 9, 9, 255]))],
+            &first,
+            None,
+        );
+        assert_ne!(other[0].glyph, first[0].glyph);
     }
 
     #[test]

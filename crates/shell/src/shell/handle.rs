@@ -317,7 +317,10 @@ impl Shell {
                 }
             }
             Message::OpenPinned(id) => return self.open_pinned(&id),
-            Message::Tray(crate::tray::Event::Items(items)) => self.tray = items,
+            Message::Tray(crate::tray::Event::Items(items)) => {
+                let theme = self.config.desktop.icons.as_deref();
+                self.tray = crate::tray::draw(items, &self.tray, theme);
+            }
             Message::Tunnels(tunnels) => self.tunnels = tunnels,
             Message::Vpn(tunnel, on) => {
                 self.net_note = None;

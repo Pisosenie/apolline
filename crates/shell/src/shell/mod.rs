@@ -581,6 +581,7 @@ impl Shell {
     fn reload_config(&mut self) -> Task<Message> {
         let (mut config, diagnostics) = Config::load(&self.config_path);
         let key = self.current().map(ModeSettings::key);
+        let icons = self.config.desktop.icons.clone();
         if config.desktop.rotate == 0 || config.desktop.wallpaper != self.picked {
             self.rotated = None;
         }
@@ -591,6 +592,10 @@ impl Shell {
         self.mode = key.and_then(|key| config.find(&key));
         self.plain = config;
         self.dress();
+        if self.config.desktop.icons != icons {
+            let tray = std::mem::take(&mut self.tray);
+            self.tray = crate::tray::draw(tray, &[], self.config.desktop.icons.as_deref());
+        }
         let scheduled = self.night_scheduled();
         if scheduled != self.night.0 {
             self.night = (scheduled, None);

@@ -38,9 +38,8 @@ pub struct Bar<'a> {
     pub pinned: Vec<Pinned>,
     // An app being dragged on the row of pinned apps: whether it was pinned, and where it is.
     pub dragging: Option<(&'a str, bool, f32)>,
-    // What apps keep in the tray, and the icon theme to draw them from.
+    // What apps keep in the tray.
     pub tray: &'a [crate::tray::Item],
-    pub icons: Option<&'a str>,
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
     // Timers running, soonest first: what for and how long is left.
@@ -876,33 +875,21 @@ pub fn tray_icons<'a>(bar: &Bar<'a>) -> Vec<Element<'a, Message>> {
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            let glyph: Element<'a, Message> = match &item.icon {
-                crate::tray::Icon::Pixels(w, h, rgba) => iced::widget::image(
-                    iced::widget::image::Handle::from_rgba(*w, *h, rgba.clone()),
-                )
-                .width(16)
-                .height(16)
-                .into(),
-                crate::tray::Icon::Named(name, folder) => {
-                    match crate::apps::icon_named(name, bar.icons, folder.as_deref()) {
-                        Some(apps::Picture::Vector(path)) => {
-                            iced::widget::svg(iced::widget::svg::Handle::from_path(path))
-                                .width(16)
-                                .height(16)
-                                .into()
-                        }
-                        Some(apps::Picture::Raster(path)) => {
-                            iced::widget::image(iced::widget::image::Handle::from_path(path))
-                                .width(16)
-                                .height(16)
-                                .into()
-                        }
-                        None => crate::windows::picture(bar.apps, name, 16.0, palette),
-                    }
+            let glyph: Element<'a, Message> = match (&item.glyph, &item.icon) {
+                (Some(crate::tray::Glyph::Raster(handle)), _) => {
+                    iced::widget::image(handle.clone())
+                        .width(16)
+                        .height(16)
+                        .into()
                 }
-                crate::tray::Icon::None => {
-                    crate::windows::picture(bar.apps, &item.title, 16.0, palette)
+                (Some(crate::tray::Glyph::Vector(handle)), _) => iced::widget::svg(handle.clone())
+                    .width(16)
+                    .height(16)
+                    .into(),
+                (None, crate::tray::Icon::Named(name, _)) => {
+                    crate::windows::picture(bar.apps, name, 16.0, palette)
                 }
+                (None, _) => crate::windows::picture(bar.apps, &item.title, 16.0, palette),
             };
             let attention = item.attention;
             let glyph = container(glyph).padding(1).style(move |_| {
