@@ -537,3 +537,12 @@ fn a_bar_turned_off_is_kept_as_the_screen_left_out() {
     assert!(!text.contains("skip"), "{text}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn idle_sliders_reach_the_hours_the_config_allows() {
+    assert_eq!(minutes_at(notch(5)), 5);
+    assert_eq!(minutes_at(notch(60)), 60);
+    assert_eq!(minutes_at(notch(90)), 90);
+    assert_eq!(minutes_at(notch(100)), 105);
+    assert_eq!(minutes_at(notch(240)), 240);
+}
