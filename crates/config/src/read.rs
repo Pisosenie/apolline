@@ -7,19 +7,19 @@ use toml::de::{DeString, DeTable, DeValue};
 use crate::{
     Accent, Alerts, Appear, Bar, Blur, Calendar, Center, Config, Corner, Desktop, Diagnostic,
     Display, Edge, Idle, IdleTimes, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse,
-    Notifications, Piece, Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem,
-    Trigger, Width, Windows, Workspaces, slug,
+    Notifications, Piece, Plugin, Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad,
+    TrayItem, Trigger, Width, Windows, Workspaces, slug,
 };
 
-type Key<'i> = Spanned<DeString<'i>>;
-type Value<'i> = Spanned<DeValue<'i>>;
+pub(crate) type Key<'i> = Spanned<DeString<'i>>;
+pub(crate) type Value<'i> = Spanned<DeValue<'i>>;
 
 const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru")];
 
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 25] = [
+const SECTIONS: [&str; 26] = [
     "general",
     "theme",
     "desktop",
@@ -45,6 +45,7 @@ const SECTIONS: [&str; 25] = [
     "panel",
     "clock",
     "launcher",
+    "plugins",
 ];
 
 const MODULE_OPTIONS: [&str; 8] = [
@@ -97,22 +98,11 @@ const NOTIFICATIONS: [(&str, Notifications); 3] = [
     ("hold", Notifications::Hold),
 ];
 
-pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
-    let (doc, errors) = DeTable::parse_recoverable(src);
-    let mut reader = Reader {
-        src,
-        diagnostics: Vec::new(),
-        start: None,
-        placed: Vec::new(),
-        widgets_line: 0,
-        style_bar_opacity: None,
-        bar_opacity_set: false,
-    };
-    for error in &errors {
-        let line = error.span().map_or(0, |span| reader.line(span));
-        let message = error.message().lines().next().unwrap_or("syntax error");
-        reader.diagnostics.push(Diagnostic::new(line, message));
-    }
+// Plugins, when given, are what names like "ip.address" are checked against; without them such
+// names are taken on trust, since what's installed is the shell's to know.
+pub(crate) fn document(src: &str, plugins: Option<&[Plugin]>) -> (Config, Vec<Diagnostic>) {
+    let (doc, mut reader) = Reader::start(src);
+    reader.plugins = plugins;
 
     let mut config = Config::default();
     reader.root(doc.get_ref(), &mut config);
@@ -132,13 +122,15 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
     }
     reader.settle_bar(&mut config);
     reader.settle_widgets(&mut config);
+    reader.settle_plugins(&config);
     reader.diagnostics.sort_by_key(|d| d.line);
     (config, reader.diagnostics)
 }
 
-struct Reader<'s> {
+pub(crate) struct Reader<'s> {
     src: &'s str,
-    diagnostics: Vec<Diagnostic>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) plugins: Option<&'s [Plugin]>,
     start: Option<usize>,
     // Names placed on the bar and their lines, checked once [[module]]s are known.
     placed: Vec<(String, usize)>,
@@ -147,6 +139,31 @@ struct Reader<'s> {
     // [style.bar] opacity, used when [bar] opacity isn't given.
     style_bar_opacity: Option<f32>,
     bar_opacity_set: bool,
+    // Plugin tiles in [panel] tiles and their line, checked once [plugins] is known.
+    pub(crate) plugin_tiles: Vec<(String, usize)>,
+}
+
+impl<'s> Reader<'s> {
+    pub(crate) fn start(src: &'s str) -> (Spanned<DeTable<'s>>, Self) {
+        let (doc, errors) = DeTable::parse_recoverable(src);
+        let mut reader = Reader {
+            src,
+            diagnostics: Vec::new(),
+            plugins: None,
+            start: None,
+            placed: Vec::new(),
+            widgets_line: 0,
+            style_bar_opacity: None,
+            bar_opacity_set: false,
+            plugin_tiles: Vec::new(),
+        };
+        for error in &errors {
+            let line = error.span().map_or(0, |span| reader.line(span));
+            let message = error.message().lines().next().unwrap_or("syntax error");
+            reader.diagnostics.push(Diagnostic::new(line, message));
+        }
+        (doc, reader)
+    }
 }
 
 impl Reader<'_> {
@@ -362,6 +379,11 @@ impl Reader<'_> {
                 "module" => self.modules(key, value, config),
                 "template" => self.templates(key, value, config),
                 "mode" => self.modes(key, value, config),
+                "plugins" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.plugins(t, &mut config.plugins)
+                    }
+                }
                 _ => self.unknown(key, "section", &SECTIONS),
             }
         }
@@ -1017,34 +1039,7 @@ impl Reader<'_> {
             let DeValue::Table(table) = item.get_ref() else {
                 continue;
             };
-            let mut module = Module {
-                name: None,
-                command: String::new(),
-                every: None,
-                click: None,
-                right_click: None,
-                middle_click: None,
-                scroll_up: None,
-                scroll_down: None,
-            };
-            for (key, value) in table.iter() {
-                let text = |me: &mut Self| {
-                    me.string(key, value)
-                        .map(|v| v.trim().to_owned())
-                        .filter(|v| !v.is_empty())
-                };
-                match key.get_ref().as_ref() {
-                    "name" => module.name = text(self),
-                    "command" => module.command = text(self).unwrap_or_default(),
-                    "every" => module.every = self.number(key, value, 1..=65535).map(u32::from),
-                    "click" => module.click = text(self),
-                    "right_click" => module.right_click = text(self),
-                    "middle_click" => module.middle_click = text(self),
-                    "scroll_up" => module.scroll_up = text(self),
-                    "scroll_down" => module.scroll_down = text(self),
-                    _ => self.unknown(key, "option", &MODULE_OPTIONS),
-                }
-            }
+            let module = self.module(table);
             if module.command.is_empty() {
                 self.diagnostics.push(
                     Diagnostic::new(self.line(item.span()), "a module needs a command")
@@ -1054,6 +1049,36 @@ impl Reader<'_> {
                 config.modules.push(module);
             }
         }
+    }
+
+    // A [[module]], or a plugin's [[bar]] or [[widget]], which are the same thing.
+    pub(crate) fn module(&mut self, table: &DeTable) -> Module {
+        let mut module = Module {
+            name: None,
+            command: String::new(),
+            every: None,
+            click: None,
+            right_click: None,
+            middle_click: None,
+            scroll_up: None,
+            scroll_down: None,
+            plugin: None,
+        };
+        for (key, value) in table.iter() {
+            let text = |me: &mut Self| me.text(key, value);
+            match key.get_ref().as_ref() {
+                "name" => module.name = text(self),
+                "command" => module.command = text(self).unwrap_or_default(),
+                "every" => module.every = self.number(key, value, 1..=65535).map(u32::from),
+                "click" => module.click = text(self),
+                "right_click" => module.right_click = text(self),
+                "middle_click" => module.middle_click = text(self),
+                "scroll_up" => module.scroll_up = text(self),
+                "scroll_down" => module.scroll_down = text(self),
+                _ => self.unknown(key, "option", &MODULE_OPTIONS),
+            }
+        }
+        module
     }
 
     fn templates(&mut self, key: &Key, value: &Value, config: &mut Config) {
@@ -1561,7 +1586,12 @@ impl Reader<'_> {
             };
             let mut kept = Vec::new();
             for name in names {
-                if !known.contains(&name.as_str()) {
+                // A plugin's tile, checked once [plugins] says which are on.
+                if what == "tile" && name.contains('.') && !kept.contains(&name) {
+                    self.plugin_tiles
+                        .push((name.clone(), self.line(value.span())));
+                    kept.push(name);
+                } else if !known.contains(&name.as_str()) {
                     self.unknown_name(value, &name, what, known);
                 } else if !kept.contains(&name) {
                     kept.push(name);
@@ -1587,28 +1617,44 @@ impl Reader<'_> {
         }
     }
 
-    fn section<'a, 'i>(&mut self, key: &Key, value: &'a Value<'i>) -> Option<&'a DeTable<'i>> {
+    pub(crate) fn section<'a, 'i>(
+        &mut self,
+        key: &Key,
+        value: &'a Value<'i>,
+    ) -> Option<&'a DeTable<'i>> {
         match value.get_ref() {
             DeValue::Table(table) => Some(table),
             _ => self.wrong(key, value, "a section like [name]"),
         }
     }
 
-    fn string<'a>(&mut self, key: &Key, value: &'a Value) -> Option<&'a str> {
+    pub(crate) fn string<'a>(&mut self, key: &Key, value: &'a Value) -> Option<&'a str> {
         value
             .get_ref()
             .as_str()
             .or_else(|| self.wrong(key, value, "text in quotes"))
     }
 
-    fn boolean(&mut self, key: &Key, value: &Value) -> Option<bool> {
+    // Text with its ends trimmed; blank is none.
+    pub(crate) fn text(&mut self, key: &Key, value: &Value) -> Option<String> {
+        self.string(key, value)
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    }
+
+    pub(crate) fn boolean(&mut self, key: &Key, value: &Value) -> Option<bool> {
         value
             .get_ref()
             .as_bool()
             .or_else(|| self.wrong(key, value, "true or false"))
     }
 
-    fn number(&mut self, key: &Key, value: &Value, range: RangeInclusive<u16>) -> Option<u16> {
+    pub(crate) fn number(
+        &mut self,
+        key: &Key,
+        value: &Value,
+        range: RangeInclusive<u16>,
+    ) -> Option<u16> {
         let (low, high) = (*range.start(), *range.end());
         let parsed = value
             .get_ref()
@@ -1693,7 +1739,7 @@ impl Reader<'_> {
         }
     }
 
-    fn strings(&mut self, key: &Key, value: &Value) -> Option<Vec<String>> {
+    pub(crate) fn strings(&mut self, key: &Key, value: &Value) -> Option<Vec<String>> {
         let list = value.get_ref().as_array().and_then(|items| {
             items
                 .iter()
@@ -1773,7 +1819,12 @@ impl Reader<'_> {
         }
     }
 
-    fn choice<T: Copy>(&mut self, key: &Key, value: &Value, options: &[(&str, T)]) -> Option<T> {
+    pub(crate) fn choice<T: Copy>(
+        &mut self,
+        key: &Key,
+        value: &Value,
+        options: &[(&str, T)],
+    ) -> Option<T> {
         let names: Vec<&str> = options.iter().map(|(name, _)| *name).collect();
         let Some(text) = value.get_ref().as_str() else {
             return self.wrong(key, value, &format!("one of {}", quoted(&names)));
@@ -1804,14 +1855,15 @@ impl Reader<'_> {
             .iter()
             .filter_map(|m| m.name.clone())
             .collect();
-        self.settle_pieces(&mut config.bar, &modules);
+        let enabled = &config.plugins.enabled;
+        self.settle_pieces(&mut config.bar, &modules, enabled);
         for (_, bar) in &mut config.bar.per_screen {
-            self.settle_pieces(bar, &modules);
+            self.settle_pieces(bar, &modules, enabled);
         }
     }
 
     // One bar's pieces; a screen's own bar gets the same checks, each problem said once.
-    fn settle_pieces(&mut self, bar: &mut crate::Bar, modules: &[String]) {
+    fn settle_pieces(&mut self, bar: &mut crate::Bar, modules: &[String], enabled: &[String]) {
         let mut known: Vec<&str> = Piece::NAMED.iter().map(|(name, _)| *name).collect();
         known.extend(modules.iter().map(String::as_str));
         let mut seen: Vec<Piece> = Vec::new();
@@ -1823,8 +1875,15 @@ impl Reader<'_> {
                     .iter()
                     .find(|(name, _)| name == piece.name())
                     .map_or(0, |(_, line)| *line);
-                let missing = matches!(&piece, Piece::Module(name) if !modules.contains(name));
-                let problem = if missing {
+                // A plugin's piece stays even if it names nothing yet: it may be enabled later.
+                let plugin = matches!(&piece, Piece::Module(name) if name.contains('.'));
+                let missing =
+                    !plugin && matches!(&piece, Piece::Module(name) if !modules.contains(name));
+                let problem = if plugin && !seen.contains(&piece) {
+                    seen.push(piece.clone());
+                    kept.push(piece.clone());
+                    self.plugin_part(piece.name(), line, enabled, Plugin::pieces, "bar piece")
+                } else if missing {
                     let name = piece.name();
                     let hint = match suggest(name, &known) {
                         Some(close) => format!("did you mean “{close}”?"),
@@ -1864,7 +1923,18 @@ impl Reader<'_> {
         known.extend(config.modules.iter().filter_map(|m| m.name.as_deref()));
         let mut kept: Vec<String> = Vec::new();
         for name in &config.desktop.widgets {
-            if !known.contains(&name.as_str()) {
+            if name.contains('.') {
+                let enabled = &config.plugins.enabled;
+                let line = self.widgets_line;
+                if let Some(problem) =
+                    self.plugin_part(name, line, enabled, Plugin::pieces, "widget")
+                {
+                    self.diagnostics.push(problem);
+                }
+                if !kept.contains(name) {
+                    kept.push(name.clone());
+                }
+            } else if !known.contains(&name.as_str()) {
                 let hint = match suggest(name, &known) {
                     Some(close) => format!("did you mean “{close}”?"),
                     None => format!("known: {}, or the name of a [[module]]", known.join(", ")),
@@ -1880,7 +1950,7 @@ impl Reader<'_> {
         config.desktop.widgets = kept;
     }
 
-    fn unknown_name(&mut self, value: &Value, name: &str, what: &str, known: &[&str]) {
+    pub(crate) fn unknown_name(&mut self, value: &Value, name: &str, what: &str, known: &[&str]) {
         let hint = match suggest(name, known) {
             Some(close) => format!("did you mean “{close}”?"),
             None => format!("known: {}", known.join(", ")),
@@ -1890,14 +1960,14 @@ impl Reader<'_> {
         );
     }
 
-    fn wrong<T>(&mut self, key: &Key, value: &Value, expected: &str) -> Option<T> {
+    pub(crate) fn wrong<T>(&mut self, key: &Key, value: &Value, expected: &str) -> Option<T> {
         let message = format!("“{}” should be {expected}", key.get_ref());
         self.diagnostics
             .push(Diagnostic::new(self.line(value.span()), message));
         None
     }
 
-    fn unknown(&mut self, key: &Key, what: &str, known: &[&str]) {
+    pub(crate) fn unknown(&mut self, key: &Key, what: &str, known: &[&str]) {
         let name = key.get_ref();
         let hint = match suggest(name, known) {
             Some(close) => format!("did you mean “{close}”?"),
@@ -1908,7 +1978,7 @@ impl Reader<'_> {
         self.diagnostics.push(diagnostic);
     }
 
-    fn line(&self, span: Range<usize>) -> usize {
+    pub(crate) fn line(&self, span: Range<usize>) -> usize {
         let end = span.start.min(self.src.len());
         self.src.as_bytes()[..end]
             .iter()
@@ -1975,7 +2045,7 @@ fn combo_is_valid(combo: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '_')
 }
 
-fn suggest<'a>(input: &str, known: &[&'a str]) -> Option<&'a str> {
+pub(crate) fn suggest<'a>(input: &str, known: &[&'a str]) -> Option<&'a str> {
     known
         .iter()
         .map(|candidate| (*candidate, strsim::jaro_winkler(input, candidate)))

@@ -1,6 +1,7 @@
 mod diagnostic;
 mod edit;
 mod pieces;
+mod plugin;
 mod read;
 mod theme;
 
@@ -12,6 +13,7 @@ use apolline_theme::{ACCENTS, Palette, Rgba, Scheme, palettes};
 pub use diagnostic::Diagnostic;
 pub use edit::Editor;
 pub use pieces::{Piece, TrayItem};
+pub use plugin::{Kind, Plugin, Plugins, Setting, Source, Tile, env_name, valid_name};
 pub use theme::Theme;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +51,7 @@ pub struct Config {
     // Where the clock's calendar gets its events.
     pub calendars: Vec<Calendar>,
     pub modes: Vec<ModeSettings>,
+    pub plugins: Plugins,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -310,6 +313,8 @@ pub struct Module {
     pub middle_click: Option<String>,
     pub scroll_up: Option<String>,
     pub scroll_down: Option<String>,
+    // The plugin it comes from, whose folder and settings its commands run with.
+    pub plugin: Option<String>,
 }
 
 // A file of yours with {{accent}}, {{background}} and the like, filled in from the palette and
@@ -1000,12 +1005,25 @@ pub enum Notifications {
 
 impl Config {
     pub fn parse(src: &str) -> (Self, Vec<Diagnostic>) {
-        read::document(src)
+        read::document(src, None)
+    }
+
+    // Read knowing which plugins are installed, so their names are checked too.
+    pub fn parse_with(src: &str, plugins: &[Plugin]) -> (Self, Vec<Diagnostic>) {
+        read::document(src, Some(plugins))
     }
 
     pub fn load(path: &Path) -> (Self, Vec<Diagnostic>) {
+        Self::load_from(path, None)
+    }
+
+    pub fn load_with(path: &Path, plugins: &[Plugin]) -> (Self, Vec<Diagnostic>) {
+        Self::load_from(path, Some(plugins))
+    }
+
+    fn load_from(path: &Path, plugins: Option<&[Plugin]>) -> (Self, Vec<Diagnostic>) {
         match std::fs::read_to_string(path) {
-            Ok(src) => Self::parse(&src),
+            Ok(src) => read::document(&src, plugins),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => (Self::default(), Vec::new()),
             Err(err) => (
                 Self::default(),
@@ -1212,6 +1230,7 @@ impl Default for Config {
             weather: None,
             calendars: Vec::new(),
             modes: Vec::new(),
+            plugins: Plugins::default(),
         }
     }
 }
