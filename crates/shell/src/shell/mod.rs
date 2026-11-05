@@ -706,6 +706,7 @@ impl Shell {
             Osd::Brightness(level) => self.controls.brightness = Some(*level),
             _ => {}
         }
+        self.bring_osd(&osd);
         let serial = self.osd.as_ref().map_or(0, |(_, serial)| serial + 1);
         self.osd = Some((osd, serial));
         Task::perform(tokio::time::sleep(osd::SHOWN_FOR), move |()| {

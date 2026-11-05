@@ -429,7 +429,7 @@ impl Shell {
             Message::Osd(Some(osd)) => return self.show(osd),
             Message::OsdDone(serial) => {
                 if self.osd.as_ref().is_some_and(|(_, shown)| *shown == serial) {
-                    self.osd = None;
+                    self.fade_osd();
                 }
             }
             Message::Overlay(overlay) => return self.set_overlay(overlay),

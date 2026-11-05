@@ -5,16 +5,6 @@ impl Shell {
         self.config.bar.position
     }
 
-    pub fn osd_view(&self) -> Option<Element<'_, Message>> {
-        style::within(self.config.style.osd.font, || self.built_osd())
-    }
-
-    pub(super) fn built_osd(&self) -> Option<Element<'_, Message>> {
-        self.osd
-            .as_ref()
-            .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode), self.config.style.osd))
-    }
-
     #[cfg(target_os = "linux")]
     pub fn size_of(&self, overlay: Overlay) -> f32 {
         let style = &self.config.style;

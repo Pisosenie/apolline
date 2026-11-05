@@ -8,6 +8,8 @@ use iced::{Alignment, Vector};
 
 pub const OPEN: Duration = Duration::from_millis(180);
 pub const CLOSE: Duration = Duration::from_millis(120);
+// Cards closing a gap, the workspace pill, a level bar.
+pub const MOVE: Duration = Duration::from_millis(220);
 // How far an overlay slides in from its edge, and how much smaller it starts.
 const SLIDE: f32 = 10.0;
 const SHRINK: f32 = 0.04;
@@ -267,7 +269,7 @@ mod tests {
     fn nothing_moves_without_animations() {
         let now = Instant::now();
         let off = Speed::new(Some(0.0), false);
-        let tween = Tween::still(0.0, now).go(3.0, now, off.time(OPEN));
+        let tween = Tween::still(0.0, now).go(3.0, now, off.time(MOVE));
         assert!(!tween.moving(now));
         assert_eq!(tween.value(now), 3.0);
         let open = Reveal::hidden(now).show(now, off);

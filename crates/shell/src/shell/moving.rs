@@ -1,5 +1,5 @@
 use super::*;
-use crate::motion::{Pose, Reveal, Speed};
+use crate::motion::{self, MOVE, Pose, Reveal, Speed, Tween};
 use crate::posed;
 
 // What on the shell's surfaces is coming, going or moving, and the time it's all drawn at.
@@ -8,6 +8,9 @@ pub(super) struct Moving {
     // The overlay on screen, and the one still fading out after it was closed.
     overlay: Reveal,
     leaving: Option<Overlay>,
+    // The OSD, and where its level bar is.
+    osd: Reveal,
+    level: Tween,
 }
 
 impl Moving {
@@ -16,12 +19,14 @@ impl Moving {
             now,
             overlay: Reveal::hidden(now),
             leaving: None,
+            osd: Reveal::hidden(now),
+            level: Tween::still(0.0, now),
         }
     }
 
     // Frames come only while this is so; at rest there are none.
     pub(super) fn busy(&self) -> bool {
-        self.overlay.moving(self.now)
+        self.overlay.moving(self.now) || self.osd.moving(self.now) || self.level.moving(self.now)
     }
 }
 
@@ -54,6 +59,9 @@ impl Shell {
             && let Some(gone) = self.moving.leaving.take()
         {
             self.let_go(gone);
+        }
+        if self.moving.osd.is_gone(self.moving.now) {
+            self.osd = None;
         }
     }
 
@@ -107,5 +115,49 @@ impl Shell {
         posed::posed(built, Pose::faded(shown))
             .passive(self.overlay.is_none())
             .into()
+    }
+
+    // A new OSD fades in; the same kind again keeps it up, its bar gliding to the new level.
+    pub(super) fn bring_osd(&mut self, osd: &Osd) {
+        let now = self.moving.now;
+        let speed = self.speed();
+        let same = self
+            .osd
+            .as_ref()
+            .is_some_and(|(was, _)| std::mem::discriminant(was) == std::mem::discriminant(osd));
+        if let Some(level) = osd::level(osd) {
+            self.moving.level = if same {
+                self.moving.level.go(level, now, speed.time(MOVE))
+            } else {
+                Tween::still(level, now)
+            };
+        }
+        self.moving.osd = self.moving.osd.show(now, speed);
+    }
+
+    pub(super) fn fade_osd(&mut self) {
+        self.moving.osd = self.moving.osd.hide(self.moving.now, self.speed());
+    }
+
+    // Rising a little as it fades in.
+    pub fn osd_view(&self) -> Option<Element<'_, Message>> {
+        let (osd, _) = self.osd.as_ref()?;
+        let now = self.moving.now;
+        let shown = self.moving.osd.progress(now);
+        let built = style::within(self.config.style.osd.font, || {
+            style::faded(shown, || {
+                osd::view(
+                    osd,
+                    self.moving.level.value(now),
+                    self.config.palette(self.mode),
+                    self.config.style.osd,
+                )
+            })
+        });
+        let pose = Pose {
+            opacity: shown,
+            ..motion::entrance(shown, Edge::Bottom, Alignment::Center)
+        };
+        Some(posed::posed(built, pose).into())
     }
 }
