@@ -86,14 +86,8 @@ pub fn install_from(link: &str) -> Result<Theme, String> {
     if !link.starts_with("https://") {
         return Err("a theme link starts with https://".into());
     }
-    let text = ureq::get(link)
-        .call()
-        .map_err(|err| err.to_string())?
-        .body_mut()
-        .with_config()
-        .limit(256 * 1024)
-        .read_to_string()
-        .map_err(|err| err.to_string())?;
+    let bytes = crate::catalog::get(link, 256 * 1024)?;
+    let text = String::from_utf8(bytes).map_err(|err| err.to_string())?;
     let theme = Theme::parse(&text)?;
     save_into(&dir(), &theme)?;
     Ok(theme)

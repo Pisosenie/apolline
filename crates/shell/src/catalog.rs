@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use apolline_config::{Theme, slug};
 use iced::widget::image::Handle;
@@ -23,8 +24,13 @@ fn home() -> String {
     std::env::var("APOLLINE_CATALOG").unwrap_or_else(|_| HOME.to_owned())
 }
 
-fn get(link: &str, limit: u64) -> Result<Vec<u8>, String> {
-    ureq::get(link)
+// A server that trickles or never answers gives up in time, like the calendars.
+pub fn get(link: &str, limit: u64) -> Result<Vec<u8>, String> {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(30)))
+        .build()
+        .new_agent()
+        .get(link)
         .call()
         .map_err(|err| err.to_string())?
         .body_mut()
