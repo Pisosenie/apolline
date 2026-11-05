@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use iced::futures::StreamExt;
 use zbus::{Connection, ObjectPath, OwnedObjectPath, OwnedVariant, Variant};
@@ -13,6 +14,22 @@ const SCHEMA: &str = "org.apolline.CalDav";
 const PLUGIN_SCHEMA: &str = "org.apolline.Plugin";
 // How long the keyring's own window may wait for an answer.
 const PATIENCE: Duration = Duration::from_secs(120);
+// Plugins' commands start often, a search at every pause in typing: their secrets are asked for
+// over one connection, for this long at most, and what the keyring said is kept a little while.
+const PLUGIN_PATIENCE: Duration = Duration::from_secs(2);
+const KEPT_FOR: Duration = Duration::from_secs(10);
+
+type Found = Vec<(String, String)>;
+
+static BUS: Mutex<Option<Connection>> = Mutex::new(None);
+static KEPT: Mutex<Vec<Kept>> = Mutex::new(Vec::new());
+
+struct Kept {
+    plugin: String,
+    keys: Vec<String>,
+    at: Instant,
+    found: Found,
+}
 
 type Secret = (OwnedObjectPath, Vec<u8>, Vec<u8>, String);
 
@@ -122,18 +139,66 @@ pub async fn forget(url: &str, user: &str) -> Result<(), String> {
     Keyring::open().await?.remove(attributes(url, user)).await
 }
 
-// A plugin's secret settings by key, those there are; a locked keyring or none gives nothing.
-pub async fn plugin_find(plugin: &str, keys: &[String]) -> Vec<(String, String)> {
-    let Ok(keyring) = Keyring::open().await else {
-        return Vec::new();
-    };
+// A plugin's secret settings by key, those there are; a locked keyring, none or a slow one gives
+// nothing.
+pub async fn plugin_find(plugin: &str, keys: &[String]) -> Found {
+    if let Some(found) = kept(plugin, keys) {
+        return found;
+    }
+    match tokio::time::timeout(PLUGIN_PATIENCE, plugin_read(plugin, keys)).await {
+        Ok(Ok(Some(found))) => {
+            keep(plugin, keys, &found);
+            found
+        }
+        Ok(Err(_)) => {
+            // Perhaps the bus went away; the next one connects again.
+            *BUS.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            Vec::new()
+        }
+        Ok(Ok(None)) | Err(_) => Vec::new(),
+    }
+}
+
+// None while the keyring is locked, so it's asked again once it's open.
+async fn plugin_read(plugin: &str, keys: &[String]) -> Result<Option<Found>, String> {
+    let keyring = Keyring::on(bus().await?).await?;
     let mut found = Vec::new();
     for key in keys {
-        if let Ok(Some(Some(value))) = keyring.read(plugin_attributes(plugin, key)).await {
-            found.push((key.clone(), value));
+        match keyring.read(plugin_attributes(plugin, key)).await? {
+            Some(Some(value)) => found.push((key.clone(), value)),
+            Some(None) => {}
+            None => return Ok(None),
         }
     }
-    found
+    Ok(Some(found))
+}
+
+async fn bus() -> Result<Connection, String> {
+    if let Some(bus) = BUS.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        return Ok(bus);
+    }
+    let bus = Connection::session().await.map_err(|_| NONE)?;
+    *BUS.lock().unwrap_or_else(|e| e.into_inner()) = Some(bus.clone());
+    Ok(bus)
+}
+
+fn kept(plugin: &str, keys: &[String]) -> Option<Found> {
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    kept.retain(|k| k.at.elapsed() < KEPT_FOR);
+    kept.iter()
+        .find(|k| k.plugin == plugin && k.keys == keys)
+        .map(|k| k.found.clone())
+}
+
+fn keep(plugin: &str, keys: &[String], found: &Found) {
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    kept.retain(|k| k.plugin != plugin);
+    kept.push(Kept {
+        plugin: plugin.to_owned(),
+        keys: keys.to_vec(),
+        at: Instant::now(),
+        found: found.clone(),
+    });
 }
 
 pub async fn plugin_store(plugin: &str, key: &str, value: &str) -> Result<(), String> {
@@ -161,7 +226,10 @@ impl Keyring {
     // "plain" sends the password as it is, over this user's own bus. The session ends with the
     // connection, so it's never closed by hand.
     async fn open() -> Result<Self, String> {
-        let connection = Connection::session().await.map_err(|_| NONE)?;
+        Self::on(Connection::session().await.map_err(|_| NONE)?).await
+    }
+
+    async fn on(connection: Connection) -> Result<Self, String> {
         let service = ServiceProxy::new(&connection).await.map_err(|_| NONE)?;
         let (_, session) = service
             .open_session("plain", &Variant::from(""))
@@ -315,4 +383,20 @@ fn plugin_attributes<'a>(plugin: &'a str, key: &'a str) -> HashMap<&'a str, &'a 
 
 fn said(err: zbus::Error) -> String {
     crate::i18n::fill("The keyring said: {err}", &[("err", &err)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_plugins_secrets_are_kept_a_little_while_for_the_same_keys() {
+        let keys = vec!["token".to_owned()];
+        let found = vec![("token".to_owned(), "x".to_owned())];
+        assert_eq!(kept("kept-test", &keys), None);
+        keep("kept-test", &keys, &found);
+        assert_eq!(kept("kept-test", &keys), Some(found));
+        assert_eq!(kept("kept-test", &["other".to_owned()]), None);
+        assert_eq!(kept("kept-other", &keys), None);
+    }
 }
