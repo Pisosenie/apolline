@@ -57,7 +57,7 @@ jobs:
         run: |
           useradd -m builder
           git config --system --add safe.directory '*'
-          cp -r packaging/arch /home/builder/pkg
+          cp -r packaging/arch/apolline-git /home/builder/pkg
           sed -i "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" /home/builder/pkg/PKGBUILD
           chown -R builder /home/builder/pkg
           # vif, the terminal it depends on, isn't in Arch's repositories to install from here.

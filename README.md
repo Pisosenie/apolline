@@ -28,10 +28,10 @@ git clone https://github.com/Pisosenie/vif && cd vif/packaging/arch/vif && makep
 ```
 
 ```sh
-cd packaging/arch && makepkg -si   # apolline-git: the binary, the PAM file, the settings entry and icon
-apolline setup                     # once, as your user: adds Apolline to your niri config
-                                   # (and comments out niri's stock waybar line, so there's one bar)
-apolline doctor                    # what works here, and what to install for the rest
+cd packaging/arch/apolline && makepkg -si   # the latest release; apolline-git builds main
+apolline setup                              # once, as your user: adds Apolline to your niri config
+                                            # (and comments out niri's stock waybar line, so there's one bar)
+apolline doctor                             # what works here, and what to install for the rest
 ```
 
 ## Try it
@@ -318,7 +318,7 @@ The three default wallpapers are built into the binary; point `wallpaper` at you
 | `assets/themes` | the five bundled themes |
 | `assets/icons` | the Lucide icons Apolline uses (ISC) |
 | `assets/pam`, `assets/*.desktop`, `assets/apolline.svg` | what a package installs next to the binary |
-| `packaging/arch` | the `apolline-git` PKGBUILD |
+| `packaging/arch` | the `apolline` (release) and `apolline-git` PKGBUILDs |
 | `tools/` | wallpaper generator, headless screenshot script, a recorder of niri's event stream for the IPC tests, stand-ins for MPRIS, UPower, power profiles and the quick settings tools |
 
 ## License
