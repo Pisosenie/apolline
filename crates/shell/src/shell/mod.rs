@@ -668,6 +668,7 @@ impl Shell {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.handle(message);
         self.watch_front();
+        self.count_unread();
         self.publish();
         self.keep_history();
         let scheme = self.config.scheme(self.mode);

@@ -176,9 +176,18 @@ pub struct Drag {
     pub at: Point,
 }
 
+// What the badges were counted from: the history's length and its newest, and the dock's apps.
+pub type Marks = (usize, Option<(u32, SystemTime)>, usize);
+
 pub struct Dock {
     // When each app was last in front, so only what came after is unread.
     seen: HashMap<String, SystemTime>,
+    // When the shell started: the history kept from before was there to read, and isn't unread.
+    since: SystemTime,
+    // Unread notifications by app, counted once a change comes through rather than as each
+    // dock is drawn.
+    pub unread: HashMap<String, usize>,
+    pub counted: Option<Marks>,
     front: Option<String>,
     // The window each app had in front last, to go back to.
     last: HashMap<String, u64>,
@@ -195,6 +204,9 @@ impl Default for Dock {
     fn default() -> Self {
         Self {
             seen: HashMap::new(),
+            since: SystemTime::now(),
+            unread: HashMap::new(),
+            counted: None,
             front: None,
             last: HashMap::new(),
             pointer: None,
@@ -222,10 +234,17 @@ impl Dock {
             self.seen.insert(app, now);
         }
         self.front = key;
+        self.counted = None;
     }
 
     pub fn seen(&self, key: &str) -> Option<SystemTime> {
         self.seen.get(key).copied()
+    }
+
+    // Everything the app sent up to this is read.
+    pub fn read_until(&self, key: &str) -> SystemTime {
+        self.seen(key)
+            .map_or(self.since, |seen| seen.max(self.since))
     }
 
     pub fn is_front(&self, key: &str) -> bool {
@@ -260,9 +279,9 @@ impl Dock {
     }
 }
 
-// How many of `sent` came after `seen`; the app in front has none waiting.
-pub fn unread(sent: impl Iterator<Item = SystemTime>, seen: Option<SystemTime>) -> usize {
-    sent.filter(|at| seen.is_none_or(|seen| *at > seen)).count()
+// How many of `sent` came after `read`.
+pub fn unread(sent: impl Iterator<Item = SystemTime>, read: SystemTime) -> usize {
+    sent.filter(|at| *at > read).count()
 }
 
 #[cfg(test)]
@@ -341,9 +360,9 @@ mod tests {
     fn only_what_came_after_a_look_is_unread() {
         let at = |s| SystemTime::UNIX_EPOCH + Duration::from_secs(s);
         let sent = [at(10), at(20), at(30)];
-        assert_eq!(unread(sent.into_iter(), None), 3, "never looked");
-        assert_eq!(unread(sent.into_iter(), Some(at(20))), 1);
-        assert_eq!(unread(sent.into_iter(), Some(at(40))), 0);
+        assert_eq!(unread(sent.into_iter(), at(0)), 3);
+        assert_eq!(unread(sent.into_iter(), at(20)), 1);
+        assert_eq!(unread(sent.into_iter(), at(40)), 0);
     }
 
     #[test]
@@ -358,6 +377,10 @@ mod tests {
         dock.front(Some("code".into()), Some(1), at(30));
         assert_eq!(dock.seen("chat"), Some(at(30)), "seen until it went");
         assert!(dock.is_front("code") && !dock.is_front("chat"));
+        assert!(
+            dock.read_until("mail") > at(30),
+            "what came before the shell started is read"
+        );
     }
 
     const ROW: Shape = Shape {

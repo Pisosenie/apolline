@@ -48,10 +48,38 @@ impl Shell {
         dock::items(pinned, self.dock_windows())
             .into_iter()
             .map(|item| Item {
-                unread: self.unread(&item.key),
+                unread: self.dock.unread.get(&item.key).copied().unwrap_or_default(),
                 ..item
             })
             .collect()
+    }
+
+    // Badges are counted when the history, the app in front or the dock's apps change, not for
+    // every icon of every dock each time it's drawn.
+    pub(super) fn count_unread(&mut self) {
+        if !self.config.dock.show {
+            self.dock.counted = None;
+            return;
+        }
+        let windows = match &self.niri {
+            Some(state) => state.recent().len(),
+            None => self.status.windows.len(),
+        };
+        let marks = (
+            self.history.len(),
+            self.history.first().map(|n| (n.id, n.received)),
+            windows + self.config.pinned.len(),
+        );
+        if self.dock.counted == Some(marks) {
+            return;
+        }
+        self.dock.unread = dock::items(&self.config.pinned, self.dock_windows())
+            .into_iter()
+            .map(|item| (self.unread(&item.key), item.key))
+            .filter(|(count, _)| *count > 0)
+            .map(|(count, key)| (key, count))
+            .collect();
+        self.dock.counted = Some(marks);
     }
 
     // What the app sent that's still in the history and came after it was last in front.
@@ -69,7 +97,7 @@ impl Shell {
             .iter()
             .filter(|n| dock::sent_by(&names, n.desktop.as_deref(), &n.app))
             .map(|n| n.received);
-        dock::unread(sent, self.dock.seen(key))
+        dock::unread(sent, self.dock.read_until(key))
     }
 
     // The pinned apps as shown: as a drag would leave them while one is under way.
@@ -308,5 +336,40 @@ impl Shell {
         }
         self.save(|e| e.set_list("bar", "pinned", &pinned));
         self.reload_config()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_what_came_since_the_shell_started_is_unread() {
+        let (mut shell, _) = Shell::new(None, true);
+        shell.config.dock.show = true;
+        let now = SystemTime::now();
+        let from_firefox = |id, received| Notification {
+            id,
+            app: "Firefox".into(),
+            desktop: Some("firefox".into()),
+            received,
+            ..notify::shot_card("/tmp/shot.png")
+        };
+        shell.history = vec![
+            from_firefox(2, now + Duration::from_secs(1)),
+            from_firefox(1, now - Duration::from_secs(3600)),
+        ];
+        let _ = shell.update(Message::Frame);
+        let unread = |shell: &Shell| {
+            shell
+                .dock_items(&[])
+                .into_iter()
+                .find(|item| item.key == "firefox")
+                .map(|item| item.unread)
+        };
+        assert_eq!(unread(&shell), Some(1));
+        shell.history.remove(0);
+        let _ = shell.update(Message::Frame);
+        assert_eq!(unread(&shell), Some(0));
     }
 }
