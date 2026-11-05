@@ -1,0 +1,27 @@
+{
+  "logo": {
+    "type": "file",
+    "source": "~/.config/apolline/wired/lain.txt",
+    "color": { "1": "red", "2": "light_red" },
+    "padding": { "right": 3, "top": 1 }
+  },
+  "display": {
+    "separator": "  ",
+    "color": { "keys": "red", "title": "light_red" }
+  },
+  "modules": [
+    "break",
+    { "type": "custom", "format": "\u001b[91mlain\u001b[0m@\u001b[31mwired\u001b[0m" },
+    { "type": "custom", "format": "\u001b[2m─────────────────────────\u001b[0m" },
+    { "type": "os", "key": "os   " },
+    { "type": "wm", "key": "wm   " },
+    { "type": "shell", "key": "sh   " },
+    { "type": "custom", "key": "term ", "format": "vif" },
+    { "type": "custom", "key": "desk ", "format": "apolline" },
+    { "type": "cpu", "key": "cpu  " },
+    { "type": "memory", "key": "mem  " },
+    { "type": "uptime", "key": "up   " },
+    "break",
+    { "type": "colors", "symbol": "block" }
+  ]
+}
