@@ -330,21 +330,29 @@ async fn converse(
 ) -> Result<(), String> {
     let mut lines = reader.lines();
     let mut said = None;
+    // The password typed before anything was asked, kept for the hidden prompt it's meant for.
+    let mut ahead = None;
     while let Some(line) = lines.next_line().await.map_err(|err| err.to_string())? {
         let (kind, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let answer = match kind {
             "PAM_PROMPT_ECHO_OFF" => {
                 // Typed ahead, it goes in at once; otherwise the dialog says what's asked and waits.
-                let typed = match answers.try_recv() {
-                    Ok(typed) => typed,
-                    Err(_) => {
+                let typed = match ahead.take().or_else(|| answers.try_recv().ok()) {
+                    Some(typed) => typed,
+                    None => {
                         let _ = output.send(Said::Asks(unescape(rest))).await;
                         answers.next().await.ok_or("the dialog went away")?
                     }
                 };
                 Some(typed)
             }
-            "PAM_PROMPT_ECHO_ON" => Some(user.to_owned()),
+            "PAM_PROMPT_ECHO_ON" if asks_for_login(&unescape(rest)) => Some(user.to_owned()),
+            // Something shown as it's typed, a code say: the person answers it, never the password.
+            "PAM_PROMPT_ECHO_ON" => {
+                ahead = ahead.or_else(|| answers.try_recv().ok());
+                let _ = output.send(Said::Asks(unescape(rest))).await;
+                Some(answers.next().await.ok_or("the dialog went away")?)
+            }
             "PAM_ERROR_MSG" | "PAM_TEXT_INFO" => {
                 let text = unescape(rest);
                 let _ = output.send(Said::Info(text.clone())).await;
@@ -363,6 +371,11 @@ async fn converse(
         }
     }
     Err("the polkit helper stopped answering".into())
+}
+
+fn asks_for_login(prompt: &str) -> bool {
+    let prompt = prompt.to_lowercase();
+    prompt.starts_with("login") || prompt.contains("user")
 }
 
 fn unescape(text: &str) -> String {
@@ -546,6 +559,28 @@ mod tests {
         drop(output);
         let said: Vec<Said> = said.collect().await;
         assert_eq!(said, [Said::Asks("Verification code:".into())]);
+
+        // A visible question gets what's typed for it, not the password typed ahead.
+        let (mut output, said) = mpsc::channel(4);
+        answer.try_send("polina".to_owned()).unwrap();
+        let script = b"PAM_PROMPT_ECHO_ON login: \nPAM_PROMPT_ECHO_ON One-time code: \nPAM_PROMPT_ECHO_OFF Password: \nSUCCESS\n";
+        let mut written = Vec::new();
+        let talk = converse(
+            &script[..],
+            &mut written,
+            "dzorin",
+            &mut answers,
+            &mut output,
+        );
+        let typed_later = async {
+            answer.send("424242".to_owned()).await.unwrap();
+        };
+        let (result, ()) = iced::futures::join!(talk, typed_later);
+        assert_eq!(result, Ok(()));
+        assert_eq!(written, b"dzorin\n424242\npolina\n");
+        drop(output);
+        let said: Vec<Said> = said.collect().await;
+        assert_eq!(said, [Said::Asks("One-time code:".into())]);
 
         drop(answer);
         let (mut output, _said) = mpsc::channel(4);
