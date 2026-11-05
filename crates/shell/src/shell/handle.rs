@@ -264,11 +264,12 @@ impl Shell {
                 return Task::batch(named);
             }
             Message::Frame => {
+                let length = self.speed().time(FADE);
                 for shown in &mut self.shown {
                     if shown
                         .from
                         .as_ref()
-                        .is_some_and(|(_, at)| at.elapsed() >= FADE)
+                        .is_some_and(|(_, at)| at.elapsed() >= length)
                     {
                         shown.from = None;
                     }

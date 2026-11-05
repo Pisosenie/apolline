@@ -63,7 +63,8 @@ impl Shell {
         self.moving.now = self.moving.now.max(at);
     }
 
-    // What finished going after this update is let go.
+    // After every update: what finished going is let go, and the cards, the pills and the dock
+    // follow what's there now.
     pub(super) fn settle(&mut self) {
         if self.moving.overlay.is_gone(self.moving.now)
             && let Some(gone) = self.moving.leaving.take()
@@ -75,6 +76,7 @@ impl Shell {
         }
         self.follow_cards();
         self.follow_pills();
+        self.dock.pace(self.speed());
     }
 
     // Each screen's pill heads for its active workspace.
