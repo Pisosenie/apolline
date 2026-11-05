@@ -859,3 +859,13 @@
 "Text" = "Текст"
 "Dark text makes the whole palette light" = "Тёмный текст делает всю палитру светлой"
 "Over any palette, a role at a time; Enter keeps it, × gives the palette's back" = "Поверх любой палитры, по одной роли; Enter сохраняет, × возвращает цвет палитры"
+
+# Quick settings layout
+"From top to bottom" = "Сверху вниз"
+"Tiles, two to a row" = "Плитки, по две в ряд"
+"Sliders" = "Ползунки"
+"Tiles" = "Плитки"
+"Each app's volume" = "Громкость приложений"
+"Microphone" = "Микрофон"
+"Speakers and mics" = "Динамики и микрофоны"
+"Drag to reorder, and below a row to take a piece out of quick settings." = "Перетаскивайте, чтобы изменить порядок, а под ряд — чтобы убрать из быстрых настроек."

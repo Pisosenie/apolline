@@ -55,7 +55,6 @@ pub(super) fn setting_owned<'a>(
     control: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     find::note(title, about.as_deref().unwrap_or_default());
-    let lit = find::lit(title);
     let mut words = column![text(title).size(14).font(style::medium())].spacing(3);
     if let Some(about) = about {
         words = words.push(text(about).size(12).color(style::color(style::faint())));
@@ -64,11 +63,29 @@ pub(super) fn setting_owned<'a>(
         .spacing(20)
         .align_y(Alignment::Center)
         .padding([14, 16]);
-    let Some(accent) = lit else {
-        return line.into();
+    lit(title, line)
+}
+
+// A titled block that isn't one setting, like a board to drag things on; search finds it too.
+pub(super) fn labelled<'a>(
+    title: &'a str,
+    content: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    find::note(title, "");
+    lit(
+        title,
+        column![text(title).size(13).font(style::medium()), content.into()]
+            .spacing(10)
+            .padding([12, 16]),
+    )
+}
+
+// Where a search led: lit until the next page.
+fn lit<'a>(title: &str, content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    let Some(accent) = find::lit(title) else {
+        return content.into();
     };
-    // Where a search led: lit until the next page.
-    container(line)
+    container(content)
         .id(find::LIT)
         .style(move |_| container::Style {
             background: Some(Background::Color(style::color(

@@ -20,6 +20,7 @@ pub struct Config {
     // "ru", "en" or none for the system's.
     pub language: Option<String>,
     pub colors: Colors,
+    pub panel: Panel,
     pub theme: Option<(String, Option<String>)>,
     pub desktop: Desktop,
     pub layout: Layout,
@@ -449,6 +450,40 @@ impl Edge {
     // Down the side of the screen, so the bar is a column.
     pub fn vertical(self) -> bool {
         matches!(self, Edge::Left | Edge::Right)
+    }
+}
+
+// What quick settings shows, in order: its tiles, its sliders, and its parts top to bottom.
+// Whatever is left out of a list isn't shown.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Panel {
+    pub tiles: Vec<String>,
+    pub sliders: Vec<String>,
+    pub parts: Vec<String>,
+}
+
+impl Panel {
+    pub const TILES: [&str; 7] = [
+        "wifi",
+        "bluetooth",
+        "quiet",
+        "awake",
+        "night",
+        "power",
+        "vpn",
+    ];
+    pub const SLIDERS: [&str; 5] = ["volume", "apps", "mic", "devices", "brightness"];
+    pub const PARTS: [&str; 5] = ["tiles", "sliders", "modes", "player", "notifications"];
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        let all = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect();
+        Self {
+            tiles: all(&Self::TILES),
+            sliders: all(&Self::SLIDERS),
+            parts: all(&Self::PARTS),
+        }
     }
 }
 
@@ -884,6 +919,7 @@ impl Default for Config {
             mode: None,
             language: None,
             colors: Colors::default(),
+            panel: Panel::default(),
             theme: None,
             desktop: Desktop {
                 clock: None,
@@ -1116,6 +1152,27 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quick_settings_shows_what_you_list_in_your_order() {
+        let (config, problems) = super::Config::parse(
+            "[panel]\ntiles = [\"night\", \"wifi\", \"wfi\", \"wifi\"]\nparts = [\"notifications\", \"tiles\"]\n",
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(
+            problems[0]
+                .hint
+                .as_deref()
+                .is_some_and(|h| h.contains("wifi"))
+        );
+        assert_eq!(config.panel.tiles, ["night", "wifi"]);
+        assert_eq!(config.panel.parts, ["notifications", "tiles"]);
+        assert_eq!(
+            config.panel.sliders,
+            super::Panel::default().sliders,
+            "left alone"
+        );
+    }
+
     #[test]
     fn your_colors_go_over_any_palette() {
         let (config, problems) = super::Config::parse(

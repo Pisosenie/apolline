@@ -110,10 +110,22 @@ impl Settings {
             Message::Seconds(on) => self.edit(|e| e.set("bar", "seconds", on)),
             Message::BarHold(held) => self.bar_held = held,
             Message::TrayHold(held) => self.tray_held = held,
+            Message::TilesHold(held) => self.tiles_held = held,
+            Message::SlidersHold(held) => self.sliders_held = held,
+            Message::PartsHold(held) => self.parts_held = held,
+            Message::TilesDrop(at, width) => self.panel_drop(0, at, width),
+            Message::SlidersDrop(at, width) => self.panel_drop(1, at, width),
+            Message::PartsDrop(at, width) => self.panel_drop(2, at, width),
             Message::BoardMove(at) => {
-                for held in [&mut self.bar_held, &mut self.tray_held]
-                    .into_iter()
-                    .flatten()
+                for held in [
+                    &mut self.bar_held,
+                    &mut self.tray_held,
+                    &mut self.tiles_held,
+                    &mut self.sliders_held,
+                    &mut self.parts_held,
+                ]
+                .into_iter()
+                .flatten()
                 {
                     held.at = at;
                 }

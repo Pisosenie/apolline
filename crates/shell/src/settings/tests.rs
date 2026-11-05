@@ -334,3 +334,28 @@ fn a_color_of_your_own_is_kept_on_enter_and_given_back() {
     assert!(!text.contains("colors"), "{text}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_tile_dropped_off_the_board_leaves_quick_settings() {
+    let dir = std::env::temp_dir().join(format!("apolline-panel-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let held = board::Held {
+        name: "night".into(),
+        grab: iced::Vector::ZERO,
+        at: iced::Point::ORIGIN,
+    };
+    let _ = settings.update(Message::TilesHold(Some(held)));
+    let _ = settings.update(Message::TilesDrop(iced::Point::new(40.0, 900.0), 400.0));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains(
+            "[panel]\ntiles = [\"wifi\", \"bluetooth\", \"quiet\", \"awake\", \"power\", \"vpn\"]"
+        ),
+        "{text}"
+    );
+    assert!(!settings.config.panel.tiles.iter().any(|t| t == "night"));
+    std::fs::remove_dir_all(dir).unwrap();
+}

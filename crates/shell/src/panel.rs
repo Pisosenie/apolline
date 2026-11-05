@@ -91,6 +91,8 @@ pub struct Panel<'a> {
     pub note: Option<&'a str>,
     pub busy: bool,
     pub tunnels: &'a [crate::vpn::Tunnel],
+    // What it shows and in what order.
+    pub layout: &'a apolline_config::Panel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -186,93 +188,138 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
         palette,
         Some(Message::NightLight(!panel.night)),
     );
-    let mut tiles = column![
-        row![wifi, bluetooth].spacing(10),
-        row![quiet, awake].spacing(10),
-        row![night, power_tile(panel.profiles, palette)].spacing(10),
-    ]
-    .spacing(10);
-    if let Some(vpn) = vpn_tile(&panel) {
-        tiles = tiles.push(row![vpn, space::horizontal()].spacing(10));
+    let mut wifi = Some(wifi);
+    let mut bluetooth = Some(bluetooth);
+    let mut quiet = Some(quiet);
+    let mut awake = Some(awake);
+    let mut night = Some(night);
+    let mut power = Some(power_tile(panel.profiles, palette));
+    let mut vpn = vpn_tile(&panel);
+    let shown: Vec<Element<'_, Message>> = panel
+        .layout
+        .tiles
+        .iter()
+        .filter_map(|name| match name.as_str() {
+            "wifi" => wifi.take(),
+            "bluetooth" => bluetooth.take(),
+            "quiet" => quiet.take(),
+            "awake" => awake.take(),
+            "night" => night.take(),
+            "power" => power.take(),
+            "vpn" => vpn.take(),
+            _ => None,
+        })
+        .collect();
+    // Two to a row, the last one alone beside an empty half.
+    let mut tiles = column![].spacing(10);
+    let mut shown = shown.into_iter();
+    while let Some(first) = shown.next() {
+        let second: Element<'_, Message> =
+            shown.next().unwrap_or_else(|| space::horizontal().into());
+        tiles = tiles.push(row![first, second].spacing(10));
     }
-    body = body.push(tiles);
 
     let mut sliders = column![].spacing(6);
-    if let Some(volume) = panel.controls.volume {
-        let level = if volume.muted { 0.0 } else { volume.level };
-        sliders = sliders.push(slider_row(
-            icon(
-                Icon::volume(volume.level, volume.muted),
-                18.0,
-                neutral::text(),
-            ),
-            Some(Message::Change(Change::Mute(!volume.muted))),
-            level,
-            palette,
-            |v| Message::Change(Change::Volume(v)),
-        ));
-    }
-    // Each app playing, with its icon: a click on it mutes it.
-    for stream in &panel.controls.streams {
-        let level = if stream.volume.muted {
-            0.0
-        } else {
-            stream.volume.level
-        };
-        let id = stream.id;
-        sliders = sliders.push(slider_row(
-            crate::windows::picture(panel.apps, &stream.name, 18.0, palette),
-            Some(Message::Change(Change::AppMute(id, !stream.volume.muted))),
-            level,
-            palette,
-            move |v| Message::Change(Change::AppVolume(id, v)),
-        ));
-    }
-    if let Some(mic) = panel.controls.mic {
-        let glyph = if mic.muted { Icon::MicOff } else { Icon::Mic };
-        sliders = sliders.push(slider_row(
-            icon(glyph, 18.0, neutral::text()),
-            Some(Message::Change(Change::MicMute(!mic.muted))),
-            if mic.muted { 0.0 } else { mic.level },
-            palette,
-            |v| Message::Change(Change::MicVolume(v)),
-        ));
-    }
-    for (devices, glyph, pick) in [
-        (
-            &panel.controls.outputs,
-            Icon::Headphones,
-            Change::Output as fn(u32) -> Change,
-        ),
-        (
-            &panel.controls.inputs,
-            Icon::Mic,
-            Change::Input as fn(u32) -> Change,
-        ),
-    ] {
-        if devices.len() > 1 {
-            sliders = sliders.push(devices_row(devices, glyph, pick));
+    for name in &panel.layout.sliders {
+        match name.as_str() {
+            "volume" => {
+                if let Some(volume) = panel.controls.volume {
+                    let level = if volume.muted { 0.0 } else { volume.level };
+                    sliders = sliders.push(slider_row(
+                        icon(
+                            Icon::volume(volume.level, volume.muted),
+                            18.0,
+                            neutral::text(),
+                        ),
+                        Some(Message::Change(Change::Mute(!volume.muted))),
+                        level,
+                        palette,
+                        |v| Message::Change(Change::Volume(v)),
+                    ));
+                }
+            }
+            "apps" => {
+                // Each app playing, with its icon: a click on it mutes it.
+                for stream in &panel.controls.streams {
+                    let level = if stream.volume.muted {
+                        0.0
+                    } else {
+                        stream.volume.level
+                    };
+                    let id = stream.id;
+                    sliders = sliders.push(slider_row(
+                        crate::windows::picture(panel.apps, &stream.name, 18.0, palette),
+                        Some(Message::Change(Change::AppMute(id, !stream.volume.muted))),
+                        level,
+                        palette,
+                        move |v| Message::Change(Change::AppVolume(id, v)),
+                    ));
+                }
+            }
+            "mic" => {
+                if let Some(mic) = panel.controls.mic {
+                    let glyph = if mic.muted { Icon::MicOff } else { Icon::Mic };
+                    sliders = sliders.push(slider_row(
+                        icon(glyph, 18.0, neutral::text()),
+                        Some(Message::Change(Change::MicMute(!mic.muted))),
+                        if mic.muted { 0.0 } else { mic.level },
+                        palette,
+                        |v| Message::Change(Change::MicVolume(v)),
+                    ));
+                }
+            }
+            "devices" => {
+                for (devices, glyph, pick) in [
+                    (
+                        &panel.controls.outputs,
+                        Icon::Headphones,
+                        Change::Output as fn(u32) -> Change,
+                    ),
+                    (
+                        &panel.controls.inputs,
+                        Icon::Mic,
+                        Change::Input as fn(u32) -> Change,
+                    ),
+                ] {
+                    if devices.len() > 1 {
+                        sliders = sliders.push(devices_row(devices, glyph, pick));
+                    }
+                }
+            }
+            "brightness" => {
+                if let Some(brightness) = panel.controls.brightness {
+                    sliders = sliders.push(slider_row(
+                        icon(Icon::Sun, 18.0, neutral::text()),
+                        None,
+                        f32::from(brightness) / 100.0,
+                        palette,
+                        |v| Message::Change(Change::Brightness((v * 100.0).round().max(1.0) as u8)),
+                    ));
+                }
+            }
+            _ => {}
         }
     }
-    if let Some(brightness) = panel.controls.brightness {
-        sliders = sliders.push(slider_row(
-            icon(Icon::Sun, 18.0, neutral::text()),
-            None,
-            f32::from(brightness) / 100.0,
-            palette,
-            |v| Message::Change(Change::Brightness((v * 100.0).round().max(1.0) as u8)),
-        ));
+    let mut tiles = Some(tiles);
+    let mut sliders = Some(sliders);
+    for part in &panel.layout.parts {
+        match part.as_str() {
+            "tiles" => body = body.push(tiles.take()),
+            "sliders" => body = body.push(sliders.take()),
+            "modes" if !panel.modes.is_empty() => {
+                body = body.push(modes(panel.modes, panel.mode, palette));
+            }
+            "player" => {
+                if let Some(track) = panel.track {
+                    body = body.push(player(track, palette));
+                }
+            }
+            "notifications" => {
+                body = body.push(history(panel.history, panel.opened, panel.apps, palette));
+            }
+            _ => {}
+        }
     }
-    body = body.push(sliders);
-
-    if !panel.modes.is_empty() {
-        body = body.push(modes(panel.modes, panel.mode, palette));
-    }
-
-    if let Some(track) = panel.track {
-        body = body.push(player(track, palette));
-    }
-    body = body.push(history(panel.history, panel.opened, panel.apps, palette));
 
     frame(body, panel.edge, panel.gap, panel.look)
 }

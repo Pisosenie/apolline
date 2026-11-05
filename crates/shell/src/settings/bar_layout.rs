@@ -166,10 +166,8 @@ impl Settings {
     pub(super) fn layout_rows(&self, palette: Palette) -> Vec<Element<'_, Message>> {
         let (pieces, tray) = self.boards();
         vec![
-            column![
-                text("What the bar shows, and where")
-                    .size(13)
-                    .font(style::medium()),
+            labelled(
+                "What the bar shows, and where",
                 board::view(
                     pieces,
                     &["Left", "Center", "Right"],
@@ -180,14 +178,9 @@ impl Settings {
                     Message::BoardMove,
                     Message::BarDrop,
                 ),
-            ]
-            .spacing(10)
-            .padding([12, 16])
-            .into(),
-            column![
-                text("The quick settings button")
-                    .size(13)
-                    .font(style::medium()),
+            ),
+            labelled(
+                "The quick settings button",
                 board::view(
                     tray,
                     &["Shown"],
@@ -198,10 +191,7 @@ impl Settings {
                     Message::BoardMove,
                     Message::TrayDrop,
                 ),
-            ]
-            .spacing(10)
-            .padding([12, 16])
-            .into(),
+            ),
             note(
                 "Drag a piece to move it along the bar or between its sides, and below the bar to take it off. Mode, media, notifications and recording show only when there's something to show.",
             ),
@@ -274,6 +264,7 @@ impl Settings {
         column![
             preview,
             group("Layout", self.layout_rows(palette)),
+            self.quick_settings(),
             group(
                 "Place and look",
                 vec![

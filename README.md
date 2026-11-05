@@ -118,6 +118,17 @@ tray = ["keyboard", "awake", "wifi", "bluetooth", "volume", "battery"]
 
 `apps` is the icons apps keep in the tray (Steam, Discord, Telegram, VPN clients and anything else that speaks StatusNotifierItem): a click is the app's own, a right click opens its menu, a middle click its second action, and an icon asking for attention gets a ring in the accent. Apolline is the tray watcher apps register with, unless another one already runs. `[bar] position` is `top`, `bottom`, `left` or `right`: down a side the same pieces stack, the clock as hours over minutes, and what has no room for words says them on hover; quick settings, the calendar and app menus open beside it. `[bar] shape = "islands"` draws each side and the middle as a pill of its own with the wallpaper between them, and `"pill"` gathers everything into one pill in the middle of the edge (Settings → Bar → Shape). That is the bar as it comes; Settings → Bar shows it as rows of pieces to drag along a row, from one side to another, or below them to take a piece off the bar, and the quick settings button's icons the same way. `mode` shows only once you have modes, `media` while something plays, `notifications` while some wait or do not disturb is on, and `recording` while the screen is recorded. `tray` is the quick settings button, and `[bar] tray` picks what it shows and in which order. A module with a `name` can stand anywhere by that name (`left = ["weather", "workspaces"]`); `modules` is all the others. A name nothing answers to is reported by `apolline check` with the closest match, and something placed twice stays where it's first.
 
+Quick settings is laid out the same way:
+
+```toml
+[panel]
+parts = ["tiles", "sliders", "modes", "player", "notifications"]
+tiles = ["wifi", "bluetooth", "quiet", "awake", "night", "power", "vpn"]
+sliders = ["volume", "apps", "mic", "devices", "brightness"]
+```
+
+`parts` is what it shows from top to bottom, `tiles` the toggles two to a row, and `sliders` the volume (`apps` is each app playing, `devices` the speaker and mic pickers) and brightness; what a list leaves out isn't shown. Settings → Bar → Quick settings has a board for each to drag on.
+
 ## Themes
 
 A theme is one small file: wallpaper, accent, palette, gaps, corners, borders, shadows, window opacity, animation speed, the bar's place, shape and look, and the size, corners and glass of the launcher, quick settings and popups. Settings → Themes shows them as a gallery: ten come with Apolline (Fog, Ember, Night; Tonal, with colors from the wallpaper and the bar as islands; Mocha and Latte in Catppuccin; Hardline, square and flat in Gruvbox; Paper, light and plain; Minimal; Glass), *Save my look* turns your current setup into one, and *Add someone's theme* takes a file somebody sent you. They live in `~/.config/apolline/themes`, so sharing a look is sending a file.

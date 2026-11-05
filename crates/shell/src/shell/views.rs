@@ -117,6 +117,7 @@ impl Shell {
                 pin: &self.pin,
                 note: self.net_note.as_deref(),
                 busy: self.net_busy,
+                layout: &self.config.panel,
                 tunnels: &self.tunnels,
             }),
             None => space().into(),

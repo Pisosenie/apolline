@@ -19,7 +19,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 22] = [
+const SECTIONS: [&str; 23] = [
     "general",
     "theme",
     "desktop",
@@ -42,6 +42,7 @@ const SECTIONS: [&str; 22] = [
     "template",
     "mode",
     "colors",
+    "panel",
 ];
 
 const MODE_OPTIONS: [&str; 12] = [
@@ -237,6 +238,11 @@ impl Reader<'_> {
                 "colors" => {
                     if let Some(t) = self.section(key, value) {
                         self.colors(t, &mut config.colors)
+                    }
+                }
+                "panel" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.panel(t, &mut config.panel)
                     }
                 }
                 "night" => {
@@ -1261,6 +1267,33 @@ impl Reader<'_> {
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),
             }
+        }
+    }
+
+    fn panel(&mut self, table: &DeTable, panel: &mut crate::Panel) {
+        for (key, value) in table.iter() {
+            let (list, known, what): (&mut Vec<String>, &[&str], &str) =
+                match key.get_ref().as_ref() {
+                    "tiles" => (&mut panel.tiles, &crate::Panel::TILES, "tile"),
+                    "sliders" => (&mut panel.sliders, &crate::Panel::SLIDERS, "slider"),
+                    "parts" => (&mut panel.parts, &crate::Panel::PARTS, "part"),
+                    _ => {
+                        self.unknown(key, "option", &["tiles", "sliders", "parts"]);
+                        continue;
+                    }
+                };
+            let Some(names) = self.strings(key, value) else {
+                continue;
+            };
+            let mut kept = Vec::new();
+            for name in names {
+                if !known.contains(&name.as_str()) {
+                    self.unknown_name(value, &name, what, known);
+                } else if !kept.contains(&name) {
+                    kept.push(name);
+                }
+            }
+            *list = kept;
         }
     }
 

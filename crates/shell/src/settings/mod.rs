@@ -12,6 +12,7 @@ mod lock;
 mod looks;
 mod modes;
 mod notifications;
+mod panel_layout;
 mod pickers;
 #[cfg(test)]
 mod tests;
@@ -248,7 +249,7 @@ impl Page {
             Page::Appearance => &["desktop", "colors", "layout", "apps", "style"],
             Page::Windows => &["windows"],
             Page::Displays => &["night"],
-            Page::Bar => &["bar"],
+            Page::Bar => &["bar", "panel"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],
@@ -371,6 +372,12 @@ enum Message {
     TrayHold(Option<board::Held>),
     BoardMove(iced::Point),
     BarDrop(iced::Point, f32),
+    TilesHold(Option<board::Held>),
+    TilesDrop(iced::Point, f32),
+    SlidersHold(Option<board::Held>),
+    SlidersDrop(iced::Point, f32),
+    PartsHold(Option<board::Held>),
+    PartsDrop(iced::Point, f32),
     TrayDrop(iced::Point, f32),
     BarFloating(bool),
     BarShape(apolline_config::Shape),
@@ -508,6 +515,10 @@ struct Settings {
     // What's being dragged on the bar's layout, and on the quick settings button's.
     bar_held: Option<board::Held>,
     tray_held: Option<board::Held>,
+    // The same for what quick settings shows.
+    tiles_held: Option<board::Held>,
+    sliders_held: Option<board::Held>,
+    parts_held: Option<board::Held>,
     library: Vec<String>,
     apps: Vec<App>,
     pin_query: String,
@@ -603,6 +614,9 @@ impl Settings {
             wallpaper_draft: String::new(),
             bar_held: None,
             tray_held: None,
+            tiles_held: None,
+            sliders_held: None,
+            parts_held: None,
             library: Vec::new(),
             apps: Vec::new(),
             pin_query: String::new(),
