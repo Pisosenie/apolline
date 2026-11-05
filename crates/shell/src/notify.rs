@@ -451,10 +451,24 @@ fn picture(hints: &HashMap<String, OwnedVariant>, app_icon: &str) -> Option<Pict
     (file.is_absolute() && small).then(|| Picture::File(file.to_path_buf()))
 }
 
+// Any app names the file, so a small one that unpacks into gigabytes is turned down.
+fn decode(file: &Path) -> Option<::image::RgbaImage> {
+    let mut reader = ::image::ImageReader::open(file)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = ::image::Limits::default();
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(128 << 20);
+    reader.limits(limits);
+    Some(reader.decode().ok()?.into_rgba8())
+}
+
 fn shrink(picture: Picture) -> Option<iced::widget::image::Handle> {
     let image = match picture {
         Picture::Pixels(width, height, rgba) => ::image::RgbaImage::from_raw(width, height, rgba)?,
-        Picture::File(file) => ::image::open(file).ok()?.into_rgba8(),
+        Picture::File(file) => decode(&file)?,
     };
     let (width, height) = image.dimensions();
     let image = if width.max(height) > PICTURE {
@@ -623,6 +637,10 @@ impl Server {
     }
 
     async fn close_notification(&mut self, id: u32) {
+        // Only what an app was handed; the shell's own cards aren't anyone's to close.
+        if id == 0 || id > self.last {
+            return;
+        }
         let _ = self.events.send(Message::Unnotify(id)).await;
     }
 
@@ -656,6 +674,18 @@ fn serve() -> impl Stream<Item = Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_too_big_to_unpack_is_left_out() {
+        let dir = std::env::temp_dir().join(format!("apolline-picture-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (small, wide) = (dir.join("small.png"), dir.join("wide.png"));
+        ::image::RgbaImage::new(2, 2).save(&small).unwrap();
+        ::image::GrayImage::new(5000, 1).save(&wide).unwrap();
+        assert_eq!(decode(&small).map(|i| i.dimensions()), Some((2, 2)));
+        assert!(decode(&wide).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn raw_pictures_become_rgba() {

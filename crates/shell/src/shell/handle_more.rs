@@ -1,5 +1,8 @@
 use super::*;
 
+// However many an app sends, only the newest stay up or held.
+const MOST_CARDS: usize = 50;
+
 impl Shell {
     // Modes, workspaces, the panel and power; handle() passes them here.
     pub(super) fn handle_more(&mut self, message: Message) -> Task<Message> {
@@ -161,22 +164,18 @@ impl Shell {
                     }
                     return dropped;
                 }
-                if self.config.alerts.always(&notification.app)
+                let ring = if self.config.alerts.always(&notification.app)
                     || notify::lets_through(self.rule(), notification.urgency)
                 {
                     let ring = crate::sound::pick(&self.config.alerts.sound, &notification.sound)
                         .filter(|_| !self.config.alerts.silent(&notification.app));
                     self.popups.push((notification, Instant::now()));
-                    if let Some(file) = ring {
-                        return Task::batch([
-                            dropped,
-                            Task::future(crate::sound::play(file)).discard(),
-                        ]);
-                    }
+                    ring.map(|file| Task::future(crate::sound::play(file)).discard())
                 } else {
                     self.held.push(notification);
-                }
-                return dropped;
+                    None
+                };
+                return Task::batch([dropped, self.thin_out()].into_iter().chain(ring));
             }
             Message::Unnotify(id) => {
                 self.forget(id);
@@ -483,5 +482,42 @@ impl Shell {
             _ => {}
         }
         Task::none()
+    }
+}
+
+impl Shell {
+    // What's cut goes the way an expired card does: the app hears unless the history keeps it.
+    fn thin_out(&mut self) -> Task<Message> {
+        let over = self.popups.len().saturating_sub(MOST_CARDS);
+        let mut gone: Vec<u32> = self.popups.drain(..over).map(|(n, _)| n.id).collect();
+        let over = self.held.len().saturating_sub(MOST_CARDS);
+        gone.extend(self.held.drain(..over).map(|n| n.id));
+        self.replying.take_if(|(id, _)| gone.contains(id));
+        Task::batch(
+            gone.into_iter()
+                .filter(|id| !self.history.iter().any(|kept| kept.id == *id))
+                .map(|id| notify::closed(id, Closed::Expired)),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_flood_of_cards_keeps_only_the_newest() {
+        let (mut shell, _) = Shell::new(None, true);
+        for id in 1..=MOST_CARDS as u32 + 10 {
+            let card = Notification {
+                id,
+                timeout: None,
+                ..notify::shot_card("/tmp/shot.png")
+            };
+            let _ = shell.update(Message::Notify(card));
+        }
+        assert_eq!(shell.popups.len() + shell.held.len(), MOST_CARDS);
+        assert!(!shell.popups.iter().any(|(n, _)| n.id <= 10));
+        assert!(!shell.held.iter().any(|n| n.id <= 10));
     }
 }
