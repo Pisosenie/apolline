@@ -166,12 +166,22 @@ impl Shell {
 
     #[cfg(target_os = "linux")]
     // Where the bar is, whether it floats, and how much bigger it is drawn.
-    pub fn bar_look(&self) -> (Edge, bool, u16) {
+    pub fn bar_look(&self) -> (Edge, bool, u16, bool) {
         let size = self.config.style.bar.size.unwrap_or(1.0);
         (
             self.config.bar.position,
             self.config.bar.floating,
             (size * 100.0).round() as u16,
+            self.config.bar.autohide,
+        )
+    }
+
+    // An overlay that opens from the bar keeps a hidden bar out while it's open.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn bar_in_use(&self) -> bool {
+        matches!(
+            self.overlay,
+            Some(Overlay::Panel | Overlay::Calendar | Overlay::Machine | Overlay::TrayMenu)
         )
     }
 

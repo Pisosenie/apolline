@@ -3,9 +3,10 @@ use std::collections::BTreeMap;
 use apolline_theme::metrics;
 use iced::widget::space;
 use iced::{Color, Element, Font, Subscription, Task, mouse, window};
+use iced_layershell::actions::ActionCallback;
 use iced_layershell::build_pattern::daemon;
 use iced_layershell::reexport::{
-    Anchor, KeyboardInteractivity, Layer, NewLayerShellSettings, OutputOption,
+    Anchor, KeyboardInteractivity, Layer, NewLayerShellSettings, OutputOption, WlRegion,
 };
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 
@@ -17,6 +18,11 @@ use crate::osd;
 use crate::popup::{Felt, Hold, Nudge};
 
 const POPUP_MARGIN: i32 = 8;
+// What a hidden bar feels the pointer through: a strip at the screen edge.
+const STRIP: i32 = 2;
+// A leaving that only asks for the strip to be set again, once a new bar's surface is up.
+const SETTLED: u64 = u64::MAX;
+const HIDES_AFTER: std::time::Duration = std::time::Duration::from_millis(700);
 
 pub fn run(mode: Option<String>) -> Result<(), String> {
     let app = daemon(
@@ -57,7 +63,11 @@ struct Screen {
 struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
-    look: (Edge, bool, u16),
+    look: (Edge, bool, u16, bool),
+    // Bars out on their screens, and the ones the pointer is over with when it last left.
+    out: BTreeMap<window::Id, bool>,
+    over: BTreeMap<window::Id, Option<u64>>,
+    leavings: u64,
     popups: Option<(window::Id, u32)>,
     // Where the cards' window was opened, and at what size; either changing opens it again.
     popups_place: (Corner, f32, u16),
@@ -72,7 +82,10 @@ impl Layers {
         let mut layers = Self {
             shell,
             screens: BTreeMap::new(),
-            look: (Edge::Top, true, 100),
+            look: (Edge::Top, true, 100, false),
+            out: BTreeMap::new(),
+            over: BTreeMap::new(),
+            leavings: 0,
             popups: None,
             popups_place: (Corner::TopRight, 1.0, 360),
             popups_hold: Hold::default(),
@@ -110,6 +123,32 @@ impl Layers {
                 };
                 return Task::batch([held, next]);
             }
+            Message::LayerEvent(id, iced::Event::Mouse(mouse::Event::CursorEntered))
+                if self.is_bar(id) =>
+            {
+                self.over.insert(id, None);
+                return self.fit_bars();
+            }
+            Message::LayerEvent(id, iced::Event::Mouse(mouse::Event::CursorLeft))
+                if self.is_bar(id) =>
+            {
+                self.leavings += 1;
+                let leaving = self.leavings;
+                self.over.insert(id, Some(leaving));
+                return Task::perform(tokio::time::sleep(HIDES_AFTER), move |()| {
+                    Message::HideBar(id, leaving)
+                });
+            }
+            Message::HideBar(id, SETTLED) => {
+                self.out.remove(&id);
+                return self.fit_bars();
+            }
+            Message::HideBar(id, leaving) => {
+                if self.over.get(&id) == Some(&Some(leaving)) {
+                    self.over.remove(&id);
+                }
+                return self.fit_bars();
+            }
             Message::LayerEvent(..) => return Task::none(),
             other => other,
         };
@@ -117,10 +156,49 @@ impl Layers {
         Task::batch([
             task,
             self.fit_screens(),
+            self.fit_bars(),
             self.fit_popups(),
             self.fit_overlay(),
             self.fit_osd(),
         ])
+    }
+
+    fn is_bar(&self, id: window::Id) -> bool {
+        self.screens.values().any(|screen| screen.bar == id)
+    }
+
+    // A hidden bar is a clear surface that feels the pointer only along the screen edge. It
+    // comes out while the pointer is on it or something opened from it is open, over the
+    // windows, and the whole of it takes the pointer then.
+    fn fit_bars(&mut self) -> Task<Message> {
+        let (edge, floating, size, autohide) = self.look;
+        let in_use = self.shell.bar_in_use();
+        let bars: Vec<window::Id> = self.screens.values().map(|s| s.bar).collect();
+        self.over.retain(|id, _| bars.contains(id));
+        self.out.retain(|id, _| bars.contains(id));
+        let thick = (thickness(edge, size) + gap(floating)) as i32;
+        let mut tasks = Vec::new();
+        for id in bars {
+            let wanted = !autohide || in_use || self.over.contains_key(&id);
+            if self.out.insert(id, wanted) == Some(wanted) || !autohide {
+                continue;
+            }
+            let callback = move |region: &WlRegion| {
+                let far = i32::MAX / 4;
+                match (wanted, edge) {
+                    (true, _) => region.add(0, 0, far, far),
+                    (false, Edge::Top) => region.add(0, 0, far, STRIP),
+                    (false, Edge::Bottom) => region.add(0, thick - STRIP, far, STRIP),
+                    (false, Edge::Left) => region.add(0, 0, STRIP, far),
+                    (false, Edge::Right) => region.add(thick - STRIP, 0, STRIP, far),
+                }
+            };
+            tasks.push(Task::done(Message::SetInputRegion {
+                id,
+                callback: ActionCallback(std::sync::Arc::new(callback)),
+            }));
+        }
+        Task::batch(tasks)
     }
 
     fn fit_osd(&mut self) -> Task<Message> {
@@ -209,6 +287,13 @@ impl Layers {
         }
         for output in added {
             let (screen, open_screen) = open_screen(&output, look);
+            if look.3 {
+                let bar = screen.bar;
+                tasks.push(Task::perform(
+                    tokio::time::sleep(std::time::Duration::from_millis(300)),
+                    move |()| Message::HideBar(bar, SETTLED),
+                ));
+            }
             self.screens.insert(output, screen);
             tasks.push(open_screen);
         }
@@ -336,7 +421,24 @@ impl Layers {
                 return self.shell.wallpaper(output.as_deref());
             }
             if id == screen.bar {
-                return self.shell.bar(output.as_deref());
+                if self.out.get(&id) == Some(&false) {
+                    return space().into();
+                }
+                let (edge, floating, size, autohide) = self.look;
+                if !autohide {
+                    return self.shell.bar(output.as_deref());
+                }
+                // The bar draws at its own size, the gap is in the screen's points.
+                let inset = gap(floating) as f32 * 100.0 / f32::from(size);
+                let padding = match edge {
+                    Edge::Top => iced::Padding::ZERO.top(inset),
+                    Edge::Bottom => iced::Padding::ZERO.bottom(inset),
+                    Edge::Left => iced::Padding::ZERO.left(inset),
+                    Edge::Right => iced::Padding::ZERO.right(inset),
+                };
+                return iced::widget::container(self.shell.bar(output.as_deref()))
+                    .padding(padding)
+                    .into();
             }
         }
         space().into()
@@ -370,28 +472,75 @@ impl Layers {
     }
 }
 
-fn open_screen(
-    output: &Output,
-    (edge, floating, size): (Edge, bool, u16),
-) -> (Screen, Task<Message>) {
+// How thick the bar is across its edge: tall along the top, wide down a side.
+fn thickness(edge: Edge, size: u16) -> u32 {
     let scale = f32::from(size) / 100.0;
-    // How thick the bar is across its edge: tall along the top, wide down a side.
-    let thick = if edge.vertical() {
+    if edge.vertical() {
         (crate::style::RAIL * scale).round() as u32
     } else {
         (metrics::BAR_HEIGHT * scale).round() as u32
-    };
-    let inset = if floating {
-        metrics::BAR_INSET as i32
+    }
+}
+
+fn bar_size(edge: Edge, size: u16) -> (u32, u32) {
+    across(edge, thickness(edge, size))
+}
+
+// A thickness across the edge, the length left to the anchors.
+fn across(edge: Edge, thick: u32) -> (u32, u32) {
+    if edge.vertical() {
+        (thick, 0)
+    } else {
+        (0, thick)
+    }
+}
+
+fn gap(floating: bool) -> u32 {
+    if floating {
+        metrics::BAR_INSET as u32
     } else {
         0
-    };
-    // Top, right, bottom, left; nothing on the screen edge it sits against.
-    let margin = match edge {
+    }
+}
+
+// The margin without the one along the edge the bar sits against.
+fn edge_free((top, right, bottom, left): (i32, i32, i32, i32), edge: Edge) -> (i32, i32, i32, i32) {
+    match edge {
+        Edge::Top => (0, right, bottom, left),
+        Edge::Bottom => (top, right, 0, left),
+        Edge::Left => (top, right, bottom, 0),
+        Edge::Right => (top, 0, bottom, left),
+    }
+}
+
+// Top, right, bottom, left; nothing on the screen edge it sits against.
+fn bar_margin(edge: Edge, floating: bool) -> (i32, i32, i32, i32) {
+    let inset = gap(floating) as i32;
+    match edge {
         Edge::Top => (inset, inset, 0, inset),
         Edge::Bottom => (0, inset, inset, inset),
         Edge::Left => (inset, 0, inset, inset),
         Edge::Right => (inset, inset, inset, 0),
+    }
+}
+
+// A hidden bar opens as its strip and takes no room from the windows.
+fn open_screen(
+    output: &Output,
+    (edge, floating, size, autohide): (Edge, bool, u16, bool),
+) -> (Screen, Task<Message>) {
+    let (extent, margin, zone) = if autohide {
+        (
+            across(edge, thickness(edge, size) + gap(floating)),
+            edge_free(bar_margin(edge, floating), edge),
+            0,
+        )
+    } else {
+        (
+            bar_size(edge, size),
+            bar_margin(edge, floating),
+            thickness(edge, size) as i32,
+        )
     };
     let output_option = match output {
         Some(name) => OutputOption::OutputName(name.clone()),
@@ -414,12 +563,8 @@ fn open_screen(
             Edge::Left => Anchor::Left | Anchor::Top | Anchor::Bottom,
             Edge::Right => Anchor::Right | Anchor::Top | Anchor::Bottom,
         },
-        size: Some(if edge.vertical() {
-            (thick, 0)
-        } else {
-            (0, thick)
-        }),
-        exclusive_zone: Some(thick as i32),
+        size: Some(extent),
+        exclusive_zone: Some(zone),
         margin: Some(margin),
         keyboard_interactivity: KeyboardInteractivity::None,
         output_option,

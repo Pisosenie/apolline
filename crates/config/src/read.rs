@@ -442,6 +442,11 @@ impl Reader<'_> {
                         bar.floating = v
                     }
                 }
+                "autohide" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        bar.autohide = v
+                    }
+                }
                 "shape" => {
                     let shapes = [
                         ("bar", crate::Shape::Bar),
@@ -538,6 +543,7 @@ impl Reader<'_> {
                         "battery_percent",
                         "position",
                         "floating",
+                        "autohide",
                         "shape",
                         "opacity",
                         "blur",

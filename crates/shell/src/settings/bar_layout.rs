@@ -309,6 +309,11 @@ impl Settings {
                         ),
                     ),
                     setting(
+                        "Hide it",
+                        "It comes out when the pointer reaches the screen edge",
+                        switch(self.config.bar.autohide, Message::BarAutohide, palette),
+                    ),
+                    setting(
                         "Frosted",
                         "Blur what's behind the bar, like frosted glass",
                         switch(look.blur, Message::BarBlur, palette),

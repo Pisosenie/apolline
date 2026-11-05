@@ -157,6 +157,8 @@ impl Settings {
             }
             Message::BarEdge(edge) => self.edit(|e| e.set("bar", "position", edge.key())),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
+            Message::BarAutohide(true) => self.edit(|e| e.set("bar", "autohide", true)),
+            Message::BarAutohide(false) => self.edit(|e| e.unset("bar", "autohide")),
             Message::BarShape(shape) => self.edit(|e| match shape {
                 apolline_config::Shape::Bar => e.unset("bar", "shape"),
                 shape => e.set("bar", "shape", shape.key()),

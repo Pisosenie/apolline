@@ -393,6 +393,8 @@ pub struct Bar {
     pub battery_percent: bool,
     pub position: Edge,
     pub floating: bool,
+    // Out of the way until the pointer reaches the screen edge, over windows rather than beside.
+    pub autohide: bool,
     pub shape: Shape,
     pub opacity: f32,
     pub blur: bool,
@@ -1074,6 +1076,7 @@ impl Default for Config {
                 battery_percent: true,
                 position: Edge::Top,
                 floating: true,
+                autohide: false,
                 shape: Shape::Bar,
                 opacity: 0.55,
                 blur: false,

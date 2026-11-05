@@ -381,6 +381,7 @@ enum Message {
     PartsDrop(iced::Point, f32),
     TrayDrop(iced::Point, f32),
     BarFloating(bool),
+    BarAutohide(bool),
     BarShape(apolline_config::Shape),
     BarOpacity(u16),
     BarBlur(bool),

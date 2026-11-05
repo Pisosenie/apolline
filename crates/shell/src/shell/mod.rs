@@ -139,6 +139,9 @@ pub enum Message {
     // Keyboard focus and pointer news from a layer window.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     LayerEvent(iced::window::Id, iced::Event),
+    // A hidden bar's pointer left a while ago; the number tells a later leaving from this one.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    HideBar(iced::window::Id, u64),
     ReplyTyped(String),
     ReplySend,
     Wifi(crate::wifi::Seen),
