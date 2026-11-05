@@ -1,6 +1,7 @@
+use crate::lit::button;
 use apolline_config::Edge;
 use apolline_theme::{Palette, neutral};
-use iced::widget::{Column, button, container, mouse_area, opaque, row, space};
+use iced::widget::{Column, container, mouse_area, opaque, row, space};
 use iced::{Alignment, Element, Fill, Padding};
 
 use crate::dock::{Event, Item};

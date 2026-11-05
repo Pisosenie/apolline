@@ -1,7 +1,9 @@
+use crate::lit::button;
 use crate::style::text;
 use apolline_theme::{Palette, font, metrics, neutral};
 use iced::widget::{
-    button, column, container, image, keyed_column, progress_bar, row, space, text_input,
+    button::{self},
+    column, container, image, keyed_column, progress_bar, row, space, text_input,
 };
 use iced::{Alignment, Background, Border, ContentFit, Element, Fill, Theme};
 

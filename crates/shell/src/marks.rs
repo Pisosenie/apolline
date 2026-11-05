@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::lit::button;
 use crate::style::text;
 use apolline_theme::{Palette, Rgba, neutral};
 use iced::widget::canvas::{self, Frame, Geometry, Stroke};
 use iced::widget::image::Handle;
-use iced::widget::{button, canvas as board, column, container, image, row, space, stack};
+use iced::widget::{canvas as board, column, container, image, row, space, stack};
 use iced::{Alignment, ContentFit, Element, Fill, Point, Rectangle, Renderer, Size, Theme, mouse};
 
 use crate::icon::{Icon, icon};

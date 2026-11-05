@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::lit::button;
 use crate::style::text;
 use apolline_theme::Palette;
 use iced::futures::channel::{mpsc, oneshot};
 use iced::futures::{SinkExt, Stream, StreamExt};
-use iced::widget::{Row, button, column, container, mouse_area, opaque, row, text_input};
+use iced::widget::{Row, column, container, mouse_area, opaque, row, text_input};
 use iced::{Alignment, Element, Fill, Padding, Subscription};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use zbus::fdo::DBusProxy;

@@ -3,11 +3,11 @@
 
 use std::collections::VecDeque;
 
+use crate::lit::button;
 use apolline_theme::{Palette, Rgba, neutral};
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
 use iced::widget::{
-    Column, button, canvas as graph, column, container, mouse_area, opaque, progress_bar, row,
-    space,
+    Column, canvas as graph, column, container, mouse_area, opaque, progress_bar, row, space,
 };
 use iced::{
     Alignment, Background, Border, Element, Fill, Length, Point, Rectangle, Renderer, Theme,

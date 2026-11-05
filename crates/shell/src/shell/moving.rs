@@ -136,6 +136,7 @@ impl Shell {
         self.follow_cards();
         self.follow_pills();
         self.dock.pace(self.speed());
+        crate::lit::pace(self.speed());
     }
 
     // Each screen's pill heads for its active workspace.

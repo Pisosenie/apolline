@@ -28,6 +28,7 @@ mod windows;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use crate::lit::button;
 use crate::style::text;
 use apolline_config::{
     Accent, Appear, Blur, Calendar, Center, Config, Corner, Diagnostic, Edge, Editor, ModeSettings,
@@ -38,8 +39,10 @@ use apolline_theme::{ACCENTS, Palette, Rgba, neutral};
 use iced::keyboard;
 use iced::widget::text::Span;
 use iced::widget::{
-    Column, Row, Space, button, container, image, pick_list, responsive, rich_text, row,
-    scrollable, slider, space, span, stack, text_input, toggler,
+    Column, Row, Space,
+    button::{self},
+    container, image, pick_list, responsive, rich_text, row, scrollable, slider, space, span,
+    stack, text_input, toggler,
 };
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Length, Shadow, Subscription,

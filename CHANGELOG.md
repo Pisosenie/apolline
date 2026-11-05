@@ -4,7 +4,8 @@
 
 - **Dock** (`[dock] show = true`, Settings → Bar → Dock): pinned and open apps along any edge, a dot for each window, a count of unread notifications on each app, magnify on hover, a menu with the app's windows, drag to reorder or unpin, hidden until the pointer reaches the edge.
 - **Plugins in any language**: a folder with a `plugin.toml` adds bar pieces, quick-settings tiles, launcher sources, desktop widgets and its own settings (secrets go to the keyring). `apolline plugin install|list|enable|disable|remove`, and Settings → Plugins. An example is in `examples/plugins/ip`.
-- **Motion**: the launcher, quick settings, calendar, clipboard, menus and the OSD fade and slide in and out, cards slide in and close the gap they leave, the workspace pill glides; all of it follows `[windows] animations`, and nothing runs at rest.
+- **Motion**: the launcher, quick settings, calendar, clipboard, menus and the OSD fade and slide in and out, cards slide in and close the gap they leave, the workspace pill glides, buttons light up and dim on hover; all of it follows `[windows] animations`, and nothing runs at rest.
+- **Lock screen**: what PAM asks beyond the password, a one-time code or a touch of a key, is asked right in the field. An expired password no longer keeps you out of your own session, and unlocking refreshes Kerberos tickets and the like instead of deleting them.
 
 ## 0.1.2 — 2026-11-05
 

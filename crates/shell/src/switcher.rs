@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use crate::lit::button;
 use crate::style::text;
 use apolline_config::{Accent, Config, ModeSettings, Notifications};
 use apolline_theme::{Palette, font, neutral};
 use iced::gradient::Linear;
 use iced::widget::{
-    Column, Row, button, column, container, image, mouse_area, opaque, row, space, stack,
+    Column, Row,
+    button::{self},
+    column, container, image, mouse_area, opaque, row, space, stack,
 };
 use iced::{Alignment, Background, Border, Color, Element, Fill, Font, Gradient, Radians, Theme};
 

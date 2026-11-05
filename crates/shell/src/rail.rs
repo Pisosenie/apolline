@@ -1,7 +1,12 @@
+use crate::lit::button;
 use crate::style::text;
 use apolline_config::{Piece, Shape, TrayItem, Workspaces};
 use apolline_theme::neutral;
-use iced::widget::{Column, button, column, container, mouse_area, space, tooltip};
+use iced::widget::{
+    Column,
+    button::{self},
+    column, container, mouse_area, space, tooltip,
+};
 use iced::{Alignment, Background, Element, Fill, Theme};
 
 use crate::bar::{Bar, Mark, app_key, module, tray_item, workspace_button, workspace_mark};

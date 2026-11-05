@@ -1,5 +1,6 @@
 mod apps;
 mod arrange;
+mod auth;
 mod bar;
 mod bluetooth;
 mod board;
@@ -38,6 +39,7 @@ mod kept;
 mod keymap;
 mod keys;
 mod launcher;
+mod lit;
 mod lock;
 mod logind;
 mod lyrics;

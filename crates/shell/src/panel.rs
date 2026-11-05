@@ -1,8 +1,9 @@
+use crate::lit::button;
 use crate::style::text;
 use apolline_config::ModeSettings;
 use apolline_theme::{Palette, metrics, neutral};
 use iced::widget::{
-    Column, Row, button, column, container, mouse_area, opaque, row, scrollable, slider, space,
+    Column, Row, column, container, mouse_area, opaque, row, scrollable, slider, space,
 };
 use iced::{Alignment, Element, Fill, Length, Padding};
 
@@ -1165,7 +1166,7 @@ fn wifi_list<'a>(panel: &Panel<'a>) -> Element<'a, Message> {
 
 // A row with a small "forget" button after it, for what's saved.
 fn forgettable<'a>(
-    row_button: iced::widget::Button<'a, Message>,
+    row_button: crate::lit::Lit<'a, Message>,
     forget: Option<Message>,
     busy: bool,
 ) -> Element<'a, Message> {

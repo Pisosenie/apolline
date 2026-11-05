@@ -198,20 +198,15 @@ mod wayland {
     }
 
     fn memfd() -> Result<std::fs::File, String> {
-        let dir = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(std::path::PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .unwrap_or_else(std::env::temp_dir);
-        let path = dir.join(format!("apolline-gamma-{}", std::process::id()));
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&path)
-            .map_err(|err| err.to_string())?;
-        let _ = std::fs::remove_file(&path);
-        Ok(file)
+        use std::os::fd::FromRawFd;
+
+        // SAFETY: the name is a C string; the descriptor is checked before it's owned.
+        let fd = unsafe { libc::memfd_create(c"apolline-gamma".as_ptr(), libc::MFD_CLOEXEC) };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        // SAFETY: a fresh descriptor nothing else holds.
+        Ok(unsafe { std::fs::File::from_raw_fd(fd) })
     }
 }
 

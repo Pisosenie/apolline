@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 
+use crate::lit::button;
 use crate::style::text;
 use apolline_config::Config;
 use apolline_theme::{Palette, Rgba, neutral};
@@ -8,13 +10,18 @@ use chrono::{DateTime, Local};
 use iced::gradient::Linear;
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::operation::focus;
-use iced::widget::{Space, button, column, container, image, row, space, stack, text_input};
+use iced::widget::{
+    Space,
+    button::{self},
+    column, container, image, row, space, stack, text_input,
+};
 use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Gradient, Radians,
     Subscription, Task, Theme, window,
 };
 use zeroize::Zeroizing;
 
+use crate::auth::{self, Question, Step};
 use crate::control::{self, Shared};
 use crate::fingerprint::Finger;
 use crate::icon::{Icon, icon};
@@ -142,7 +149,7 @@ pub enum Message {
     Key(keyboard::Event, bool),
     Password(String),
     Submit,
-    Checked(Result<(), String>),
+    Auth(u64, Step),
     Wallpaper(Result<image::Handle, String>),
     Battery(Option<Battery>),
     Media(Option<Track>),
@@ -159,6 +166,7 @@ pub enum Message {
 enum State {
     Typing,
     Checking,
+    Asked(Question),
     Wrong(String),
 }
 
@@ -174,6 +182,9 @@ struct Lock {
     user: User,
     password: Zeroizing<String>,
     state: State,
+    tries: u64,
+    answer: Option<Sender<Zeroizing<String>>>,
+    note: Option<String>,
     wallpaper: Option<image::Handle>,
     battery: Option<Battery>,
     track: Option<Track>,
@@ -220,6 +231,9 @@ impl Lock {
             },
             password: Zeroizing::new(String::new()),
             state: State::Typing,
+            tries: 0,
+            answer: None,
+            note: None,
             wallpaper: None,
             battery: sample.then_some(Battery {
                 percent: 82,
@@ -267,6 +281,13 @@ impl Lock {
         self.config.palette(self.mode)
     }
 
+    // Typing clears a refusal but keeps a question PAM is waiting on.
+    fn typing(&mut self) {
+        if matches!(self.state, State::Wrong(_)) {
+            self.state = State::Typing;
+        }
+    }
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
@@ -306,6 +327,8 @@ impl Lock {
                     Key::Named(Named::Escape) => {
                         self.password.clear();
                         self.state = State::Typing;
+                        self.answer = None;
+                        self.note = None;
                     }
                     _ if captured => {}
                     Key::Named(Named::Enter) => return self.update(Message::Submit),
@@ -315,32 +338,52 @@ impl Lock {
                     _ => {
                         if let Some(typed) = text.filter(|t| t.chars().all(|c| !c.is_control())) {
                             self.password.push_str(&typed);
-                            self.state = State::Typing;
+                            self.typing();
                         }
                     }
                 }
             }
             Message::Password(password) => {
                 self.password = Zeroizing::new(password);
-                self.state = State::Typing;
+                self.typing();
             }
             Message::Submit => {
                 if self.password.is_empty() || self.state == State::Checking {
                     return Task::none();
                 }
+                let typed = std::mem::replace(&mut self.password, Zeroizing::new(String::new()));
+                if let Some(answer) = self.answer.take() {
+                    self.state = State::Checking;
+                    let _ = answer.send(typed);
+                    return Task::none();
+                }
                 if self.preview {
                     self.state = State::Wrong("This is a preview, nothing to unlock".into());
-                    self.password.clear();
                     return Task::none();
                 }
                 self.state = State::Checking;
-                let login = self.user.login.clone();
-                let password = std::mem::replace(&mut self.password, Zeroizing::new(String::new()));
-                return Task::perform(check(login, password), Message::Checked);
+                self.tries += 1;
+                self.note = None;
+                let tries = self.tries;
+                return Task::run(auth::check(self.user.login.clone(), typed), move |step| {
+                    Message::Auth(tries, step)
+                });
             }
-            Message::Checked(Ok(())) => return unlock(),
-            Message::Checked(Err(err)) => {
-                self.state = State::Wrong(err);
+            Message::Auth(tries, _) if tries != self.tries => {}
+            Message::Auth(_, Step::Ask(question, answer)) => {
+                self.state = State::Asked(question);
+                self.answer = Some(answer);
+                return focus(FIELD);
+            }
+            Message::Auth(_, Step::Note(note)) => self.note = Some(note),
+            Message::Auth(_, Step::Done(Ok(()))) => return unlock(),
+            Message::Auth(_, Step::Done(Err(err))) => {
+                self.answer = None;
+                self.note = None;
+                // Escape already took the user back to the password.
+                if matches!(self.state, State::Checking | State::Asked(_)) {
+                    self.state = State::Wrong(err);
+                }
                 return focus(FIELD);
             }
             Message::Wallpaper(Ok(handle)) => self.wallpaper = Some(handle),
@@ -637,15 +680,17 @@ impl Lock {
             .into(),
         };
         let checking = self.state == State::Checking;
-        let mut input = text_input(
-            crate::i18n::t(if checking { "Checking…" } else { "Password" }),
-            &self.password,
-        )
-        .id(FIELD)
-        .secure(true)
-        .size(15)
-        .padding(0)
-        .style(style::bare_field(palette));
+        let (asked, shown) = match &self.state {
+            State::Checking => (crate::i18n::t("Checking…"), false),
+            State::Asked(question) => (question.text.trim().trim_end_matches(':'), question.shown),
+            _ => (crate::i18n::t("Password"), false),
+        };
+        let mut input = text_input(asked, &self.password)
+            .id(FIELD)
+            .secure(!shown)
+            .size(15)
+            .padding(0)
+            .style(style::bare_field(palette));
         if !checking {
             input = input.on_input(Message::Password).on_submit(Message::Submit);
         }
@@ -718,6 +763,10 @@ impl Lock {
             State::Wrong(reason) => text(reason.as_str())
                 .size(13)
                 .color(style::color(style::DANGER))
+                .into(),
+            _ if let Some(note) = &self.note => text(note.as_str())
+                .size(13)
+                .color(style::color(style::faint()))
                 .into(),
             _ if !finger.is_empty() => row![
                 icon(Icon::Fingerprint, 14.0, style::faint()),
@@ -870,80 +919,6 @@ fn account(passwd: &str, uid: u32) -> Option<(String, Option<String>)> {
     })
 }
 
-async fn check(login: String, password: Zeroizing<String>) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || authenticate(&login, password))
-        .await
-        .map_err(|err| err.to_string())?
-}
-
-#[cfg(target_os = "linux")]
-struct Conversation {
-    login: String,
-    password: Zeroizing<String>,
-    notes: Vec<String>,
-}
-
-#[cfg(target_os = "linux")]
-impl pam::Conversation for Conversation {
-    fn prompt_echo(&mut self, _: &std::ffi::CStr) -> Result<std::ffi::CString, ()> {
-        std::ffi::CString::new(self.login.clone()).map_err(drop)
-    }
-
-    fn prompt_blind(&mut self, _: &std::ffi::CStr) -> Result<std::ffi::CString, ()> {
-        std::ffi::CString::new(self.password.as_bytes()).map_err(drop)
-    }
-
-    fn info(&mut self, message: &std::ffi::CStr) {
-        self.notes.push(message.to_string_lossy().into_owned());
-    }
-
-    fn error(&mut self, message: &std::ffi::CStr) {
-        self.notes.push(message.to_string_lossy().into_owned());
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn authenticate(login: &str, password: Zeroizing<String>) -> Result<(), String> {
-    use pam::PamReturnCode as Code;
-
-    let service = std::env::var("APOLLINE_PAM_SERVICE").unwrap_or_else(|_| {
-        if std::path::Path::new("/etc/pam.d/apolline").exists() {
-            "apolline".to_owned()
-        } else {
-            "login".to_owned()
-        }
-    });
-    let conversation = Conversation {
-        login: login.to_owned(),
-        password,
-        notes: Vec::new(),
-    };
-    let mut client =
-        pam::Client::with_conversation(&service, conversation).map_err(|err| err.to_string())?;
-    let Err(err) = client.authenticate() else {
-        return Ok(());
-    };
-    if let Some(note) = client.conversation().notes.last() {
-        return Err(note.clone());
-    }
-    Err(match err.0 {
-        Code::Auth_Err | Code::Cred_Insufficient | Code::AuthTok_Err => "Wrong password".into(),
-        Code::MaxTries => "Too many tries, wait a little".into(),
-        Code::Acct_Expired | Code::AuthTok_Expired | Code::New_Authtok_Reqd => {
-            "Your password has expired".into()
-        }
-        other => crate::i18n::fill(
-            "Can't unlock: {reason}",
-            &[("reason", &format!("{other:?}"))],
-        ),
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
-fn authenticate(_: &str, _: Zeroizing<String>) -> Result<(), String> {
-    Err("Unlocking needs Linux".into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -988,10 +963,52 @@ mod tests {
     fn a_wrong_password_clears_the_field_and_says_so() {
         let (mut lock, _) = Lock::new(true, Some("evening".into()), None);
         let _ = lock.update(Message::Password("hunter2".into()));
-        let _ = lock.update(Message::Checked(Err("Wrong password".into())));
+        lock.state = State::Checking;
+        let _ = lock.update(Message::Auth(0, Step::Done(Err("Wrong password".into()))));
         assert_eq!(lock.state, State::Wrong("Wrong password".into()));
         let _ = lock.update(Message::Password("h".into()));
         assert_eq!(lock.state, State::Typing);
         assert_eq!(lock.mode, lock.config.find("evening"));
+    }
+
+    #[test]
+    fn a_question_from_pam_is_answered_from_the_field_and_escape_drops_it() {
+        let (mut lock, _) = Lock::new(true, None, None);
+        lock.state = State::Checking;
+        let code = Question {
+            text: "Verification code: ".into(),
+            shown: true,
+        };
+        let (answer, answers) = std::sync::mpsc::channel();
+        let _ = lock.update(Message::Auth(0, Step::Ask(code.clone(), answer)));
+        assert_eq!(lock.state, State::Asked(code.clone()));
+        let _ = lock.update(Message::Password("4242".into()));
+        assert_eq!(lock.state, State::Asked(code.clone()));
+        let _ = lock.update(Message::Submit);
+        assert_eq!(answers.recv().unwrap().as_str(), "4242");
+        assert_eq!(lock.state, State::Checking);
+
+        let (answer, answers) = std::sync::mpsc::channel();
+        let _ = lock.update(Message::Auth(0, Step::Ask(code, answer)));
+        let escape = keyboard::Event::KeyPressed {
+            key: Key::Named(Named::Escape),
+            modified_key: Key::Named(Named::Escape),
+            physical_key: keyboard::key::Physical::Unidentified(
+                keyboard::key::NativeCode::Unidentified,
+            ),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::empty(),
+            text: None,
+            repeat: false,
+        };
+        let _ = lock.update(Message::Key(escape, false));
+        assert!(answers.recv().is_err());
+        let _ = lock.update(Message::Auth(
+            0,
+            Step::Done(Err("Conversation error".into())),
+        ));
+        assert_eq!(lock.state, State::Typing);
+        let _ = lock.update(Message::Auth(7, Step::Done(Ok(()))));
+        assert_eq!(lock.state, State::Typing);
     }
 }
