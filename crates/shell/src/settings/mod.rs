@@ -416,6 +416,7 @@ enum Message {
     LockBeforeSleep(bool),
     LockMedia(bool),
     LockWeather(bool),
+    KeepHistory(bool),
     LockNext(bool),
     LockCount(bool),
     LockCentered(bool),

@@ -193,11 +193,19 @@ impl Shell {
                 } else {
                     Task::none()
                 };
-                let focus = self
-                    .app_window(&notification)
-                    .map_or_else(Task::none, |window| {
-                        niri::send(apolline_niri::Request::FocusWindow(window))
-                    });
+                let focus = match self.app_window(&notification) {
+                    Some(window) => niri::send(apolline_niri::Request::FocusWindow(window)),
+                    // From before this start, so no app hears the click: it opens instead.
+                    None if notify::is_past(id) => {
+                        [notification.desktop.as_deref(), Some(&notification.app)]
+                            .into_iter()
+                            .flatten()
+                            .find_map(|name| crate::apps::find(&self.apps, name))
+                            .map(|app| app.id.clone())
+                            .map_or_else(Task::none, |app| self.open_pinned(&app))
+                    }
+                    None => Task::none(),
+                };
                 // A resident card stays: it hears the click and nothing closes.
                 let told = match (notification.default_action(), notification.resident) {
                     (true, true) => notify::act(id, "default".into()),

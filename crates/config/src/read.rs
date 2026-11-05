@@ -796,6 +796,11 @@ impl Reader<'_> {
                         alerts.width = v
                     }
                 }
+                "keep" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        alerts.keep = v
+                    }
+                }
                 "quiet_hours" => match self.string(key, value).map(crate::Trigger::parse) {
                     Some(Some(crate::Trigger::Hours { from, until })) => {
                         alerts.quiet_hours = Some((from, until))
@@ -834,6 +839,7 @@ impl Reader<'_> {
                         "width",
                         "sound",
                         "quiet_hours",
+                        "keep",
                     ],
                 ),
             }

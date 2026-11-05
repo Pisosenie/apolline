@@ -913,7 +913,7 @@ fn entry<'a>(
                 .size(11)
                 .color(style::color(style::faint())),
             space::horizontal(),
-            text(popup::ago(notification.received.elapsed()))
+            text(popup::ago(notification.age()))
                 .size(11)
                 .color(style::color(style::faint())),
         ],

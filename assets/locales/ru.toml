@@ -917,3 +917,7 @@
 "{terminal} isn't installed" = "{terminal} не установлен"
 "{program} isn't installed" = "{program} не установлен"
 "vif, in its own colors; [colors] from = \"{file}\" in vif.toml puts it in Apolline's" = "vif в своих цветах; [colors] from = \"{file}\" в vif.toml оденет его в цвета Apolline"
+"now" = "сейчас"
+"{d} d" = "{d} д"
+"Keep the history" = "Хранить историю"
+"Through restarts, for a week, readable by you alone" = "Между перезапусками, неделю, доступно только вам"

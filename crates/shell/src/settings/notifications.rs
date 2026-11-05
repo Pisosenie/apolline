@@ -73,6 +73,11 @@ impl Settings {
                     self.sound_row(palette),
                     self.quiet_row(palette),
                     setting(
+                        "Keep the history",
+                        "Through restarts, for a week, readable by you alone",
+                        switch(alerts.keep, Message::KeepHistory, palette),
+                    ),
+                    setting(
                         "Try it",
                         "Sends a notification to whatever shows them",
                         row![

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use std::path::Path;
 
@@ -27,6 +27,14 @@ const REMINDERS: u32 = 1000;
 
 pub fn is_reminder(id: u32) -> bool {
     (REMINDER_CARD..REMINDER_CARD + REMINDERS).contains(&id)
+}
+
+// What the history kept from before this start: no app is left to answer for these ids.
+pub const PAST_CARD: u32 = CONFIG_CARD + 4096;
+pub const PASTS: u32 = 64;
+
+pub fn is_past(id: u32) -> bool {
+    (PAST_CARD..PAST_CARD + PASTS).contains(&id)
 }
 
 static CONNECTION: OnceLock<Connection> = OnceLock::new();
@@ -67,7 +75,7 @@ pub struct Notification {
     pub body: String,
     pub urgency: Urgency,
     pub timeout: Option<Duration>,
-    pub received: Instant,
+    pub received: SystemTime,
     // What the app asked to be heard, if anything.
     pub sound: Heard,
 }
@@ -163,7 +171,7 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         body,
         urgency: Urgency::Normal,
         timeout: Some(CONFIG_SHOWN_FOR),
-        received: Instant::now(),
+        received: SystemTime::now(),
         sound: Heard::Nothing,
     })
 }
@@ -200,7 +208,7 @@ pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
         body,
         urgency: Urgency::Critical,
         timeout: None,
-        received: Instant::now(),
+        received: SystemTime::now(),
         sound: Heard::Nothing,
     }
 }
@@ -249,7 +257,7 @@ pub fn reminder_card(
         body: said.join(" · "),
         urgency: Urgency::Normal,
         timeout: Some(shown_for),
-        received: Instant::now(),
+        received: SystemTime::now(),
         sound: Heard::Nothing,
     }
 }
@@ -272,7 +280,7 @@ pub fn shot_card(path: &str) -> Notification {
         body: crate::i18n::t("Click to add arrows, boxes or hide a part").into(),
         urgency: Urgency::Normal,
         timeout: Some(Duration::from_secs(6)),
-        received: Instant::now(),
+        received: SystemTime::now(),
         sound: Heard::Nothing,
     }
 }
@@ -500,6 +508,11 @@ fn rgba(
 }
 
 impl Notification {
+    // By the wall clock, so a card kept from yesterday says so.
+    pub fn age(&self) -> Duration {
+        self.received.elapsed().unwrap_or_default()
+    }
+
     pub fn default_action(&self) -> bool {
         self.actions.iter().any(|(key, _)| key == "default")
     }
@@ -602,7 +615,7 @@ impl Server {
             body,
             urgency,
             timeout: timeout(expire_timeout, urgency),
-            received: Instant::now(),
+            received: SystemTime::now(),
             sound: heard(&hints),
         };
         let _ = self.events.send(Message::Notify(notification)).await;

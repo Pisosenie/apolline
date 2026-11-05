@@ -222,6 +222,8 @@ pub struct Shell {
     popups: Vec<(Notification, Instant)>,
     held: Vec<Notification>,
     history: Vec<Notification>,
+    // What of the history is on disk, as kept::marks has it.
+    kept: Vec<(u32, std::time::SystemTime)>,
     awake: bool,
     osd: Option<(Osd, u64)>,
     clips: Vec<Clip>,
@@ -334,6 +336,7 @@ impl Shell {
             popups: Vec::new(),
             held: Vec::new(),
             history: Vec::new(),
+            kept: Vec::new(),
             awake: false,
             osd: None,
             clips: if sample {
@@ -411,6 +414,13 @@ impl Shell {
             now: Local::now(),
         };
         shell.report(&diagnostics);
+        // What came in before this start is back in quick settings, and written again at the
+        // first change without what got too old. Turned off, nothing is left on disk.
+        if !demo && shell.config.alerts.keep {
+            shell.history = crate::kept::load();
+        } else if !demo && let Err(err) = crate::kept::forget() {
+            eprintln!("apolline: notification history: {err}");
+        }
         shell.picked = shell.config.desktop.wallpaper.clone();
         shell.dress();
         shell.night = (shell.night_scheduled(), None);
@@ -568,12 +578,37 @@ impl Shell {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.handle(message);
         self.publish();
+        self.keep_history();
         let scheme = self.config.scheme(self.mode);
         if scheme != apolline_theme::scheme() {
             apolline_theme::set_scheme(scheme);
         }
         crate::i18n::choose(self.config.language.as_deref());
         task
+    }
+
+    // The history on disk follows the one in quick settings; turned off, it goes.
+    fn keep_history(&mut self) {
+        if self.demo {
+            return;
+        }
+        let marks = if self.config.alerts.keep {
+            crate::kept::marks(&self.history)
+        } else {
+            Vec::new()
+        };
+        if marks == self.kept {
+            return;
+        }
+        let wrote = if marks.is_empty() {
+            crate::kept::forget()
+        } else {
+            crate::kept::save(&self.history)
+        };
+        if let Err(err) = wrote {
+            eprintln!("apolline: notification history: {err}");
+        }
+        self.kept = marks;
     }
 
     fn show(&mut self, osd: Osd) -> Task<Message> {

@@ -29,6 +29,7 @@ mod gsettings;
 mod i18n;
 mod icon;
 mod idle;
+mod kept;
 mod keymap;
 mod keys;
 mod launcher;

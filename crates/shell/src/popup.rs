@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::style::text;
 use apolline_theme::{Palette, font, metrics, neutral};
 use iced::widget::{
@@ -137,9 +135,7 @@ fn card<'a>(
                 .size(11)
                 .color(muted),
             space::horizontal(),
-            text(ago(notification.received.elapsed()))
-                .size(11)
-                .color(muted),
+            text(ago(notification.age())).size(11).color(muted),
             button(icon(Icon::X, 11.0, neutral::muted()))
                 .padding(2)
                 .style(style::ghost(6.0))
@@ -238,11 +234,13 @@ fn card<'a>(
     .into()
 }
 
-pub fn ago(elapsed: Duration) -> String {
-    match elapsed.as_secs() / 60 {
-        0 => "now".into(),
-        minutes @ 1..60 => format!("{minutes} min"),
-        minutes => format!("{} h", minutes / 60),
+pub fn ago(elapsed: std::time::Duration) -> String {
+    let minutes = elapsed.as_secs() / 60;
+    match minutes {
+        0 => crate::i18n::t("now").to_owned(),
+        1..60 => crate::i18n::fill("{m} min", &[("m", &minutes)]),
+        60..1440 => crate::i18n::fill("{h} h", &[("h", &(minutes / 60))]),
+        _ => crate::i18n::fill("{d} d", &[("d", &(minutes / 1440))]),
     }
 }
 
@@ -343,9 +341,11 @@ mod tests {
 
     #[test]
     fn age_reads_like_a_person_would_say_it() {
-        assert_eq!(ago(Duration::from_secs(20)), "now");
-        assert_eq!(ago(Duration::from_secs(150)), "2 min");
-        assert_eq!(ago(Duration::from_secs(3 * 3600 + 120)), "3 h");
+        let ago = |secs| ago(std::time::Duration::from_secs(secs));
+        assert_eq!(ago(20), "now");
+        assert_eq!(ago(150), "2 min");
+        assert_eq!(ago(3 * 3600 + 120), "3 h");
+        assert_eq!(ago(2 * 86400 + 60), "2 d");
     }
 
     #[test]

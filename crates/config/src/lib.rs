@@ -805,6 +805,8 @@ pub struct Alerts {
     pub sound: Sound,
     // Do not disturb on its own between these minutes of the day, like 23:00-07:00.
     pub quiet_hours: Option<(u16, u16)>,
+    // The history outlives the shell and the session, kept on disk.
+    pub keep: bool,
 }
 
 // What a card makes heard when it shows.
@@ -1086,6 +1088,7 @@ impl Default for Config {
                 width: 360,
                 sound: Sound::Off,
                 quiet_hours: None,
+                keep: true,
             },
             shortcuts: Shortcuts::default(),
             lock: Lock {
