@@ -101,6 +101,8 @@ pub enum Message {
     ModuleScroll(usize, f32),
     // Starts a module's command again: the one at that index, or every one.
     ModuleRerun(Option<usize>),
+    StartTimer(Duration, Option<String>),
+    StopTimer(usize),
     NightLight(bool),
     Frame,
     CalendarMonth(i32),
@@ -320,6 +322,9 @@ pub struct Shell {
     module_text: Vec<(usize, crate::modules::Said)>,
     module_runs: Vec<u32>,
     module_scrolled: Option<(usize, std::time::Instant)>,
+    timers: Vec<crate::timers::Timer>,
+    // How many timers have rung, for their cards' ids.
+    rung: u32,
     recording: Option<crate::capture::Recording>,
     replay: Option<crate::capture::Replay>,
     marks: Option<crate::marks::Marks>,
@@ -443,6 +448,8 @@ impl Shell {
             module_text: Vec::new(),
             module_runs: Vec::new(),
             module_scrolled: None,
+            timers: Vec::new(),
+            rung: 0,
             recording: None,
             replay: None,
             marks: None,
@@ -761,6 +768,7 @@ impl Shell {
     pub fn subscription(&self) -> iced::Subscription<Message> {
         let busy = self.demo
             || self.recording.is_some()
+            || !self.timers.is_empty()
             || self.config.bar.seconds
             || self.overlay.is_some()
             || !self.popups.is_empty();

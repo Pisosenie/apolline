@@ -69,6 +69,7 @@ mod switcher;
 mod templates;
 mod terminal;
 mod themes;
+mod timers;
 mod tray;
 mod tray_menu;
 mod updates;
@@ -98,6 +99,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys | replay | terminal | machine | updates
        apolline module [NAME]
+       apolline timer LENGTH [LABEL] | timer stop
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME] | theme install PATH|LINK
        apolline pick [--prompt TEXT] < lines
@@ -132,7 +134,7 @@ fn main() -> ExitCode {
         }
         Some(
             "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal"
-            | "machine" | "updates" | "module",
+            | "machine" | "updates" | "module" | "timer",
         ) => {
             return command(&args.join(" "));
         }

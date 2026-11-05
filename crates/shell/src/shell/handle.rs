@@ -10,6 +10,7 @@ impl Shell {
                     return self.show(Osd::Note("The recording stopped: wf-recorder quit".into()));
                 }
                 self.ticks += 1;
+                let rung = self.ring_timers();
                 let controls = if self.overlay == Some(Overlay::Panel) {
                     self.read_controls()
                 } else {
@@ -21,7 +22,11 @@ impl Shell {
                 }
                 // Do not disturb set for a while ends on its own.
                 if self.quiet_until.is_some_and(|until| until <= self.now) {
-                    return Task::batch([self.update(Message::DoNotDisturb(false)), self.expire()]);
+                    return Task::batch([
+                        rung,
+                        self.update(Message::DoNotDisturb(false)),
+                        self.expire(),
+                    ]);
                 }
                 // And what the quiet hours held comes out when they end.
                 let quiet = self.quiet();
@@ -33,7 +38,7 @@ impl Shell {
                 let rotate = self.rotate();
                 let remind = self.remind();
                 self.publish();
-                return Task::batch([self.expire(), controls, triggers, rotate, remind]);
+                return Task::batch([self.expire(), controls, triggers, rotate, remind, rung]);
             }
             Message::CalendarMonth(month) => {
                 self.month = month;
@@ -209,6 +214,17 @@ impl Shell {
                 }
             }
             Message::ModuleAct(index, act) => return self.module_act(index, act),
+            Message::StartTimer(length, label)
+            | Message::Control(Command::Timer(length, label)) => {
+                self.timers.push(crate::timers::Timer::start(length, label));
+                self.timers.sort_by_key(|t| t.ends);
+            }
+            Message::StopTimer(index) => {
+                if index < self.timers.len() {
+                    self.timers.remove(index);
+                }
+            }
+            Message::Control(Command::StopTimers) => self.timers.clear(),
             Message::ModuleScroll(index, y) => {
                 let act = match y {
                     y if y > 0.0 => crate::modules::Act::Up,

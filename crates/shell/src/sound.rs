@@ -18,6 +18,11 @@ pub fn pick(choice: &Sound, asked: &Heard) -> Option<PathBuf> {
     }
 }
 
+// What a timer rings with: the theme's alarm, or its message sound where it has none.
+pub fn alarm() -> Option<PathBuf> {
+    themed("alarm-clock-elapsed").or_else(|| themed(DEFAULT))
+}
+
 // A sound by its theme name, from yours first and then the system's freedesktop theme.
 fn themed(name: &str) -> Option<PathBuf> {
     if name.is_empty() || name.contains('/') {

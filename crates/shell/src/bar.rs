@@ -43,6 +43,8 @@ pub struct Bar<'a> {
     pub icons: Option<&'a str>,
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
+    // Timers running, soonest first: what for and how long is left.
+    pub timers: Vec<(Option<&'a str>, std::time::Duration)>,
     // The apps recording from a microphone, and whether the screen is being taken.
     pub listening: &'a [String],
     pub updates: Option<crate::updates::Updates>,
@@ -175,15 +177,19 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
         Piece::Clock => Some(clock(bar)),
         Piece::Media => media(bar),
         Piece::Notifications => bell(bar),
-        Piece::Recording => match (watching(bar, true), recording(bar)) {
-            (Some(watched), Some(recorded)) => Some(
-                row![watched, recorded]
+        Piece::Recording => {
+            let going: Vec<Element<'a, Message>> = watching(bar, true)
+                .into_iter()
+                .chain(timers(bar, true))
+                .chain(recording(bar))
+                .collect();
+            (!going.is_empty()).then(|| {
+                Row::with_children(going)
                     .spacing(2)
                     .align_y(Alignment::Center)
-                    .into(),
-            ),
-            (watched, recorded) => watched.or(recorded),
-        },
+                    .into()
+            })
+        }
         Piece::Updates => updates(bar, true),
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
@@ -432,6 +438,55 @@ pub fn updates<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>> 
         )
         .into(),
     )
+}
+
+// Each running timer, with what's left; a right click stops it.
+pub fn timers<'a>(bar: &Bar<'a>, across: bool) -> Vec<Element<'a, Message>> {
+    let tint = bar.palette.accent;
+    bar.timers
+        .iter()
+        .enumerate()
+        .map(|(index, (label, left))| {
+            let shown: Element<'a, Message> = if across {
+                row![
+                    icon(Icon::Timer, 13.0, tint),
+                    text(crate::timers::left(*left))
+                        .size(12)
+                        .font(style::mono()),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .into()
+            } else {
+                column![
+                    icon(Icon::Timer, 13.0, tint),
+                    text(format!("{}m", left.as_secs().div_ceil(60)))
+                        .size(10)
+                        .font(style::mono()),
+                ]
+                .spacing(3)
+                .align_x(Alignment::Center)
+                .into()
+            };
+            let said = crate::i18n::fill(
+                "{what} · right click stops it",
+                &[("what", &label.unwrap_or(crate::i18n::t("Timer")))],
+            );
+            iced::widget::tooltip(
+                mouse_area(container(shown).padding([4, 8]))
+                    .on_right_press(Message::StopTimer(index)),
+                container(style::verbatim(said).size(12))
+                    .padding([4, 8])
+                    .style(style::surface),
+                if across {
+                    iced::widget::tooltip::Position::Bottom
+                } else {
+                    iced::widget::tooltip::Position::Right
+                },
+            )
+            .into()
+        })
+        .collect()
 }
 
 fn recording<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {

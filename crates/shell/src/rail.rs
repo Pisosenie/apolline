@@ -118,15 +118,17 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
                 .on_press(Message::StopRecording)
                 .into()
             });
-            match (crate::bar::watching(bar, false), recorded) {
-                (Some(watched), Some(recorded)) => Some(
-                    column![watched, recorded]
-                        .spacing(4)
-                        .align_x(Alignment::Center)
-                        .into(),
-                ),
-                (watched, recorded) => watched.or(recorded),
-            }
+            let going: Vec<Element<'a, Message>> = crate::bar::watching(bar, false)
+                .into_iter()
+                .chain(crate::bar::timers(bar, false))
+                .chain(recorded)
+                .collect();
+            (!going.is_empty()).then(|| {
+                Column::with_children(going)
+                    .spacing(4)
+                    .align_x(Alignment::Center)
+                    .into()
+            })
         }
         Piece::Updates => crate::bar::updates(bar, false),
         Piece::Stats => stats(bar),

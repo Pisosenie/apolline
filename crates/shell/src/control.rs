@@ -26,6 +26,8 @@ pub enum Command {
     Updates,
     // Runs [[module]] commands again: the one by that name, or all of them.
     Module(Option<String>),
+    Timer(std::time::Duration, Option<String>),
+    StopTimers,
     Nudge(Nudge),
 }
 
@@ -42,6 +44,10 @@ impl Command {
             ["terminal"] => Ok(Command::Terminal),
             ["machine"] => Ok(Command::Machine),
             ["updates"] => Ok(Command::Updates),
+            ["timer", "stop"] => Ok(Command::StopTimers),
+            ["timer", ..] => crate::timers::parse(line)
+                .map(|(length, label)| Command::Timer(length, label))
+                .ok_or_else(|| "how long? like timer 25m tea, or timer 1h30m".to_owned()),
             ["module"] => Ok(Command::Module(None)),
             ["module", name @ ..] => Ok(Command::Module(Some(name.join(" ")))),
             words @ ["volume" | "mic" | "brightness", _] => Nudge::parse(words)
@@ -240,6 +246,14 @@ mod tests {
         assert_eq!(Command::parse("  mode   next "), Ok(Command::NextMode));
         assert!(Command::parse("mode").is_err());
         assert_eq!(Command::parse("module"), Ok(Command::Module(None)));
+        assert_eq!(
+            Command::parse("timer 5m eggs"),
+            Ok(Command::Timer(
+                std::time::Duration::from_secs(300),
+                Some("eggs".into())
+            ))
+        );
+        assert!(Command::parse("timer soon").is_err());
         assert_eq!(
             Command::parse("module weather"),
             Ok(Command::Module(Some("weather".into())))

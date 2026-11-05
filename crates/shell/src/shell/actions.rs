@@ -51,6 +51,7 @@ impl Shell {
                 Task::none()
             }
             Target::Mode(mode) => self.switch(mode),
+            Target::Timer(length, label) => self.update(Message::StartTimer(length, label)),
             Target::Settings => self.spawn(&format!("{} settings", me())),
             Target::Keys => {
                 return Task::batch([close, self.set_overlay(Some(Overlay::Keys))]);

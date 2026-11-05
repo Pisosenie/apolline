@@ -118,6 +118,7 @@ icons! {
     Target = "target",
     Terminal = "square-terminal",
     Thermometer = "thermometer",
+    Timer = "timer",
     Trash = "trash-2",
     Type = "type",
     Undo = "undo-2",

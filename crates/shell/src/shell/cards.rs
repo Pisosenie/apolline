@@ -78,6 +78,30 @@ impl Shell {
         Task::batch(cards)
     }
 
+    // Timers that ran out: a card each, and the alarm sound once.
+    pub(super) fn ring_timers(&mut self) -> Task<Message> {
+        let now = Instant::now();
+        let (done, left): (Vec<_>, Vec<_>) = std::mem::take(&mut self.timers)
+            .into_iter()
+            .partition(|t| t.ends <= now);
+        self.timers = left;
+        if done.is_empty() {
+            return Task::none();
+        }
+        let mut cards: Vec<Task<Message>> = done
+            .iter()
+            .map(|timer| {
+                self.rung = self.rung.wrapping_add(1);
+                let card = timer.card(self.rung);
+                self.update(Message::Notify(card))
+            })
+            .collect();
+        if let Some(alarm) = crate::sound::alarm() {
+            cards.push(Task::future(crate::sound::play(alarm)).discard());
+        }
+        Task::batch(cards)
+    }
+
     pub(super) fn forget(&mut self, id: u32) {
         self.popups.retain(|(n, _)| n.id != id);
         self.held.retain(|n| n.id != id);

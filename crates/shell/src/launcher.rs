@@ -38,6 +38,8 @@ pub enum Target {
     Power(Power),
     // A command typed into the search, run as it is.
     Run(String),
+    // A countdown on the bar.
+    Timer(std::time::Duration, Option<String>),
     // The search, looked up on the web.
     Web(String),
 }
@@ -305,6 +307,27 @@ impl Launcher {
                 .collect();
             found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
             return found.into_iter().take(60).map(|(_, entry)| entry).collect();
+        }
+        if let Some((length, label)) = crate::timers::parse(query).filter(|_| finds("actions")) {
+            let length_said = crate::timers::length(length);
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: match &label {
+                        Some(label) => crate::i18n::fill(
+                            "Start a {length} timer: {label}",
+                            &[("length", &length_said), ("label", label)],
+                        ),
+                        None => {
+                            crate::i18n::fill("Start a {length} timer", &[("length", &length_said)])
+                        }
+                    },
+                    about: "It counts down on the bar and rings when it's done".to_owned(),
+                    picture: Pic::Icon(Icon::Timer),
+                    target: Target::Timer(length, label),
+                    game: false,
+                },
+            ));
         }
         if !finds("calculator") {
         } else if let Some(result) = calc::answer(query) {

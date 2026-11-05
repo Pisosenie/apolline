@@ -241,6 +241,7 @@ impl Settings {
                 icons: None,
                 modules: Vec::new(),
                 recording: None,
+                timers: Vec::new(),
                 listening: &[],
                 updates: None,
                 casting: false,
