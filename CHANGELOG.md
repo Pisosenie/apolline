@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-11-05
+
+- A command too long for the control socket gets its answer instead of a reset, which also makes the test suite pass on Linux.
+
 ## 0.1.1 — 2026-11-05
 
 - `[desktop] wallpaper = "none"` (Settings → Appearance → Drawn by another program) leaves the wallpaper to apolline-wall, swww or hyprpaper: the shell keeps the clock and widgets a layer above it and lets clicks through to it.
