@@ -121,6 +121,7 @@ pub enum Message {
     Files(Vec<std::path::PathBuf>),
     Detail(Option<panel::Detail>),
     Volume(Option<controls::Volume>),
+    Sound(controls::Heard),
     Profiles(Option<crate::profile::Profiles>),
     PickProfile(String),
     ProfileSet(String, Result<(), String>),
@@ -305,6 +306,8 @@ pub struct Shell {
     launcher: Launcher,
     controls: Controls,
     touched: Option<Instant>,
+    // What the sound server said while a slider moved, read once things are quiet.
+    sound_held: Option<controls::Heard>,
     power_menu: bool,
     armed: Option<Power>,
     thumbs: HashMap<String, image::Handle>,
@@ -428,6 +431,7 @@ impl Shell {
                 Controls::default()
             },
             touched: None,
+            sound_held: None,
             power_menu: false,
             armed: None,
             thumbs: HashMap::new(),
@@ -814,12 +818,6 @@ impl Shell {
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
-                // Shown only in the recording piece, so watched only when a bar has it.
-                if self.config.bar.has(&apolline_config::Piece::Recording) {
-                    crate::privacy::subscription()
-                } else {
-                    iced::Subscription::none()
-                },
                 if self.listening_for_words() {
                     iced::time::every(std::time::Duration::from_millis(400))
                         .map(|_| Message::AskPosition)
@@ -827,11 +825,7 @@ impl Shell {
                     iced::Subscription::none()
                 },
                 crate::updates::subscription(self.config.bar.has(&apolline_config::Piece::Updates)),
-                if self.overlay == Some(Overlay::Panel) {
-                    iced::Subscription::none()
-                } else {
-                    controls::volume().map(Message::Volume)
-                },
+                controls::heard().map(Message::Sound),
                 crate::profile::subscription().map(Message::Profiles),
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
