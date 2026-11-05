@@ -26,16 +26,16 @@ fn converse(
     loop {
         match reply["type"].as_str() {
             Some("auth_message") => {
+                let asked = reply["auth_message"].as_str().unwrap_or("Login");
                 let response = match reply["auth_message_type"].as_str() {
-                    Some("secret" | "visible") if !answered => {
+                    Some("secret") if !answered => {
                         answered = true;
                         Some(password)
                     }
+                    Some("visible") if asks_for_login(asked) => Some(user),
+                    // A visible question, a code say, never gets the password.
                     Some("secret" | "visible") => {
-                        return Err(format!(
-                            "{} asks for more than a password",
-                            reply["auth_message"].as_str().unwrap_or("Login")
-                        ));
+                        return Err(format!("{asked} asks for more than a password"));
                     }
                     _ => None,
                 };
@@ -57,6 +57,11 @@ fn converse(
         Some("success") => Ok(()),
         _ => Err(said(&started)),
     }
+}
+
+fn asks_for_login(prompt: &str) -> bool {
+    let prompt = prompt.to_lowercase();
+    prompt.starts_with("login") || prompt.contains("user")
 }
 
 fn said(reply: &Value) -> String {
@@ -137,6 +142,29 @@ mod tests {
         assert_eq!(seen[0]["username"], "dzorin");
         assert_eq!(seen[1]["response"], "polina");
         assert_eq!(seen[2]["cmd"][0], "niri-session");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_visible_question_never_gets_the_password() {
+        let (path, listener) = socket("code");
+        let server = serve(
+            listener,
+            vec![
+                json!({"type": "auth_message", "auth_message_type": "visible", "auth_message": "login:"}),
+                json!({"type": "auth_message", "auth_message_type": "visible", "auth_message": "Verification code:"}),
+                json!({"type": "success"}),
+            ],
+        );
+        let result = login(&path, "dzorin", "polina", &["niri-session".to_owned()]);
+        assert_eq!(
+            result,
+            Err("Verification code: asks for more than a password".into())
+        );
+        let seen = server.join().unwrap();
+        assert_eq!(seen[1]["response"], "dzorin");
+        assert_eq!(seen[2]["type"], "cancel_session");
+        assert!(!seen.iter().any(|said| said["response"] == "polina"));
         let _ = std::fs::remove_file(path);
     }
 
