@@ -96,7 +96,7 @@ use std::process::ExitCode;
 use apolline_config::{Config, Editor, slug};
 
 const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
-       apolline mode NAME|next|none
+       apolline mode NAME|next|none|off
        apolline switch | launcher | panel | clipboard | keys | replay | terminal | machine | updates
        apolline module [NAME]
        apolline timer LENGTH [LABEL] | timer stop
@@ -106,7 +106,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
        apolline setup
        apolline fragment [CONFIG] [MODE]
-       apolline settings [--page NAME]
+       apolline settings [--page NAME] [--screenshot FILE]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]
        apolline doctor";
@@ -276,7 +276,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     }
                     _ => {
                         return Err(
-                            "--open needs launcher, panel, wifi, bluetooth, switch, clipboard, keys, calendar, polkit or osd".into(),
+                            "--open needs launcher, panel, wifi, bluetooth, switch, clipboard, keys, calendar, machine, polkit or osd".into(),
                         );
                     }
                 };
@@ -395,7 +395,14 @@ fn open_settings(args: &[String]) -> ExitCode {
 }
 
 fn lock_screen(args: &[String]) -> ExitCode {
-    let options = match parse(args) {
+    let options = parse(args).and_then(|options| {
+        if options.open.is_empty() {
+            Ok(options)
+        } else {
+            Err("the lock screen takes no --open or --query".to_owned())
+        }
+    });
+    let options = match options {
         Ok(options) => options,
         Err(message) => {
             eprintln!("apolline: {message}\n{USAGE}");

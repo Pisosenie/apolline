@@ -406,9 +406,9 @@ impl Settings {
                 if !name.is_empty() {
                     let theme = Look::of(&self.config, &name, std::env::var("USER").ok());
                     self.theme_note = Some(themes::save(&theme).map(|path| {
-                        format!(
-                            "Saved as {}. Send that file to share the look.",
-                            path.display()
+                        crate::i18n::fill(
+                            "Saved as {path}. Send that file to share the look.",
+                            &[("path", &path.display())],
                         )
                     }));
                     if self.theme_note.as_ref().is_some_and(Result::is_ok) {

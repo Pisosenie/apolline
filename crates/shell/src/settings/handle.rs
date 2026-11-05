@@ -108,7 +108,10 @@ impl Settings {
                 let taken = self.config.find(&name).is_some_and(|other| other != index);
                 if name.is_empty() || taken {
                     self.error = Some(if taken {
-                        format!("there is already a mode called “{name}”")
+                        crate::i18n::fill(
+                            "there is already a mode called “{name}”",
+                            &[("name", &name)],
+                        )
                     } else {
                         "a mode needs a name".to_owned()
                     });
@@ -322,6 +325,14 @@ impl Settings {
                 }
             }
             Message::RemoveModule(index) => self.edit(|e| e.remove_module(index)),
+            Message::ModuleField(index, field, draft) => {
+                self.module_field = Some((index, field, draft))
+            }
+            Message::ModuleFieldDone => {
+                if let Some((index, field, draft)) = self.module_field.take() {
+                    self.module_written(index, field, draft.trim());
+                }
+            }
             Message::CalendarDraft(draft) => self.calendar_draft = draft,
             Message::AddCalendar => {
                 let link = Calendar::Ics(self.calendar_draft.trim().to_owned());

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Shortcuts can be written as they look: `Mod+/`, `Mod+,`, `Mod+[` read as niri's `Mod+Slash` and the rest.
+- `[style.bar] opacity` never did anything; `apolline check` now says to use `[bar] opacity`. A `[bar.stats]` table is caught instead of becoming a screen called "stats".
+- Settings → Bar names a module and sets how often it reruns; each page shows every section it writes; idle sliders reach four hours.
+- Lines with names and numbers in them come out in Russian too.
+
 ## 0.1.0 — 2026-11-05
 
 The first release: a whole desktop around niri, set up by `apolline setup`.

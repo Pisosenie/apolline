@@ -429,29 +429,32 @@ impl Settings {
         }
         let reason = self.live.reason.as_deref().and_then(Trigger::parse)?;
         let because = match reason {
-            Trigger::Game => "a game is running".to_owned(),
-            Trigger::Battery => "the laptop runs on battery".to_owned(),
-            Trigger::Hours { from, until } => format!(
-                "it's between {} and {}",
-                apolline_config::clock(from),
-                apolline_config::clock(until)
+            Trigger::Game => crate::i18n::t("a game is running").to_owned(),
+            Trigger::Battery => crate::i18n::t("the laptop runs on battery").to_owned(),
+            Trigger::Hours { from, until } => crate::i18n::fill(
+                "it's between {from} and {until}",
+                &[
+                    ("from", &apolline_config::clock(from)),
+                    ("until", &apolline_config::clock(until)),
+                ],
             ),
-            Trigger::Monitor(name) => format!("{name} is plugged in"),
+            Trigger::Monitor(name) => crate::i18n::fill("{name} is plugged in", &[("name", &name)]),
         };
         let back = self
             .live
             .back
             .as_deref()
             .and_then(|key| self.config.find(key))
-            .map_or("the plain desktop".to_owned(), |i| {
+            .map_or(crate::i18n::t("the plain desktop").to_owned(), |i| {
                 self.config.modes[i].name.clone()
             });
         Some(
             container(
                 row![
                     icon(Icon::Zap, 15.0, palette.accent),
-                    text(format!(
-                        "On now because {because}. When that ends, {back} comes back."
+                    text(crate::i18n::fill(
+                        "On now because {because}. When that ends, {back} comes back.",
+                        &[("because", &because), ("back", &back)]
                     ))
                     .size(13),
                 ]
@@ -631,16 +634,16 @@ pub(super) fn rules<'a>(index: usize, current: Notifications) -> Element<'a, Mes
 pub(super) fn mode_overrides(mode: &ModeSettings) -> Vec<String> {
     let mut over = Vec::new();
     if let Some(theme) = &mode.theme {
-        over.push(format!("{theme}'s look"));
+        over.push(crate::i18n::fill("{theme}'s look", &[("theme", theme)]));
     }
     if mode.wallpaper.is_some() && mode.theme.is_none() {
-        over.push("its own wallpaper".to_owned());
+        over.push(crate::i18n::t("its own wallpaper").to_owned());
     }
     if mode.accent.is_some() && mode.theme.is_none() {
-        over.push("its own accent".to_owned());
+        over.push(crate::i18n::t("its own accent").to_owned());
     }
     if mode.performance {
-        over.push("no shadows, blur or animations".to_owned());
+        over.push(crate::i18n::t("no shadows, blur or animations").to_owned());
     }
     over
 }

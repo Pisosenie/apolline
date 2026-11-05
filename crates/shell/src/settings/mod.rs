@@ -211,7 +211,7 @@ impl Page {
                 "How windows open, move, fade and animate, for all of them or one app."
             }
             Page::Displays => "Resolution, refresh rate, scale and where each screen sits.",
-            Page::Bar => "What the bar at the top shows.",
+            Page::Bar => "Where the bar sits and what it shows.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
             Page::Keyboard => {
@@ -247,11 +247,13 @@ impl Page {
     fn sections(self) -> &'static [&'static str] {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
-            Page::Themes => &["desktop", "layout", "windows", "bar"],
+            Page::Themes => &[
+                "desktop", "colors", "layout", "windows", "bar", "lock", "style",
+            ],
             Page::Appearance => &["desktop", "colors", "layout", "apps", "style", "launcher"],
             Page::Windows => &["windows"],
-            Page::Displays => &["night"],
-            Page::Bar => &["bar", "clock", "panel"],
+            Page::Displays => &["night", "bar.skip", "bar.screens"],
+            Page::Bar => &["bar", "style.bar", "clock", "panel"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],
@@ -263,6 +265,12 @@ impl Page {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Layout(&'static str, &'static str);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModuleField {
+    Name,
+    Every,
+}
 
 impl std::fmt::Display for Layout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -319,6 +327,8 @@ enum Message {
     ModuleDraft(String),
     AddModule,
     RemoveModule(usize),
+    ModuleField(usize, ModuleField, String),
+    ModuleFieldDone,
     WeatherDraft(String),
     SetWeather,
     CalendarDraft(String),
@@ -554,6 +564,8 @@ struct Settings {
     pin_query: String,
     app_draft: (&'static str, String),
     module_draft: String,
+    // A module's name or rerun as it's typed, written on Enter.
+    module_field: Option<(usize, ModuleField, String)>,
     weather_draft: Option<String>,
     calendar_draft: String,
     caldav: CalDavForm,
@@ -656,6 +668,7 @@ impl Settings {
             pin_query: String::new(),
             app_draft: ("", String::new()),
             module_draft: String::new(),
+            module_field: None,
             weather_draft: None,
             calendar_draft: String::new(),
             caldav: CalDavForm::default(),
@@ -730,9 +743,12 @@ impl Settings {
         });
         match taken {
             Some(other) => {
-                self.shortcut_error = Some(format!(
-                    "{combo} already opens “{}”",
-                    fragment::action(other).0
+                self.shortcut_error = Some(crate::i18n::fill(
+                    "{combo} already opens “{action}”",
+                    &[
+                        ("combo", &combo),
+                        ("action", &crate::i18n::t(fragment::action(other).0)),
+                    ],
                 ));
             }
             None => {

@@ -9,21 +9,37 @@ impl Settings {
             .iter()
             .enumerate()
             .map(|(index, module)| {
-                let mut about = Vec::new();
-                if let Some(every) = module.every {
-                    about.push(format!("every {every} s"));
-                }
-                if module.click.is_some() {
-                    about.push("clickable".to_owned());
-                }
+                let field = |which: ModuleField, written: String| match &self.module_field {
+                    Some((at, now, draft)) if *at == index && *now == which => draft.clone(),
+                    _ => written,
+                };
+                let input = |which: ModuleField, placeholder: &'static str, value: String| {
+                    text_input(crate::i18n::t(placeholder), &value)
+                        .on_input(move |draft| Message::ModuleField(index, which, draft))
+                        .on_submit(Message::ModuleFieldDone)
+                        .padding([5, 8])
+                        .size(12)
+                        .style(style::field(palette))
+                };
+                let name = field(ModuleField::Name, module.name.clone().unwrap_or_default());
+                let every = field(
+                    ModuleField::Every,
+                    module.every.map(|s| s.to_string()).unwrap_or_default(),
+                );
                 row![
                     text(module.command.as_str())
                         .size(12)
                         .font(style::mono())
                         .width(Fill),
-                    text(about.join(" · "))
-                        .size(11)
-                        .color(style::color(style::faint())),
+                    text(if module.click.is_some() {
+                        "clickable"
+                    } else {
+                        ""
+                    })
+                    .size(11)
+                    .color(style::color(style::faint())),
+                    input(ModuleField::Name, "name", name).width(110),
+                    input(ModuleField::Every, "every … s", every).width(80),
                     button(icon(Icon::X, 14.0, style::faint()))
                         .padding(6)
                         .style(style::ghost(8.0))
@@ -59,9 +75,64 @@ impl Settings {
             .into(),
         );
         rows.push(note(
-            "Each line the command prints shows on the bar. One that prints once and exits can rerun with every = seconds, and click = a command runs on a click; both go in the file.",
+            "Each line the command prints shows on the bar. One that prints once and exits reruns every so many seconds. A name places it on the bar on its own; click = a command for a click goes in the file.",
         ));
         rows
+    }
+
+    // A name or a rerun typed for a module; a renamed module keeps its place on the bar.
+    pub(super) fn module_written(&mut self, index: usize, field: ModuleField, value: &str) {
+        let Some(module) = self.config.modules.get(index) else {
+            return;
+        };
+        match field {
+            ModuleField::Every if value.is_empty() => self.edit(|e| e.unset_module(index, "every")),
+            ModuleField::Every => {
+                if let Ok(seconds) = value.parse::<u16>()
+                    && seconds > 0
+                {
+                    self.edit(|e| e.set_module(index, "every", i64::from(seconds)));
+                }
+            }
+            ModuleField::Name => {
+                let old = module.name.clone();
+                let new = (!value.is_empty()).then(|| value.to_owned());
+                if old == new {
+                    return;
+                }
+                // It keeps its spot under the new name; one leaving `modules` stands where they are.
+                let bar = &self.config.bar;
+                let now = [&bar.left, &bar.center, &bar.right]
+                    .map(|side| side.iter().map(|p| p.name().to_owned()).collect::<Vec<_>>());
+                let sides = now.clone().map(|side| {
+                    let mut names = Vec::new();
+                    for name in side {
+                        if old.as_ref() == Some(&name) {
+                            names.extend(new.clone());
+                            continue;
+                        }
+                        if old.is_none() && name == "modules" {
+                            names.extend(new.clone());
+                        }
+                        names.push(name);
+                    }
+                    names
+                });
+                let placed = sides != now;
+                self.edit(|e| {
+                    match &new {
+                        Some(name) => e.set_module(index, "name", name.as_str()),
+                        None => e.unset_module(index, "name"),
+                    }
+                    if placed {
+                        let [left, center, right] = &sides;
+                        e.set_list("bar", "left", left);
+                        e.set_list("bar", "center", center);
+                        e.set_list("bar", "right", right);
+                    }
+                });
+            }
+        }
     }
 
     pub(super) fn pinned_apps(&self, palette: Palette) -> Vec<Element<'_, Message>> {

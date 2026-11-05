@@ -1481,6 +1481,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_bar_glass_lives_in_bar() {
+        let (config, problems) =
+            parse("[bar]\nopacity = 0.4\n\n[style.bar]\nopacity = 0.9\nradius = 4\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(config.bar.opacity, 0.4, "[bar] wins");
+        assert_eq!(config.style.bar.opacity, None);
+        assert_eq!(config.style.bar.radius, Some(4));
+        let (config, _) = parse("[style.bar]\nopacity = 0.6\n\n[bar]\nposition = \"top\"\n");
+        assert_eq!(config.bar.opacity, 0.6, "an old theme's word for it");
+    }
+
+    #[test]
     fn a_surface_can_have_its_own_font() {
         let (config, problems) = parse("[style.bar]\nfont = \"JetBrains Mono\"\n");
         assert!(problems.is_empty(), "{problems:?}");
@@ -1817,6 +1829,50 @@ mod tests {
         editor.remove_rule(0);
         editor.unset("windows", "opacity");
         assert_eq!(parse(&editor.text()).0.windows.opacity, None);
+    }
+
+    #[test]
+    fn punctuation_keys_read_as_niri_names_them() {
+        let (config, diagnostics) = parse(
+            "[shortcuts]\nkeys = \"Mod+/\"\nclipboard = \"Mod+Shift+,\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+[\" = \"foot\", \"Mod+`\" = \"btop\" }\n",
+        );
+        assert_eq!(diagnostics, vec![]);
+        assert_eq!(config.shortcuts.keys, "Mod+Slash");
+        assert_eq!(config.shortcuts.clipboard, "Mod+Shift+Comma");
+        assert_eq!(config.modes[0].keys[0].0, "Mod+BracketLeft");
+        assert_eq!(config.modes[0].keys[1].0, "Mod+Grave");
+        let (_, diagnostics) = parse("[shortcuts]\nkeys = \"Mod+?\"\n");
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn a_bar_option_written_as_a_table_is_not_a_screen() {
+        let (config, diagnostics) = parse(
+            "[bar.stats]\ncpu = true\n\n[bar.stat]\nleft = []\n\n[bar.HDMI-A-1]\nleft = []\n",
+        );
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].message,
+            "“stats” is a [bar] option, not a screen"
+        );
+        assert_eq!(
+            diagnostics[1].hint.as_deref(),
+            Some("did you mean the option “stats”?")
+        );
+        let screens: Vec<&str> = config
+            .bar
+            .per_screen
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(screens, ["HDMI-A-1", "stat"]);
+
+        let (config, diagnostics) = parse("[bar]\nstats = [\"cpu\", \"temprature\"]\n");
+        assert_eq!(
+            diagnostics[0].hint.as_deref(),
+            Some("did you mean “temperature”?")
+        );
+        assert!(config.bar.stats.cpu);
     }
 
     #[test]

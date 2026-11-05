@@ -235,14 +235,16 @@ pub(super) fn minutes<'a>(
     palette: Palette,
 ) -> Element<'a, Message> {
     let label = match value {
-        0 => "never".to_owned(),
-        minutes => format!("{minutes} min"),
+        0 => crate::i18n::t("never").to_owned(),
+        minutes => crate::i18n::fill("{m} min", &[("m", &minutes)]),
     };
     row![
-        slider(0..=60u16, value, message)
-            .on_release(Message::Commit)
-            .width(240)
-            .style(style::rail(palette, 4.0)),
+        slider(0..=MINUTE_NOTCHES, notch(value), move |at| message(
+            minutes_at(at)
+        ))
+        .on_release(Message::Commit)
+        .width(240)
+        .style(style::rail(palette, 4.0)),
         text(label)
             .size(12)
             .font(style::mono())
@@ -253,6 +255,23 @@ pub(super) fn minutes<'a>(
     .spacing(12)
     .align_y(Alignment::Center)
     .into()
+}
+
+// Minute by minute up to an hour, then by quarter hours up to the four the config allows.
+const MINUTE_NOTCHES: u16 = 72;
+
+pub(super) fn notch(minutes: u16) -> u16 {
+    match minutes {
+        0..=60 => minutes,
+        _ => (60 + (minutes - 60).div_ceil(15)).min(MINUTE_NOTCHES),
+    }
+}
+
+pub(super) fn minutes_at(notch: u16) -> u16 {
+    match notch {
+        0..=60 => notch,
+        _ => 60 + (notch - 60) * 15,
+    }
 }
 
 pub(super) fn speed_slider<'a>(

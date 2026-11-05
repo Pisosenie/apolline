@@ -105,6 +105,8 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
         start: None,
         placed: Vec::new(),
         widgets_line: 0,
+        style_bar_opacity: None,
+        bar_opacity_set: false,
     };
     for error in &errors {
         let line = error.span().map_or(0, |span| reader.line(span));
@@ -142,6 +144,9 @@ struct Reader<'s> {
     placed: Vec<(String, usize)>,
     // Where [desktop] widgets is, checked the same way.
     widgets_line: usize,
+    // [style.bar] opacity, used when [bar] opacity isn't given.
+    style_bar_opacity: Option<f32>,
+    bar_opacity_set: bool,
 }
 
 impl Reader<'_> {
@@ -217,6 +222,7 @@ impl Reader<'_> {
                                 }
                             };
                             let launcher = key.get_ref().as_ref() == "launcher";
+                            let bar = key.get_ref().as_ref() == "bar";
                             let Some(table) = self.section(key, value) else {
                                 continue;
                             };
@@ -224,6 +230,12 @@ impl Reader<'_> {
                             for (key, value) in table.iter() {
                                 match key.get_ref().as_ref() {
                                     "radius" => surface.radius = self.number(key, value, 0..=40),
+                                    // The bar's glass is [bar] opacity; this is the same, for
+                                    // themes that wrote it here, and [bar] wins if both are set.
+                                    "opacity" if bar => {
+                                        self.style_bar_opacity =
+                                            self.fraction(key, value, 0.0..=1.0)
+                                    }
                                     "opacity" => {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
@@ -240,6 +252,8 @@ impl Reader<'_> {
                                         "option",
                                         if launcher {
                                             &["radius", "opacity", "size", "font", "grid"]
+                                        } else if bar {
+                                            &["radius", "opacity", "size", "font"]
                                         } else {
                                             &["radius", "opacity", "size", "font"]
                                         },
@@ -439,6 +453,25 @@ impl Reader<'_> {
                     }
                 }
                 name if matches!(value.get_ref(), DeValue::Table(_)) => {
+                    if BAR_OPTIONS.contains(&name) {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                self.line(key.span()),
+                                format!("“{name}” is a [bar] option, not a screen"),
+                            )
+                            .hint(format!("write it as {name} = … under [bar]")),
+                        );
+                        continue;
+                    }
+                    if let Some(close) = suggest(name, &BAR_OPTIONS) {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                self.line(key.span()),
+                                format!("[bar.{name}] is the bar of a screen called “{name}”"),
+                            )
+                            .hint(format!("did you mean the option “{close}”?")),
+                        );
+                    }
                     if let Some(t) = self.section(key, value) {
                         let pieces = self.screen_pieces(t);
                         screens.push((name.to_owned(), pieces));
@@ -491,7 +524,8 @@ impl Reader<'_> {
                 }
                 "opacity" => {
                     if let Some(v) = self.fraction(key, value, 0.0..=1.0) {
-                        bar.opacity = v
+                        bar.opacity = v;
+                        self.bar_opacity_set = true;
                     }
                 }
                 "blur" => {
@@ -538,13 +572,12 @@ impl Reader<'_> {
                                 "cpu" => stats.cpu = true,
                                 "memory" => stats.memory = true,
                                 "temperature" => stats.temperature = true,
-                                _ => {
-                                    self.wrong::<()>(
-                                        key,
-                                        value,
-                                        r#"a list of "cpu", "memory" and "temperature""#,
-                                    );
-                                }
+                                _ => self.unknown_name(
+                                    value,
+                                    name,
+                                    "stat",
+                                    &["cpu", "memory", "temperature"],
+                                ),
                             }
                         }
                         bar.stats = stats;
@@ -565,32 +598,7 @@ impl Reader<'_> {
                         config.calendars = v
                     }
                 }
-                _ => self.unknown(
-                    key,
-                    "option",
-                    &[
-                        "workspaces",
-                        "seconds",
-                        "date",
-                        "battery_percent",
-                        "position",
-                        "floating",
-                        "autohide",
-                        "shape",
-                        "opacity",
-                        "blur",
-                        "pinned",
-                        "weather",
-                        "calendars",
-                        "stats",
-                        "left",
-                        "center",
-                        "right",
-                        "tray",
-                        "screens",
-                        "skip",
-                    ],
-                ),
+                _ => self.unknown(key, "option", &BAR_OPTIONS),
             }
         }
         // Each screen's bar is the common one with its own pieces, so a screen named later
@@ -737,8 +745,8 @@ impl Reader<'_> {
             let Some(combo) = self.string(key, value) else {
                 continue;
             };
-            if combo_is_valid(combo) {
-                *shortcuts.get_mut(shortcut) = combo.to_owned();
+            if let Some(combo) = key_combo(combo) {
+                *shortcuts.get_mut(shortcut) = combo;
             } else {
                 self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);
             }
@@ -1623,8 +1631,8 @@ impl Reader<'_> {
             let Some(command) = self.string(combo, command) else {
                 continue;
             };
-            if combo_is_valid(combo.get_ref()) {
-                keys.push((combo.get_ref().to_string(), command.to_owned()));
+            if let Some(written) = key_combo(combo.get_ref()) {
+                keys.push((written, command.to_owned()));
             } else {
                 self.diagnostics.push(
                     Diagnostic::new(
@@ -1787,6 +1795,12 @@ impl Reader<'_> {
 
     // Pieces on the bar that name nothing, or that are there twice, come off it.
     fn settle_bar(&mut self, config: &mut Config) {
+        if let Some(opacity) = self.style_bar_opacity.filter(|_| !self.bar_opacity_set) {
+            config.bar.opacity = opacity;
+            for (_, bar) in &mut config.bar.per_screen {
+                bar.opacity = opacity;
+            }
+        }
         let modules: Vec<String> = config
             .modules
             .iter()
@@ -1905,6 +1919,54 @@ impl Reader<'_> {
             + 1
     }
 }
+
+// Punctuation is spelled the way niri spells it, so Mod+/ reads as Mod+Slash.
+fn key_combo(combo: &str) -> Option<String> {
+    let (modifiers, key) = combo.rsplit_once('+').unwrap_or(("", combo));
+    let key = match key {
+        "/" => "Slash",
+        "\\" => "Backslash",
+        "," => "Comma",
+        "." => "Period",
+        ";" => "Semicolon",
+        "'" => "Apostrophe",
+        "[" => "BracketLeft",
+        "]" => "BracketRight",
+        "-" => "Minus",
+        "=" => "Equal",
+        "`" => "Grave",
+        other => other,
+    };
+    let combo = if modifiers.is_empty() {
+        key.to_owned()
+    } else {
+        format!("{modifiers}+{key}")
+    };
+    combo_is_valid(&combo).then_some(combo)
+}
+
+const BAR_OPTIONS: [&str; 20] = [
+    "workspaces",
+    "seconds",
+    "date",
+    "battery_percent",
+    "position",
+    "floating",
+    "autohide",
+    "shape",
+    "opacity",
+    "blur",
+    "pinned",
+    "weather",
+    "calendars",
+    "stats",
+    "left",
+    "center",
+    "right",
+    "tray",
+    "screens",
+    "skip",
+];
 
 fn combo_is_valid(combo: &str) -> bool {
     !combo.is_empty()
