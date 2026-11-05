@@ -111,6 +111,16 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline check [FILE]
        apolline doctor";
 
+// glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
+// allocates holds whole huge pages; for a shell that's a couple of hundred MB for nothing.
+fn small_pages() {
+    #[cfg(target_os = "linux")]
+    // SAFETY: PR_SET_THP_DISABLE takes plain integers and only changes this process's paging.
+    unsafe {
+        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+    }
+}
+
 #[derive(Default)]
 struct Options {
     mode: Option<String>,
@@ -120,6 +130,7 @@ struct Options {
 }
 
 fn main() -> ExitCode {
+    small_pages();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (config, _) = Config::load(&apolline_config::default_path());
     apolline_theme::set_scheme(config.scheme(config.start()));
