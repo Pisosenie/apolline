@@ -409,3 +409,24 @@ fn the_launcher_sources_and_search_site_are_written_when_they_make_sense() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_sound_is_off_the_themes_or_a_file_of_yours() {
+    let dir = std::env::temp_dir().join(format!("apolline-sound-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::SoundKind("theme"));
+    assert_eq!(settings.config.alerts.sound, apolline_config::Sound::Theme);
+    let _ = settings.update(Message::SoundKind("file"));
+    let _ = settings.update(Message::SoundDraft("~/ding.oga".into()));
+    let _ = settings.update(Message::SoundSet);
+    assert_eq!(
+        settings.config.alerts.sound,
+        apolline_config::Sound::File("~/ding.oga".into())
+    );
+    let _ = settings.update(Message::SoundKind("off"));
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("sound"));
+    std::fs::remove_dir_all(dir).unwrap();
+}

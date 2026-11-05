@@ -177,6 +177,11 @@ impl Settings {
             Message::PopupSeconds(v) => {
                 self.stage(|e| e.set("notifications", "seconds", i64::from(v)))
             }
+            Message::Cards(v) => self.stage(|e| e.set("notifications", "cards", i64::from(v))),
+            Message::CardWidth(v) => self.stage(|e| e.set("notifications", "width", i64::from(v))),
+            Message::SoundKind(kind) => self.set_sound_kind(kind),
+            Message::SoundDraft(text) => self.sound_draft = Some(text),
+            Message::SoundSet => self.set_sound_file(),
             Message::Test => {
                 self.tested = None;
                 return Task::perform(

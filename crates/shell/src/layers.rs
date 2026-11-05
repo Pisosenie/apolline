@@ -13,8 +13,8 @@ use crate::fonts;
 use crate::shell::{Message, Overlay, Shell};
 use apolline_config::{Corner, Edge};
 
+use crate::osd;
 use crate::popup::{Felt, Hold, Nudge};
-use crate::{osd, popup};
 
 const POPUP_MARGIN: i32 = 8;
 
@@ -60,7 +60,7 @@ struct Layers {
     look: (Edge, bool, u16),
     popups: Option<(window::Id, u32)>,
     // Where the cards' window was opened, and at what size; either changing opens it again.
-    popups_place: (Corner, f32),
+    popups_place: (Corner, f32, u16),
     popups_hold: Hold,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
@@ -74,7 +74,7 @@ impl Layers {
             screens: BTreeMap::new(),
             look: (Edge::Top, true, 100),
             popups: None,
-            popups_place: (Corner::TopRight, 1.0),
+            popups_place: (Corner::TopRight, 1.0, 360),
             popups_hold: Hold::default(),
             overlay: None,
             osd: None,
@@ -264,7 +264,7 @@ impl Layers {
         let scale = place.1;
         let size = |height: u32| {
             let grow = |n: u32| (n as f32 * scale).round() as u32;
-            (grow(popup::WIDTH), grow(height))
+            (grow(u32::from(place.2)), grow(height))
         };
         if let Some((id, _)) = self.popups.filter(|_| place != self.popups_place) {
             self.popups = None;
@@ -289,7 +289,7 @@ impl Layers {
 
     fn size_popups_at(
         &mut self,
-        place: (Corner, f32),
+        place: (Corner, f32, u16),
         height: u32,
         size: impl Fn(u32) -> (u32, u32),
     ) -> Task<Message> {

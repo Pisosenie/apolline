@@ -768,10 +768,44 @@ impl Reader<'_> {
                         alerts.always = v
                     }
                 }
+                "cards" => {
+                    if let Some(v) = self.number(key, value, 1..=8) {
+                        alerts.cards = v
+                    }
+                }
+                "width" => {
+                    if let Some(v) = self.number(key, value, 280..=560) {
+                        alerts.width = v
+                    }
+                }
+                "sound" => match value.get_ref() {
+                    DeValue::Boolean(on) => {
+                        alerts.sound = if *on {
+                            crate::Sound::Theme
+                        } else {
+                            crate::Sound::Off
+                        }
+                    }
+                    DeValue::String(path) if !path.trim().is_empty() => {
+                        alerts.sound = crate::Sound::File(path.trim().to_owned())
+                    }
+                    _ => {
+                        self.wrong::<()>(key, value, "true, false, or a sound file");
+                    }
+                },
                 _ => self.unknown(
                     key,
                     "option",
-                    &["position", "do_not_disturb", "seconds", "mute", "always"],
+                    &[
+                        "position",
+                        "do_not_disturb",
+                        "seconds",
+                        "mute",
+                        "always",
+                        "cards",
+                        "width",
+                        "sound",
+                    ],
                 ),
             }
         }

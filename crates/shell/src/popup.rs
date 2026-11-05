@@ -15,9 +15,7 @@ use crate::notify::{Notification, Urgency};
 use crate::shell::Message;
 use crate::style;
 
-pub const WIDTH: u32 = 360;
 pub const REPLY: &str = "notification-reply";
-pub const MAX: usize = 3;
 const HEIGHT: u32 = 84;
 const BUTTONS: u32 = 38;
 const GAP: u32 = 8;
@@ -43,9 +41,10 @@ fn card_height(notification: &Notification) -> u32 {
 pub fn shown<'a>(
     cards: impl Iterator<Item = &'a Notification>,
     answering: Option<u32>,
+    most: usize,
 ) -> Vec<&'a Notification> {
     let all: Vec<&Notification> = cards.collect();
-    let mut shown: Vec<&Notification> = all.iter().copied().take(MAX).collect();
+    let mut shown: Vec<&Notification> = all.iter().copied().take(most.max(1)).collect();
     if let Some(id) = answering
         && !shown.iter().any(|n| n.id == id)
         && let Some(card) = all.iter().find(|n| n.id == id)
@@ -69,15 +68,16 @@ pub fn stack<'a>(
     palette: Palette,
     replying: Option<&'a (u32, String)>,
     look: apolline_config::Surface,
+    width: u16,
 ) -> Element<'a, Message> {
     keyed_column(cards.into_iter().map(|n| {
         let typed = replying
             .filter(|(id, _)| *id == n.id)
             .map(|(_, typed)| typed.as_str());
-        (n.id, card(n, apps, palette, typed, look))
+        (n.id, card(n, apps, palette, typed, look, width))
     }))
     .spacing(GAP as f32)
-    .width(WIDTH as f32)
+    .width(f32::from(width))
     .into()
 }
 
@@ -120,8 +120,11 @@ fn card<'a>(
     palette: Palette,
     typed: Option<&'a str>,
     look: apolline_config::Surface,
+    width: u16,
 ) -> Element<'a, Message> {
     let muted = style::color(neutral::muted());
+    // As many letters as fit: the lengths below are for the usual 360 points.
+    let fits = |at_360: usize| at_360 * usize::from(width) / 360;
     let edge = if notification.urgency == Urgency::Critical {
         palette.accent
     } else {
@@ -130,7 +133,9 @@ fn card<'a>(
 
     let content = column![
         row![
-            text(shorten(&notification.app, 32)).size(11).color(muted),
+            text(shorten(&notification.app, fits(32)))
+                .size(11)
+                .color(muted),
             space::horizontal(),
             text(ago(notification.received.elapsed()))
                 .size(11)
@@ -142,13 +147,13 @@ fn card<'a>(
         ]
         .spacing(6)
         .align_y(iced::Alignment::Center),
-        style::verbatim(shorten(&notification.summary, 34))
+        style::verbatim(shorten(&notification.summary, fits(34)))
             .size(14)
             .font(iced::Font {
                 weight: iced::font::Weight::Semibold,
                 ..iced::Font::with_name(crate::style::family())
             }),
-        style::verbatim(shorten(&notification.body, 44))
+        style::verbatim(shorten(&notification.body, fits(44)))
             .size(font::SMALL)
             .color(muted),
     ]
@@ -354,7 +359,7 @@ mod tests {
         assert_eq!(height(&[]), 0);
         assert_eq!(height(&[&plain]), 84);
         assert_eq!(height(&[&plain, &asking]), 84 + 8 + 122);
-        let many = shown(std::iter::repeat_n(&plain, 7), None);
+        let many = shown(std::iter::repeat_n(&plain, 7), None, 3);
         assert_eq!(height(&many), 3 * 84 + 2 * 8);
     }
 
@@ -420,7 +425,7 @@ mod tests {
             })
             .collect();
         let ids = |answering| -> Vec<u32> {
-            shown(cards.iter(), answering)
+            shown(cards.iter(), answering, 3)
                 .iter()
                 .map(|n| n.id)
                 .collect()

@@ -893,3 +893,16 @@
 "Web search" = "Поиск в интернете"
 "A link with {query} where the words go; empty is DuckDuckGo" = "Ссылка, где на месте слов стоит {query}; пусто — DuckDuckGo"
 "{site}, in the browser" = "{site}, в браузере"
+
+# Notification cards
+"Cards at once" = "Карточек сразу"
+"Newer ones push the oldest out; the one you're answering stays" = "Новые вытесняют старые; карточка, на которую вы отвечаете, остаётся"
+"Card width" = "Ширина карточки"
+"Wider cards show more of what was said" = "В широких карточках видно больше текста"
+"Sound" = "Звук"
+"When a card shows; apps that play their own stay quiet here" = "Когда появляется карточка; приложения со своим звуком здесь молчат"
+"The theme's" = "Из темы"
+"Your file" = "Свой файл"
+"Notification sound" = "Звук уведомлений"
+"Sound theme" = "Звуковая тема"
+"no message sound: pacman -S sound-theme-freedesktop" = "нет звука сообщения: pacman -S sound-theme-freedesktop"

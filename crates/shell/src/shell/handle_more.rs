@@ -127,7 +127,14 @@ impl Shell {
                 if self.config.alerts.always(&notification.app)
                     || notify::lets_through(self.rule(), notification.urgency)
                 {
+                    let ring = crate::sound::pick(&self.config.alerts.sound, &notification.sound);
                     self.popups.push((notification, Instant::now()));
+                    if let Some(file) = ring {
+                        return Task::batch([
+                            dropped,
+                            Task::future(crate::sound::play(file)).discard(),
+                        ]);
+                    }
                 } else {
                     self.held.push(notification);
                 }

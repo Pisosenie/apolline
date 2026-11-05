@@ -55,6 +55,7 @@ mod secrets;
 mod settings;
 mod shell;
 mod shot;
+mod sound;
 mod stats;
 mod status;
 mod strip;

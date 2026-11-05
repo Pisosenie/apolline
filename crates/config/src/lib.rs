@@ -788,6 +788,20 @@ pub struct Alerts {
     pub seconds: u16,
     pub mute: Vec<String>,
     pub always: Vec<String>,
+    // How many cards show at once, and how wide they are.
+    pub cards: u16,
+    pub width: u16,
+    pub sound: Sound,
+}
+
+// What a card makes heard when it shows.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Sound {
+    #[default]
+    Off,
+    // The sound theme's, or the one the app asks for.
+    Theme,
+    File(String),
 }
 
 impl Alerts {
@@ -1048,6 +1062,9 @@ impl Default for Config {
                 seconds: 5,
                 mute: Vec::new(),
                 always: Vec::new(),
+                cards: 3,
+                width: 360,
+                sound: Sound::Off,
             },
             shortcuts: Shortcuts::default(),
             lock: Lock {
@@ -1233,6 +1250,21 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cards_come_in_your_number_width_and_sound() {
+        let (config, problems) = super::Config::parse(
+            "[notifications]\ncards = 5\nwidth = 420\nsound = \"~/ding.oga\"\n",
+        );
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!((config.alerts.cards, config.alerts.width), (5, 420));
+        assert_eq!(config.alerts.sound, super::Sound::File("~/ding.oga".into()));
+        let (config, problems) =
+            super::Config::parse("[notifications]\ncards = 40\nsound = true\n");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(config.alerts.cards, 3);
+        assert_eq!(config.alerts.sound, super::Sound::Theme);
+    }
+
     #[test]
     fn the_launcher_looks_where_you_say() {
         let (config, problems) = super::Config::parse(

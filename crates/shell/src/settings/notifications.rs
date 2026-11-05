@@ -61,6 +61,17 @@ impl Settings {
                         value_slider(2..=30, alerts.seconds, Message::PopupSeconds, "s", palette),
                     ),
                     setting(
+                        "Cards at once",
+                        "Newer ones push the oldest out; the one you're answering stays",
+                        value_slider(1..=8, alerts.cards, Message::Cards, "", palette),
+                    ),
+                    setting(
+                        "Card width",
+                        "Wider cards show more of what was said",
+                        value_slider(280..=560, alerts.width, Message::CardWidth, "pt", palette),
+                    ),
+                    self.sound_row(palette),
+                    setting(
                         "Try it",
                         "Sends a notification to whatever shows them",
                         row![
@@ -263,5 +274,75 @@ fn heard_line(heard: Option<&Heard>) -> String {
         }
         Some((None, Some(error))) => error.to_owned(),
         _ => "Not read yet".into(),
+    }
+}
+
+impl Settings {
+    fn sound_row(&self, palette: Palette) -> Element<'_, Message> {
+        use apolline_config::Sound;
+        let kind = match &self.config.alerts.sound {
+            Sound::Off => "off",
+            Sound::Theme => "theme",
+            Sound::File(_) => "file",
+        };
+        let mut control = column![segmented(
+            [
+                ("off", "Off", None),
+                ("theme", "The theme's", None),
+                ("file", "Your file", None),
+            ],
+            kind,
+            Message::SoundKind,
+        )]
+        .spacing(8)
+        .align_x(Alignment::End);
+        if kind == "file" || self.sound_draft.is_some() {
+            let set = match &self.config.alerts.sound {
+                Sound::File(path) => path.as_str(),
+                _ => "",
+            };
+            control = control.push(
+                text_input(
+                    "~/Music/ding.oga",
+                    self.sound_draft.as_deref().unwrap_or(set),
+                )
+                .on_input(Message::SoundDraft)
+                .on_submit(Message::SoundSet)
+                .padding([6, 10])
+                .size(13)
+                .width(260)
+                .style(style::field(palette)),
+            );
+        }
+        setting(
+            "Sound",
+            "When a card shows; apps that play their own stay quiet here",
+            control,
+        )
+    }
+
+    pub(super) fn set_sound_kind(&mut self, kind: &'static str) {
+        match kind {
+            "off" => {
+                self.sound_draft = None;
+                self.edit(|e| e.unset("notifications", "sound"));
+            }
+            "theme" => {
+                self.sound_draft = None;
+                self.edit(|e| e.set("notifications", "sound", true));
+            }
+            _ => self.sound_draft = Some(String::new()),
+        }
+    }
+
+    pub(super) fn set_sound_file(&mut self) {
+        let Some(draft) = self.sound_draft.as_ref().map(|d| d.trim().to_owned()) else {
+            return;
+        };
+        if draft.is_empty() {
+            return;
+        }
+        self.sound_draft = None;
+        self.edit(|e| e.set("notifications", "sound", draft.as_str()));
     }
 }

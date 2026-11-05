@@ -140,13 +140,15 @@ impl Shell {
             self.config.palette(self.mode),
             self.replying.as_ref(),
             self.config.style.cards,
+            self.config.alerts.width,
         )
     }
 
     #[cfg(target_os = "linux")]
-    pub fn cards_place(&self) -> (apolline_config::Corner, f32) {
+    // Where the cards go, how big they're drawn, and how wide they are.
+    pub fn cards_place(&self) -> (apolline_config::Corner, f32, u16) {
         let size = self.config.style.cards.size.unwrap_or(1.0);
-        (self.config.alerts.position, size)
+        (self.config.alerts.position, size, self.config.alerts.width)
     }
 
     #[cfg(target_os = "linux")]

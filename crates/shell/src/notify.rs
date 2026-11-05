@@ -68,6 +68,19 @@ pub struct Notification {
     pub urgency: Urgency,
     pub timeout: Option<Duration>,
     pub received: Instant,
+    // What the app asked to be heard, if anything.
+    pub sound: Heard,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Heard {
+    #[default]
+    Nothing,
+    // suppress-sound: the app plays its own, or wants none.
+    Quiet,
+    File(std::path::PathBuf),
+    // A name from the sound theme, like message-new-instant.
+    Named(String),
 }
 
 pub fn lets_through(setting: Notifications, urgency: Urgency) -> bool {
@@ -151,6 +164,7 @@ pub fn config_card(path: &Path, diagnostics: &[Diagnostic]) -> Option<Notificati
         urgency: Urgency::Normal,
         timeout: Some(CONFIG_SHOWN_FOR),
         received: Instant::now(),
+        sound: Heard::Nothing,
     })
 }
 
@@ -187,6 +201,7 @@ pub fn battery_card(mark: u8, battery: crate::power::Battery) -> Notification {
         urgency: Urgency::Critical,
         timeout: None,
         received: Instant::now(),
+        sound: Heard::Nothing,
     }
 }
 
@@ -235,6 +250,7 @@ pub fn reminder_card(
         urgency: Urgency::Normal,
         timeout: Some(shown_for),
         received: Instant::now(),
+        sound: Heard::Nothing,
     }
 }
 
@@ -257,6 +273,7 @@ pub fn shot_card(path: &str) -> Notification {
         urgency: Urgency::Normal,
         timeout: Some(Duration::from_secs(6)),
         received: Instant::now(),
+        sound: Heard::Nothing,
     }
 }
 
@@ -378,6 +395,29 @@ enum Picture {
 }
 
 // The picture a notification carries: raw pixels, a file, or an icon given as a path.
+fn heard(hints: &HashMap<String, OwnedVariant>) -> Heard {
+    let text = |key: &str| {
+        hints
+            .get(key)
+            .and_then(|v| v.downcast_ref::<&str>().ok())
+            .filter(|t| !t.trim().is_empty())
+            .map(str::to_owned)
+    };
+    let quiet = hints
+        .get("suppress-sound")
+        .and_then(|v| v.downcast_ref::<bool>().ok())
+        .unwrap_or(false);
+    if quiet {
+        Heard::Quiet
+    } else if let Some(file) = text("sound-file") {
+        Heard::File(file.into())
+    } else if let Some(name) = text("sound-name") {
+        Heard::Named(name)
+    } else {
+        Heard::Nothing
+    }
+}
+
 fn picture(hints: &HashMap<String, OwnedVariant>, app_icon: &str) -> Option<Picture> {
     let pixels = ["image-data", "image_data", "icon_data"]
         .iter()
@@ -563,6 +603,7 @@ impl Server {
             urgency,
             timeout: timeout(expire_timeout, urgency),
             received: Instant::now(),
+            sound: heard(&hints),
         };
         let _ = self.events.send(Message::Notify(notification)).await;
         id

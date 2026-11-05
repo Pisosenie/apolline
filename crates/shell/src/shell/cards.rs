@@ -108,6 +108,7 @@ impl Shell {
         popup::shown(
             self.popups.iter().rev().map(|(n, _)| n),
             self.replying.as_ref().map(|(id, _)| *id),
+            usize::from(self.config.alerts.cards),
         )
     }
 }

@@ -30,6 +30,7 @@ fn line(state: State, what: &'static str, said: impl Into<String>) -> Line {
 pub async fn gather() -> Vec<Line> {
     let mut lines = vec![niri(), setup(), config(), pam()];
     lines.extend(programs());
+    lines.push(sounds());
     lines.extend(services().await);
     lines
 }
@@ -112,6 +113,21 @@ fn config() -> Line {
     }
 }
 
+fn sounds() -> Line {
+    let found = crate::sound::pick(
+        &apolline_config::Sound::Theme,
+        &crate::notify::Heard::Nothing,
+    );
+    match found {
+        Some(file) => line(State::Good, "Sound theme", file.display().to_string()),
+        None => line(
+            State::Optional,
+            "Sound theme",
+            t("no message sound: pacman -S sound-theme-freedesktop"),
+        ),
+    }
+}
+
 fn pam() -> Line {
     if Path::new("/etc/pam.d/apolline").is_file() {
         line(State::Good, "Lock screen", "/etc/pam.d/apolline")
@@ -125,7 +141,7 @@ fn pam() -> Line {
 }
 
 // What each program is for, and the package that has it.
-const PROGRAMS: [(&str, &str, &str, bool); 8] = [
+const PROGRAMS: [(&str, &str, &str, bool); 9] = [
     ("Volume", "wpctl", "wireplumber", true),
     ("Volume on the bar", "pactl", "libpulse", false),
     ("Brightness", "brightnessctl", "brightnessctl", false),
@@ -139,6 +155,7 @@ const PROGRAMS: [(&str, &str, &str, bool); 8] = [
     ("Login screen", "cage", "cage greetd", false),
     ("Login screen look", "pkexec", "polkit", false),
     ("Flatpak apps", "flatpak", "flatpak", false),
+    ("Notification sound", "pw-play", "pipewire", false),
 ];
 
 fn programs() -> Vec<Line> {
