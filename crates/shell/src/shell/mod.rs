@@ -547,10 +547,14 @@ impl Shell {
                 eprintln!("apolline: template: {problem}");
             }
             for command in ran {
-                let _ = std::process::Command::new("sh")
+                let started = std::process::Command::new("sh")
                     .args(["-c", &command])
                     .stdin(std::process::Stdio::null())
                     .spawn();
+                // Waited on aside, so a finished one doesn't linger as a zombie.
+                if let Ok(mut child) = started {
+                    std::thread::spawn(move || child.wait());
+                }
             }
             self.templated = Some(wanted);
         }
