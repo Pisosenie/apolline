@@ -878,3 +878,18 @@
 "The next thing in your calendar" = "Следующее событие в календаре"
 "Waiting notifications" = "Ждущие уведомления"
 "Only how many; what they say stays hidden" = "Только сколько их; текст остаётся скрытым"
+
+# Launcher sources
+"The launcher" = "Запуск приложений"
+"What it looks through" = "Где ищет"
+"Apps and games" = "Приложения и игры"
+"Open windows" = "Открытые окна"
+"Actions" = "Действия"
+"Sums and units" = "Расчёты и единицы"
+"Files, after /" = "Файлы, после /"
+"Emoji, after :" = "Эмодзи, после :"
+"Commands to run" = "Команды"
+"The web" = "Интернет"
+"Web search" = "Поиск в интернете"
+"A link with {query} where the words go; empty is DuckDuckGo" = "Ссылка, где на месте слов стоит {query}; пусто — DuckDuckGo"
+"{site}, in the browser" = "{site}, в браузере"

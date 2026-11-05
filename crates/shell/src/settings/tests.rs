@@ -377,3 +377,35 @@ fn a_clock_format_is_kept_only_when_chrono_reads_it() {
     assert_eq!(settings.config.clock.hours(), "%-I");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn the_launcher_sources_and_search_site_are_written_when_they_make_sense() {
+    let dir = std::env::temp_dir().join(format!("apolline-finds-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::LauncherFinds("files", false));
+    assert!(!settings.config.launcher.finds("files"));
+    let _ = settings.update(Message::LauncherFinds("files", true));
+    assert!(
+        !std::fs::read_to_string(&path).unwrap().contains("finds"),
+        "all on says nothing"
+    );
+    let _ = settings.update(Message::WebDraft("example.com".into()));
+    let _ = settings.update(Message::WebSet);
+    assert!(
+        settings.config.launcher.web.is_none(),
+        "not a link with {{query}}"
+    );
+    let _ = settings.update(Message::WebDraft(
+        "https://www.startpage.com/do/search?q={query}".into(),
+    ));
+    let _ = settings.update(Message::WebSet);
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("startpage")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

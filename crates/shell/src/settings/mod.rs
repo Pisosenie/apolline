@@ -8,6 +8,7 @@ mod find;
 mod frame;
 mod handle;
 mod input;
+mod launcher_finds;
 mod lock;
 mod looks;
 mod modes;
@@ -246,7 +247,7 @@ impl Page {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
             Page::Themes => &["desktop", "layout", "windows", "bar"],
-            Page::Appearance => &["desktop", "colors", "layout", "apps", "style"],
+            Page::Appearance => &["desktop", "colors", "layout", "apps", "style", "launcher"],
             Page::Windows => &["windows"],
             Page::Displays => &["night"],
             Page::Bar => &["bar", "clock", "panel"],
@@ -419,6 +420,9 @@ enum Message {
     ColorDraft(&'static str, String),
     ClockDraft(&'static str, String),
     ClockSet(&'static str),
+    LauncherFinds(&'static str, bool),
+    WebDraft(String),
+    WebSet,
     ColorSet(&'static str),
     ColorReset(&'static str),
     FoundSetting(Page, String),
@@ -511,6 +515,7 @@ struct Settings {
     // A color being typed, by role, until Enter.
     color_drafts: std::collections::HashMap<&'static str, String>,
     clock_drafts: std::collections::HashMap<&'static str, String>,
+    web_draft: Option<String>,
     // What `apolline doctor` says, once the About page has asked.
     machine: Option<Vec<crate::doctor::Line>>,
     theme_name: String,
@@ -610,6 +615,7 @@ impl Settings {
             spot: None,
             color_drafts: std::collections::HashMap::new(),
             clock_drafts: std::collections::HashMap::new(),
+            web_draft: None,
             machine: None,
             theme_name: String::new(),
             theme_path: String::new(),

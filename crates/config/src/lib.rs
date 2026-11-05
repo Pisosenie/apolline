@@ -22,6 +22,7 @@ pub struct Config {
     pub colors: Colors,
     pub panel: Panel,
     pub clock: Clock,
+    pub launcher: Launcher,
     pub theme: Option<(String, Option<String>)>,
     pub desktop: Desktop,
     pub layout: Layout,
@@ -451,6 +452,41 @@ impl Edge {
     // Down the side of the screen, so the bar is a column.
     pub fn vertical(self) -> bool {
         matches!(self, Edge::Left | Edge::Right)
+    }
+}
+
+// What the launcher looks through, and where it searches the web when nothing else answers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Launcher {
+    pub finds: Vec<String>,
+    // A link with {query} in it.
+    pub web: Option<String>,
+}
+
+impl Launcher {
+    pub const FINDS: [&str; 9] = [
+        "apps",
+        "windows",
+        "modes",
+        "actions",
+        "calculator",
+        "files",
+        "emoji",
+        "run",
+        "web",
+    ];
+
+    pub fn finds(&self, what: &str) -> bool {
+        self.finds.iter().any(|f| f == what)
+    }
+}
+
+impl Default for Launcher {
+    fn default() -> Self {
+        Self {
+            finds: Self::FINDS.iter().map(|f| (*f).to_owned()).collect(),
+            web: None,
+        }
     }
 }
 
@@ -961,6 +997,7 @@ impl Default for Config {
             colors: Colors::default(),
             panel: Panel::default(),
             clock: Clock::default(),
+            launcher: Launcher::default(),
             theme: None,
             desktop: Desktop {
                 clock: None,
@@ -1196,6 +1233,18 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_launcher_looks_where_you_say() {
+        let (config, problems) = super::Config::parse(
+            "[launcher]\nfinds = [\"apps\", \"emoji\", \"weather\"]\nweb = \"https://www.startpage.com/do/search?q={query}\"\n",
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(config.launcher.finds("emoji") && !config.launcher.finds("files"));
+        assert!(config.launcher.web.is_some());
+        let (_, problems) = super::Config::parse("[launcher]\nweb = \"https://example.com\"\n");
+        assert_eq!(problems.len(), 1, "a link without {{query}}");
+    }
+
     #[test]
     fn a_clock_reads_your_way_and_a_bad_format_is_caught_early() {
         let (config, problems) =

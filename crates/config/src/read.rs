@@ -19,7 +19,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 24] = [
+const SECTIONS: [&str; 25] = [
     "general",
     "theme",
     "desktop",
@@ -44,6 +44,7 @@ const SECTIONS: [&str; 24] = [
     "colors",
     "panel",
     "clock",
+    "launcher",
 ];
 
 const MODE_OPTIONS: [&str; 12] = [
@@ -249,6 +250,11 @@ impl Reader<'_> {
                 "clock" => {
                     if let Some(t) = self.section(key, value) {
                         self.clock(t, &mut config.clock)
+                    }
+                }
+                "launcher" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.launcher(t, &mut config.launcher)
                     }
                 }
                 "night" => {
@@ -1290,6 +1296,43 @@ impl Reader<'_> {
                     }
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),
+            }
+        }
+    }
+
+    fn launcher(&mut self, table: &DeTable, launcher: &mut crate::Launcher) {
+        for (key, value) in table.iter() {
+            match key.get_ref().as_ref() {
+                "finds" => {
+                    if let Some(names) = self.strings(key, value) {
+                        let mut kept = Vec::new();
+                        for name in names {
+                            if !crate::Launcher::FINDS.contains(&name.as_str()) {
+                                self.unknown_name(value, &name, "source", &crate::Launcher::FINDS);
+                            } else if !kept.contains(&name) {
+                                kept.push(name);
+                            }
+                        }
+                        launcher.finds = kept;
+                    }
+                }
+                "web" => match self.string(key, value) {
+                    Some(link)
+                        if (link.starts_with("https://") || link.starts_with("http://"))
+                            && link.contains("{query}") =>
+                    {
+                        launcher.web = Some(link.to_owned());
+                    }
+                    Some(_) => {
+                        self.wrong::<()>(
+                            key,
+                            value,
+                            r#"a link with {query} in it, like "https://www.startpage.com/do/search?q={query}""#,
+                        );
+                    }
+                    None => {}
+                },
+                _ => self.unknown(key, "option", &["finds", "web"]),
             }
         }
     }

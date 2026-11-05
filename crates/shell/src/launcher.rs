@@ -55,6 +55,7 @@ pub struct Launcher {
     rates: Option<(std::sync::Arc<crate::rates::Rates>, std::time::Instant)>,
     asked: bool,
     usage: crate::usage::Usage,
+    finds: apolline_config::Launcher,
 }
 
 pub struct OpenWindow {
@@ -207,6 +208,10 @@ impl Launcher {
         self.files = files;
     }
 
+    pub fn set_finds(&mut self, finds: apolline_config::Launcher) {
+        self.finds = finds;
+    }
+
     pub fn set_look(&mut self, look: apolline_config::Surface, grid: bool) {
         self.look = look;
         self.grid = grid;
@@ -247,7 +252,8 @@ impl Launcher {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
-        if let Some(wanted) = query.strip_prefix('/') {
+        let finds = |what: &str| self.finds.finds(what);
+        if let Some(wanted) = query.strip_prefix('/').filter(|_| finds("files")) {
             return crate::files::find(&self.files, wanted)
                 .into_iter()
                 .map(|path| Entry {
@@ -269,7 +275,7 @@ impl Launcher {
                 })
                 .collect();
         }
-        if let Some(wanted) = query.strip_prefix(':') {
+        if let Some(wanted) = query.strip_prefix(':').filter(|_| finds("emoji")) {
             let mut found: Vec<(u32, Entry)> = emoji()
                 .filter_map(|(glyph, name)| {
                     let score = apps::rank(wanted, name, "")?;
@@ -288,7 +294,8 @@ impl Launcher {
             found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
             return found.into_iter().take(60).map(|(_, entry)| entry).collect();
         }
-        if let Some(result) = calc::answer(query) {
+        if !finds("calculator") {
+        } else if let Some(result) = calc::answer(query) {
             ranked.push((
                 u32::MAX,
                 Entry {
@@ -317,7 +324,7 @@ impl Launcher {
             ));
         }
         if !query.is_empty() {
-            for window in &self.windows {
+            for window in self.windows.iter().filter(|_| finds("windows")) {
                 let app = apps::find(&self.apps, &window.app);
                 let name = app.map_or(window.app.as_str(), |app| app.name.as_str());
                 let extra = format!("{name} {} window", window.app);
@@ -355,7 +362,12 @@ impl Launcher {
                     Target::Mode(None),
                 )
             });
-            for (title, about, glyph, target) in modes.chain(leave) {
+            let modes: Vec<_> = if finds("modes") {
+                modes.chain(leave).collect()
+            } else {
+                Vec::new()
+            };
+            for (title, about, glyph, target) in modes {
                 if let Some(score) = apps::rank(query, &title, &about) {
                     ranked.push((
                         score + 60,
@@ -369,7 +381,7 @@ impl Launcher {
                     ));
                 }
             }
-            for (title, about, glyph, target) in ACTIONS {
+            for (title, about, glyph, target) in ACTIONS.into_iter().filter(|_| finds("actions")) {
                 if installed && target == Target::Settings {
                     continue;
                 }
@@ -397,7 +409,7 @@ impl Launcher {
                 weight.min(60)
             }
         };
-        for app in &self.apps {
+        for app in self.apps.iter().filter(|_| finds("apps")) {
             for (name, exec) in &app.actions {
                 if let Some(score) = apps::action_score(query, app, name) {
                     ranked.push((
@@ -430,7 +442,7 @@ impl Launcher {
         let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
         // Nothing found by name: run it, or look it up.
         if entries.iter().all(|entry| entry.title.starts_with('=')) {
-            entries.extend(fallbacks(query));
+            entries.extend(fallbacks(query, &self.finds));
         }
         entries
     }
@@ -674,26 +686,29 @@ impl Launcher {
 }
 
 // Last in any search: run it if it's a command, or look it up on the web.
-fn fallbacks(query: &str) -> Vec<Entry<'static>> {
+fn fallbacks(query: &str, finds: &apolline_config::Launcher) -> Vec<Entry<'static>> {
     if query.is_empty() {
         return Vec::new();
     }
     let program = query.split_whitespace().next().unwrap_or_default();
-    let run = runnable(program).then(|| Entry {
+    let run = (finds.finds("run") && runnable(program)).then(|| Entry {
         title: crate::i18n::fill("Run “{query}”", &[("query", &query)]),
         about: "As a command, in the background".to_owned(),
         picture: Pic::Icon(Icon::Terminal),
         target: Target::Run(query.to_owned()),
         game: false,
     });
-    let web = Entry {
+    let web = finds.finds("web").then(|| Entry {
         title: crate::i18n::fill("Search the web for “{query}”", &[("query", &query)]),
-        about: "DuckDuckGo, in the browser".to_owned(),
+        about: crate::i18n::fill(
+            "{site}, in the browser",
+            &[("site", &search_site(finds.web.as_deref()))],
+        ),
         picture: Pic::Icon(Icon::Globe),
         target: Target::Web(query.to_owned()),
         game: false,
-    };
-    run.into_iter().chain([web]).collect()
+    });
+    run.into_iter().chain(web).collect()
 }
 
 fn runnable(program: &str) -> bool {
@@ -726,7 +741,16 @@ pub fn on_path(program: &str) -> bool {
     })
 }
 
-pub fn web_address(query: &str) -> String {
+const DUCKDUCKGO: &str = "https://duckduckgo.com/?q={query}";
+
+// Where a search goes, said as its site: duckduckgo.com, www.startpage.com.
+fn search_site(template: Option<&str>) -> String {
+    let link = template.unwrap_or(DUCKDUCKGO);
+    let rest = link.split_once("://").map_or(link, |(_, rest)| rest);
+    rest.split('/').next().unwrap_or(rest).to_owned()
+}
+
+pub fn web_address(template: Option<&str>, query: &str) -> String {
     let encoded: String = query
         .bytes()
         .map(|b| match b {
@@ -737,7 +761,7 @@ pub fn web_address(query: &str) -> String {
             b => format!("%{b:02X}"),
         })
         .collect();
-    format!("https://duckduckgo.com/?q={encoded}")
+    template.unwrap_or(DUCKDUCKGO).replace("{query}", &encoded)
 }
 
 fn letter<'a>(name: &str, palette: Palette) -> Element<'a, Message> {
@@ -796,6 +820,35 @@ mod tests {
             ("Play".into(), "gamepad".into()),
         ]);
         launcher
+    }
+
+    #[test]
+    fn it_looks_only_where_it_is_told_and_searches_your_site() {
+        let mut launcher = launcher();
+        launcher.set_finds(apolline_config::Launcher {
+            finds: vec!["emoji".into(), "web".into()],
+            web: Some("https://www.startpage.com/do/search?q={query}".into()),
+        });
+        launcher.query = "fire".into();
+        let entries = launcher.entries();
+        assert!(
+            entries.iter().all(|e| !matches!(e.target, Target::App(_))),
+            "apps are off"
+        );
+        assert!(matches!(
+            entries.last().map(|e| &e.target),
+            Some(Target::Web(_))
+        ));
+        assert_eq!(
+            entries.last().unwrap().about,
+            "www.startpage.com, in the browser"
+        );
+        launcher.query = ":fire".into();
+        assert!(!launcher.entries().is_empty(), "emoji still answer");
+        assert_eq!(
+            web_address(Some("https://www.startpage.com/do/search?q={query}"), "a b"),
+            "https://www.startpage.com/do/search?q=a+b"
+        );
     }
 
     #[test]
@@ -952,7 +1005,7 @@ mod tests {
     #[test]
     fn a_web_search_is_written_into_the_address() {
         assert_eq!(
-            web_address("rust & wayland?"),
+            web_address(None, "rust & wayland?"),
             "https://duckduckgo.com/?q=rust+%26+wayland%3F"
         );
     }

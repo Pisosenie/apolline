@@ -13,6 +13,9 @@ impl Settings {
                 self.clock_drafts.insert(key, text);
             }
             Message::ClockSet(key) => self.set_clock(key),
+            Message::LauncherFinds(name, on) => self.set_finds(name, on),
+            Message::WebDraft(text) => self.web_draft = Some(text),
+            Message::WebSet => self.set_web(),
             Message::ColorReset(role) => {
                 self.color_drafts.remove(role);
                 self.edit(|e| e.unset("colors", role));

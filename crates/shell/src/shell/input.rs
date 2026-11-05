@@ -156,6 +156,7 @@ impl Shell {
                     self.launcher.set_windows(self.open_windows());
                     self.launcher
                         .set_look(self.config.style.launcher, self.config.style.grid);
+                    self.launcher.set_finds(self.config.launcher.clone());
                     self.launcher.open()
                 },
                 Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps),

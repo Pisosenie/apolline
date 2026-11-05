@@ -19,7 +19,7 @@ impl Shell {
                 };
                 self.spawn(&format!(
                     "{opener} '{}'",
-                    crate::launcher::web_address(&query)
+                    crate::launcher::web_address(self.config.launcher.web.as_deref(), &query)
                 ))
             }
             Target::Window(id) => {
