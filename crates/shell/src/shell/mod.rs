@@ -1,6 +1,7 @@
 use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications, Trigger};
 mod actions;
 mod cards;
+mod config_watch;
 mod desk;
 mod handle;
 mod handle_more;
@@ -813,7 +814,7 @@ impl Shell {
             iced::Subscription::none()
         } else {
             iced::Subscription::batch([
-                iced::Subscription::run(watch_config),
+                iced::Subscription::run(config_watch::watch_config),
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
@@ -862,24 +863,6 @@ fn ticks(busy: &bool) -> impl iced::futures::Stream<Item = Message> + use<> {
             tokio::time::sleep(Duration::from_millis(wait.max(5))).await;
             if output.send(Message::Tick).await.is_err() {
                 return;
-            }
-        }
-    })
-}
-
-fn watch_config() -> impl iced::futures::Stream<Item = Message> {
-    let path = apolline_config::default_path();
-    iced::stream::channel(1, async move |mut output| {
-        use iced::futures::SinkExt;
-        let mut seen = stamp(&path);
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let now = stamp(&path);
-            if now != seen {
-                seen = now;
-                if output.send(Message::ConfigChanged).await.is_err() {
-                    return;
-                }
             }
         }
     })
