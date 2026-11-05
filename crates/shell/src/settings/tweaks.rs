@@ -258,6 +258,9 @@ impl Settings {
             }
             Message::LockBeforeSleep(on) => self.edit(|e| e.set("lock", "before_sleep", on)),
             Message::LockMedia(on) => self.edit(|e| e.set("lock", "show_media", on)),
+            Message::LockWeather(on) => self.edit(|e| e.set("lock", "show_weather", on)),
+            Message::LockNext(on) => self.edit(|e| e.set("lock", "show_next", on)),
+            Message::LockCount(on) => self.edit(|e| e.set("lock", "show_count", on)),
             Message::LockCentered(on) => self.edit(|e| {
                 if on {
                     e.set("lock", "layout", "center");

@@ -32,9 +32,13 @@ impl Settings {
                 ..container::Style::default()
             });
             let clock = column![
-                text(chrono::Local::now().format("%H:%M").to_string())
-                    .size(68)
-                    .font(style::light()),
+                text(
+                    chrono::Local::now()
+                        .format(self.config.clock.time(false))
+                        .to_string()
+                )
+                .size(68)
+                .font(style::light()),
                 pill
             ]
             .spacing(8);
@@ -138,7 +142,21 @@ impl Settings {
                         "With a pause button",
                         switch(lock.show_media, Message::LockMedia, palette),
                     ),
-                    fact(Icon::Bell, "Notifications stay hidden, only their count shows"),
+                    setting(
+                        "Weather",
+                        "From Settings → Bar → Weather",
+                        switch(lock.show_weather, Message::LockWeather, palette),
+                    ),
+                    setting(
+                        "What's next",
+                        "The next thing in your calendar",
+                        switch(lock.show_next, Message::LockNext, palette),
+                    ),
+                    setting(
+                        "Waiting notifications",
+                        "Only how many; what they say stays hidden",
+                        switch(lock.show_count, Message::LockCount, palette),
+                    ),
                     fact(Icon::Keyboard, "The keyboard layout sits next to the password"),
                 ]
             ),

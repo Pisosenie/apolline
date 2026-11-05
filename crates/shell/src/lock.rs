@@ -430,10 +430,14 @@ impl Lock {
             };
             line.push(text(words.to_owned()).size(13).color(style::color(tint)))
         };
-        if let Some((code, words)) = &self.weather {
+        if let Some((code, words)) = self
+            .weather
+            .as_ref()
+            .filter(|_| self.config.lock.show_weather)
+        {
             right = right.push(line(Some(crate::weather::describe(*code).0), words));
         }
-        if let Some(next) = &self.next {
+        if let Some(next) = self.next.as_ref().filter(|_| self.config.lock.show_next) {
             right = right.push(line(None, next));
         }
         if self.config.lock.show_media
@@ -441,7 +445,7 @@ impl Lock {
         {
             right = right.push(player(track, palette));
         }
-        if self.waiting > 0 {
+        if self.waiting > 0 && self.config.lock.show_count {
             let line = crate::i18n::count(
                 self.waiting,
                 "1 notification · hidden until you unlock",

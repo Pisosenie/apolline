@@ -873,3 +873,8 @@
 "Date format" = "Формат даты"
 "Now it reads {sample}; %-I:%M %p for twelve hours" = "Сейчас так: {sample}; %-I:%M %p — 12-часовой формат"
 "Now it reads {sample}; %A, %-d %B for a long one" = "Сейчас так: {sample}; %A, %-d %B — длинная дата"
+"From Settings → Bar → Weather" = "Из Настройки → Панель → Погода"
+"What's next" = "Что дальше"
+"The next thing in your calendar" = "Следующее событие в календаре"
+"Waiting notifications" = "Ждущие уведомления"
+"Only how many; what they say stays hidden" = "Только сколько их; текст остаётся скрытым"

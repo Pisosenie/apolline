@@ -695,6 +695,10 @@ pub struct Idle {
 pub struct Lock {
     pub before_sleep: bool,
     pub show_media: bool,
+    pub show_weather: bool,
+    pub show_next: bool,
+    // How many notifications wait, without what they say.
+    pub show_count: bool,
     pub fingerprint: bool,
     // The clock and the password in the bottom left, or both in the middle.
     pub centered: bool,
@@ -1012,6 +1016,9 @@ impl Default for Config {
             lock: Lock {
                 before_sleep: true,
                 show_media: true,
+                show_weather: true,
+                show_next: true,
+                show_count: true,
                 fingerprint: false,
                 centered: false,
                 blur: false,

@@ -658,6 +658,21 @@ impl Reader<'_> {
                         lock.show_media = v
                     }
                 }
+                "show_weather" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.show_weather = v
+                    }
+                }
+                "show_next" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.show_next = v
+                    }
+                }
+                "show_count" => {
+                    if let Some(v) = self.boolean(key, value) {
+                        lock.show_count = v
+                    }
+                }
                 "fingerprint" => {
                     if let Some(v) = self.boolean(key, value) {
                         lock.fingerprint = v
@@ -680,6 +695,9 @@ impl Reader<'_> {
                     &[
                         "before_sleep",
                         "show_media",
+                        "show_weather",
+                        "show_next",
+                        "show_count",
                         "fingerprint",
                         "layout",
                         "blur",
