@@ -128,6 +128,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
                 (watched, recorded) => watched.or(recorded),
             }
         }
+        Piece::Updates => crate::bar::updates(bar, false),
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
         Piece::Apps => {

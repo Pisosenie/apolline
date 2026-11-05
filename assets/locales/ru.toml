@@ -933,3 +933,6 @@
 "{n} cores" = ["{n} ядро", "{n} ядра", "{n} ядер"]
 "Listening: {apps}" = "Слушают: {apps}"
 "The screen is being shared" = "Экран транслируется"
+"Updates" = "Обновления"
+"{n} updates" = ["{n} обновление", "{n} обновления", "{n} обновлений"]
+"{n} from the AUR" = "{n} из AUR"

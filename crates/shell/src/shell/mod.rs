@@ -101,6 +101,9 @@ pub enum Message {
     Stats(crate::stats::Stats),
     Machine(Box<crate::machine::Machine>),
     Listening(Vec<String>),
+    CheckUpdates,
+    Updates(Option<crate::updates::Updates>),
+    Upgrade,
     MachineSort(bool),
     EndProcess(u32),
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
@@ -249,6 +252,7 @@ pub struct Shell {
     stats: crate::stats::Stats,
     machine: Option<Box<crate::machine::Machine>>,
     listening: Vec<String>,
+    updates: Option<crate::updates::Updates>,
     by_memory: bool,
     ending: Option<u32>,
     profiles: Option<crate::profile::Profiles>,
@@ -365,6 +369,7 @@ impl Shell {
             stats: crate::stats::Stats::default(),
             machine: None,
             listening: Vec::new(),
+            updates: None,
             by_memory: false,
             ending: None,
             profiles: demo.then(|| crate::profile::Profiles {
@@ -750,6 +755,7 @@ impl Shell {
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
                 crate::privacy::subscription(),
+                crate::updates::subscription(self.config.bar.has(&apolline_config::Piece::Updates)),
                 if self.overlay == Some(Overlay::Panel) {
                     iced::Subscription::none()
                 } else {

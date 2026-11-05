@@ -45,6 +45,7 @@ pub struct Bar<'a> {
     pub recording: Option<std::time::Duration>,
     // The apps recording from a microphone, and whether the screen is being taken.
     pub listening: &'a [String],
+    pub updates: Option<crate::updates::Updates>,
     pub casting: bool,
     pub stats: crate::stats::Stats,
     // The calendar's next thing, and in how many minutes (None: it's on now).
@@ -183,6 +184,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
             ),
             (watched, recorded) => watched.or(recorded),
         },
+        Piece::Updates => updates(bar, true),
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
         Piece::Apps => apps_tray(bar),
@@ -386,6 +388,49 @@ pub fn watching<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>>
             .padding([4, 7])
             .style(style::pill(style::WARN.alpha(0.16)))
             .into(),
+    )
+}
+
+// How many packages wait, when any do; a click runs the update in the terminal.
+pub fn updates<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>> {
+    let updates = bar.updates.filter(|u| u.total() > 0)?;
+    let glyph = icon(Icon::Download, 13.0, neutral::muted());
+    let figure = text(updates.total().to_string())
+        .size(if across { 12 } else { 10 })
+        .font(style::mono())
+        .color(style::color(neutral::muted()));
+    let face: Element<'a, Message> = if across {
+        row![glyph, figure]
+            .spacing(5)
+            .align_y(Alignment::Center)
+            .into()
+    } else {
+        column![glyph, figure]
+            .spacing(2)
+            .align_x(Alignment::Center)
+            .into()
+    };
+    let mut said = crate::i18n::count(updates.total(), "1 update", "{n} updates");
+    if updates.aur > 0 {
+        let aur = crate::i18n::fill("{n} from the AUR", &[("n", &updates.aur)]);
+        said = format!("{said} · {aur}");
+    }
+    Some(
+        iced::widget::tooltip(
+            button(face)
+                .padding([4, 6])
+                .style(style::ghost(8.0))
+                .on_press(Message::Upgrade),
+            container(style::verbatim(said).size(12))
+                .padding([4, 8])
+                .style(style::surface),
+            if across {
+                iced::widget::tooltip::Position::Bottom
+            } else {
+                iced::widget::tooltip::Position::Right
+            },
+        )
+        .into(),
     )
 }
 

@@ -16,6 +16,7 @@ optdepends=(
   'bluez: Bluetooth in quick settings'
   'brightnessctl: brightness in quick settings'
   'upower: battery in the bar'
+  'pacman-contrib: waiting updates on the bar (checkupdates)'
   'power-profiles-daemon: performance profiles in modes'
   'polkit: the admin password dialog'
   'greetd: the login screen, apolline greet'

@@ -43,6 +43,15 @@ impl Shell {
             Message::Stats(stats) => self.stats = stats,
             Message::Machine(machine) => self.machine = Some(machine),
             Message::Listening(apps) => self.listening = apps,
+            Message::CheckUpdates | Message::Control(Command::Updates) => {
+                return Task::perform(crate::updates::check(), Message::Updates);
+            }
+            Message::Updates(updates) => self.updates = updates,
+            Message::Upgrade => {
+                let line =
+                    crate::terminal::running(&self.config.terminal, &crate::updates::command());
+                return self.spawn(&line);
+            }
             Message::MachineSort(by_memory) => {
                 self.by_memory = by_memory;
                 self.ending = None;

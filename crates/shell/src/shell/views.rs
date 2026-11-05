@@ -215,6 +215,7 @@ impl Shell {
                 .map(|(app, was_pinned, x)| (app.as_str(), *was_pinned, *x)),
             recording: self.recording.as_ref().map(|r| r.started.elapsed()),
             listening: &self.listening,
+            updates: self.updates,
             casting: self
                 .niri
                 .as_ref()

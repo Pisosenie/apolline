@@ -98,6 +98,8 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 The bar says who's watching: a warm microphone sign while an app records from a microphone (hover to see which; a paused stream or a volume meter doesn't count), and a screen sign while anything takes the screen through niri — a portal sharing it, a recorder, a VNC server. Both sit where the recording timer does and need niri 26.04 for the screen. The microphone is heard from the sound server as streams come and go, never polled.
 
+Updates waiting for the system show on the bar as a count (`updates` in `[bar] right`, there by default): pacman's through `checkupdates` from pacman-contrib, which needs no root and leaves the real databases alone, and the AUR's through paru or yay when one is installed. It looks a minute and a half after start and then every hour; a click runs `paru -Syu` (or yay, or `sudo pacman -Syu`) in your terminal, and the bar looks again once it's done. `apolline updates` asks for a look right away.
+
 ## Your own bar modules
 
 Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.

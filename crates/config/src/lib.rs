@@ -403,6 +403,15 @@ pub struct Bar {
     pub tray: Vec<TrayItem>,
 }
 
+impl Bar {
+    // Whether a piece is placed anywhere on the bar.
+    pub fn has(&self, piece: &Piece) -> bool {
+        [&self.left, &self.center, &self.right]
+            .into_iter()
+            .any(|side| side.contains(piece))
+    }
+}
+
 // What the bar shows of the machine itself.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Stats {

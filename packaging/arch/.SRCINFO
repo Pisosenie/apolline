@@ -23,6 +23,7 @@ pkgbase = apolline-git
 	optdepends = bluez: Bluetooth in quick settings
 	optdepends = brightnessctl: brightness in quick settings
 	optdepends = upower: battery in the bar
+	optdepends = pacman-contrib: waiting updates on the bar (checkupdates)
 	optdepends = power-profiles-daemon: performance profiles in modes
 	optdepends = polkit: the admin password dialog
 	optdepends = greetd: the login screen, apolline greet

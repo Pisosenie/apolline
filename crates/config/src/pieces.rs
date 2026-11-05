@@ -8,6 +8,8 @@ pub enum Piece {
     Media,
     Notifications,
     Recording,
+    // Packages waiting for an update.
+    Updates,
     Stats,
     Tray,
     // The icons apps keep in the tray.
@@ -19,7 +21,7 @@ pub enum Piece {
 }
 
 impl Piece {
-    pub const NAMED: [(&'static str, Piece); 11] = [
+    pub const NAMED: [(&'static str, Piece); 12] = [
         ("mode", Piece::Mode),
         ("workspaces", Piece::Workspaces),
         ("windows", Piece::Windows),
@@ -27,6 +29,7 @@ impl Piece {
         ("media", Piece::Media),
         ("notifications", Piece::Notifications),
         ("recording", Piece::Recording),
+        ("updates", Piece::Updates),
         ("stats", Piece::Stats),
         ("tray", Piece::Tray),
         ("apps", Piece::Apps),
@@ -66,6 +69,7 @@ impl Piece {
             Piece::Media,
             Piece::Notifications,
             Piece::Recording,
+            Piece::Updates,
             Piece::Modules,
             Piece::Stats,
             Piece::Apps,
@@ -135,6 +139,7 @@ mod tests {
                 "media",
                 "notifications",
                 "recording",
+                "updates",
                 "modules",
                 "stats",
                 "apps",
