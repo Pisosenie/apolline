@@ -988,3 +988,5 @@
 "{minutes}m" = "{minutes}м"
 "{combo} already opens “{action}”" = "{combo} уже открывает «{action}»"
 "there is already a mode called “{name}”" = "режим «{name}» уже есть"
+"Drawn by another program" = "Рисует другая программа"
+"apolline-wall, swww or hyprpaper draws it; the clock and widgets stay on top" = "Обои рисует apolline-wall, swww или hyprpaper; часы и виджеты остаются поверх"

@@ -65,6 +65,8 @@ struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool, u16, bool),
+    // Whether another program draws the wallpaper, which puts the shell's desktop a layer up.
+    elsewhere: bool,
     // Bars out on their screens, and the ones the pointer is over with when it last left.
     out: BTreeMap<window::Id, bool>,
     over: BTreeMap<window::Id, Option<u64>>,
@@ -84,6 +86,7 @@ impl Layers {
             shell,
             screens: BTreeMap::new(),
             look: (Edge::Top, true, 100, false),
+            elsewhere: false,
             out: BTreeMap::new(),
             over: BTreeMap::new(),
             leavings: 0,
@@ -288,9 +291,11 @@ impl Layers {
             .map(|(output, screen)| (output.clone(), screen.bar.is_some()))
             .collect();
         let look = self.shell.bar_look();
+        let elsewhere = self.shell.wallpaper_elsewhere();
         let mut tasks = Vec::new();
-        if look != self.look {
+        if look != self.look || elsewhere != self.elsewhere {
             self.look = look;
+            self.elsewhere = elsewhere;
             for (_, screen) in std::mem::take(&mut self.screens) {
                 tasks.extend(close_screen(screen));
             }
@@ -304,7 +309,10 @@ impl Layers {
             }
         }
         for (output, with_bar) in added {
-            let (screen, open_screen) = open_screen(&output, look, with_bar);
+            let (screen, open_screen) = open_screen(&output, look, with_bar, elsewhere);
+            if elsewhere {
+                tasks.extend(pass_through(screen.wallpaper));
+            }
             if let Some(bar) = screen.bar.filter(|_| look.3) {
                 tasks.push(Task::perform(
                     tokio::time::sleep(std::time::Duration::from_millis(300)),
@@ -544,10 +552,27 @@ fn close_screen(screen: Screen) -> impl Iterator<Item = Task<Message>> {
     std::iter::once(window::close(screen.wallpaper)).chain(screen.bar.map(window::close))
 }
 
+// Clicks on the desktop go to the program drawing the wallpaper below; once now, and again once
+// the surface surely exists.
+fn pass_through(id: window::Id) -> [Task<Message>; 2] {
+    let none = move || Message::SetInputRegion {
+        id,
+        callback: ActionCallback(std::sync::Arc::new(|_: &WlRegion| {})),
+    };
+    [
+        Task::done(none()),
+        Task::perform(
+            tokio::time::sleep(std::time::Duration::from_millis(300)),
+            move |()| none(),
+        ),
+    ]
+}
+
 fn open_screen(
     output: &Output,
     (edge, floating, size, autohide): (Edge, bool, u16, bool),
     with_bar: bool,
+    elsewhere: bool,
 ) -> (Screen, Task<Message>) {
     let (extent, margin, zone) = if autohide {
         (
@@ -567,7 +592,11 @@ fn open_screen(
         None => OutputOption::default(),
     };
     let (wallpaper, open_wallpaper) = open(NewLayerShellSettings {
-        layer: Layer::Background,
+        layer: if elsewhere {
+            Layer::Bottom
+        } else {
+            Layer::Background
+        },
         anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
         exclusive_zone: Some(-1),
         keyboard_interactivity: KeyboardInteractivity::None,

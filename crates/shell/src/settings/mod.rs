@@ -296,6 +296,7 @@ enum Message {
     Palette(String),
     DesktopClock(String),
     DesktopWidget(String, bool),
+    WallpaperElsewhere(bool),
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,

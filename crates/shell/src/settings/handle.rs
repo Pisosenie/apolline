@@ -209,6 +209,14 @@ impl Settings {
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::DesktopWidget(name, on) => self.set_desktop_widget(name, on),
+            Message::WallpaperElsewhere(on) => {
+                let name = if on {
+                    apolline_config::NO_WALLPAPER.to_owned()
+                } else {
+                    apolline_config::Config::default().desktop.wallpaper
+                };
+                self.edit(|e| e.set("desktop", "wallpaper", name.as_str()));
+            }
             Message::DesktopClock(label) => {
                 let spot = CLOCK_SPOTS
                     .iter()

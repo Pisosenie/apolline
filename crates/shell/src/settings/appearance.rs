@@ -219,6 +219,15 @@ impl Settings {
             vec![
                 column(screens).spacing(0).into(),
                 setting(
+                    "Drawn by another program",
+                    "apolline-wall, swww or hyprpaper draws it; the clock and widgets stay on top",
+                    switch(
+                        self.config.desktop.wallpaper == apolline_config::NO_WALLPAPER,
+                        Message::WallpaperElsewhere,
+                        palette,
+                    ),
+                ),
+                setting(
                     "Change the wallpaper",
                     "Goes through the gallery above; the file keeps the one you picked",
                     segmented(

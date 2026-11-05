@@ -50,6 +50,7 @@ impl Shell {
         let mut names: Vec<String> = std::iter::once(None)
             .chain(self.outputs.iter().map(|o| Some(o.as_str())))
             .map(|output| self.wallpaper_name(output).to_owned())
+            .filter(|name| name != apolline_config::NO_WALLPAPER)
             .collect();
         names.sort();
         names.dedup();
@@ -58,7 +59,7 @@ impl Shell {
 
     pub(super) fn rotate(&mut self) -> Task<Message> {
         let every = self.config.desktop.rotate;
-        if self.demo || every == 0 {
+        if self.demo || every == 0 || self.wallpaper_elsewhere() {
             return Task::none();
         }
         let since = self.rotated.as_ref().map_or(self.started, |(_, at)| *at);
@@ -232,7 +233,15 @@ impl Shell {
         )
     }
 
+    // Another program draws the wallpaper under the shell's clock and widgets.
+    pub fn wallpaper_elsewhere(&self) -> bool {
+        self.wallpaper_name(None) == apolline_config::NO_WALLPAPER
+    }
+
     pub(super) fn wallpaper_picture(&self, output: Option<&str>) -> Element<'_, Message> {
+        if self.wallpaper_name(output) == apolline_config::NO_WALLPAPER {
+            return space().width(Fill).height(Fill).into();
+        }
         let shown = self
             .shown
             .iter()

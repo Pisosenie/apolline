@@ -249,7 +249,11 @@ impl Lock {
             up: false,
             config,
         };
-        let name = lock.config.wallpaper(mode).to_owned();
+        let name = match lock.config.wallpaper(mode) {
+            // Drawn by another program the lock can't show; its own picture instead.
+            apolline_config::NO_WALLPAPER => apolline_config::Config::default().desktop.wallpaper,
+            name => name.to_owned(),
+        };
         let load = if lock.config.lock.blur {
             Task::perform(wallpaper::load_blurred(name), Message::Wallpaper)
         } else {

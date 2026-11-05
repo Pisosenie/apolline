@@ -382,6 +382,10 @@ pub struct Desktop {
     pub widgets: Vec<String>,
 }
 
+// The wallpaper's name when another program draws it (apolline-wall, swww, hyprpaper): the shell
+// draws only the clock and widgets, over it.
+pub const NO_WALLPAPER: &str = "none";
+
 impl Desktop {
     pub const WIDGETS: [&'static str; 3] = ["weather", "agenda", "media"];
 }

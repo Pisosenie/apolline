@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 — 2026-11-05
+
+- `[desktop] wallpaper = "none"` (Settings → Appearance → Drawn by another program) leaves the wallpaper to apolline-wall, swww or hyprpaper: the shell keeps the clock and widgets a layer above it and lets clicks through to it.
+
 ## 0.1.0 — 2026-11-05
 
 The first release: a whole desktop around niri, set up by `apolline setup`.
