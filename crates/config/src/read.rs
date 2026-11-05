@@ -21,7 +21,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 26] = [
+const SECTIONS: [&str; 27] = [
     "general",
     "theme",
     "desktop",
