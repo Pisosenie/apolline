@@ -5,6 +5,7 @@ use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, StreamExt};
 use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
 use zbus::message::Type;
+use zbus::names::BusName;
 use zbus::object_server::SignalEmitter;
 use zbus::{Connection, MatchRule, MessageStream, connection};
 use zbus::{OwnedObjectPath, OwnedVariant as OwnedValue, Variant as Value};
@@ -69,7 +70,7 @@ pub fn subscription() -> iced::Subscription<Event> {
 struct Watcher {
     items: Vec<String>,
     hosts: Vec<String>,
-    changed: mpsc::Sender<()>,
+    changed: mpsc::Sender<Heard>,
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
@@ -95,7 +96,7 @@ impl Watcher {
             let _ = self
                 .registered_status_notifier_items_changed(&emitter)
                 .await;
-            let _ = self.changed.try_send(());
+            let _ = self.changed.try_send(Heard::List);
         }
     }
 
@@ -135,11 +136,11 @@ impl Watcher {
 
 fn host() -> impl iced::futures::Stream<Item = Event> {
     iced::stream::channel(8, async |mut output| {
-        let (changed, mut heard) = mpsc::channel::<()>(1);
+        let (tell, mut heard) = mpsc::channel::<Heard>(16);
         let watcher = Watcher {
             items: Vec::new(),
             hosts: Vec::new(),
-            changed: changed.clone(),
+            changed: tell.clone(),
         };
         let Ok(connection) = connection::Builder::session()
             .serve_at(WATCHER_PATH, watcher)
@@ -159,30 +160,157 @@ fn host() -> impl iced::futures::Stream<Item = Event> {
             let _ = register_host(&connection, &host).await;
         }
         // Items come and go with their apps, and change their icons and titles.
-        let watch = watch_signals(connection.clone(), changed.clone());
-        tokio::spawn(watch);
+        tokio::spawn(watch_signals(connection.clone(), tell.clone()));
+        let mut tray = Tray::default();
+        let mut news = vec![Heard::List];
         let mut shown: Option<Vec<Item>> = None;
         loop {
-            let names = if ours {
-                ours_items(&connection, changed.clone()).await
-            } else {
-                their_items(&connection).await
-            };
-            let items = read_all(&connection, &names).await;
+            tray.hear(&connection, ours, &news, &tell).await;
+            let items = tray.items();
             if shown.as_ref() != Some(&items) {
                 shown = Some(items.clone());
                 if output.send(Event::Items(items)).await.is_err() {
                     return;
                 }
             }
-            if heard.next().await.is_none() {
+            let Some(first) = heard.next().await else {
                 return;
-            }
+            };
             // The rest of the burst: an app usually changes several things at once.
             tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-            while heard.try_recv().is_ok() {}
+            news = vec![first];
+            while let Ok(more) = heard.try_recv() {
+                if !news.contains(&more) {
+                    news.push(more);
+                }
+            }
         }
     })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Heard {
+    // Items registered or went away.
+    List,
+    // One item changed something of its own: its sender and object path.
+    Item(String, String),
+    // An app left the bus; if it's back already, its items are read anew.
+    Gone(String),
+}
+
+// The items as last read, in the order they registered.
+#[derive(Default)]
+struct Tray {
+    names: Vec<String>,
+    read: HashMap<String, Kept>,
+}
+
+struct Kept {
+    // The app's own connection, which its signals come from.
+    owner: Option<String>,
+    // None while it asks not to be shown.
+    item: Option<Item>,
+    gone: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Kept {
+    fn drop(&mut self) {
+        self.gone.abort();
+    }
+}
+
+impl Tray {
+    async fn hear(
+        &mut self,
+        connection: &Connection,
+        ours: bool,
+        news: &[Heard],
+        tell: &mpsc::Sender<Heard>,
+    ) {
+        for news in news {
+            if let Heard::Gone(service) = news {
+                self.read.retain(|name, _| split(name).0 != service);
+            }
+        }
+        if news.iter().any(|news| !matches!(news, Heard::Item(..))) {
+            let names = if ours {
+                ours_items(connection).await
+            } else {
+                their_items(connection).await
+            };
+            self.read.retain(|name, _| names.contains(name));
+            for name in &names {
+                if !self.read.contains_key(name) {
+                    let kept = Kept::read(connection, name, tell.clone()).await;
+                    self.read.insert(name.clone(), kept);
+                }
+            }
+            self.names = names;
+        }
+        // Only the item that changed is read again.
+        for news in news {
+            let Heard::Item(sender, path) = news else {
+                continue;
+            };
+            for (name, kept) in &mut self.read {
+                let (service, at) = split(name);
+                if at == path && (service == sender || kept.owner.as_ref() == Some(sender)) {
+                    kept.item = read(connection, service, at).await;
+                }
+            }
+        }
+    }
+
+    fn items(&self) -> Vec<Item> {
+        self.names
+            .iter()
+            .filter_map(|name| self.read.get(name)?.item.clone())
+            .collect()
+    }
+}
+
+impl Kept {
+    async fn read(connection: &Connection, name: &str, tell: mpsc::Sender<Heard>) -> Self {
+        let (service, path) = split(name);
+        let owner = if service.starts_with(':') {
+            Some(service.to_owned())
+        } else {
+            match (DBusProxy::new(connection).await, BusName::try_from(service)) {
+                (Ok(bus), Ok(service)) => bus.get_name_owner(service).await.ok(),
+                _ => None,
+            }
+            .map(|owner| owner.to_string())
+        };
+        Self {
+            owner,
+            item: read(connection, service, path).await,
+            gone: tokio::spawn(gone(connection.clone(), service.to_owned(), tell)),
+        }
+    }
+}
+
+// Waits for an item's app to leave the bus. Only its own name is listened for: every other
+// program that comes and goes on the session bus is none of the tray's business.
+async fn gone(connection: Connection, service: String, mut tell: mpsc::Sender<Heard>) {
+    let rule = MatchRule::builder()
+        .msg_type(Type::Signal)
+        .sender("org.freedesktop.DBus")
+        .interface("org.freedesktop.DBus")
+        .member("NameOwnerChanged")
+        .arg(0, service.clone())
+        .arg(2, "")
+        .build();
+    let Ok(rule) = rule else {
+        return;
+    };
+    let Ok(mut left) = MessageStream::for_match_rule(rule, &connection, None).await else {
+        return;
+    };
+    // It may have left before anyone listened.
+    if here(&connection, &service).await {
+        left.next().await;
+    }
+    let _ = tell.send(Heard::Gone(service)).await;
 }
 
 async fn register_host(connection: &Connection, host: &str) -> zbus::Result<()> {
@@ -199,23 +327,15 @@ async fn register_host(connection: &Connection, host: &str) -> zbus::Result<()> 
 }
 
 // Our own watcher's list, with the ones whose apps went away dropped.
-async fn ours_items(connection: &Connection, changed: mpsc::Sender<()>) -> Vec<String> {
+async fn ours_items(connection: &Connection) -> Vec<String> {
     let server = connection.object_server();
     let Ok(watcher) = server.interface::<_, Watcher>(WATCHER_PATH).await else {
         return Vec::new();
     };
     let names = watcher.get().await.items.clone();
     let mut alive = Vec::new();
-    let Ok(bus) = DBusProxy::new(connection).await else {
-        return names;
-    };
     for name in names {
-        let (service, _) = split(&name);
-        let has = match zbus::names::BusName::try_from(service) {
-            Ok(bus_name) => bus.name_has_owner(bus_name).await.unwrap_or(false),
-            Err(_) => false,
-        };
-        if has {
+        if here(connection, split(&name).0).await {
             alive.push(name);
         } else {
             let mut guard = watcher.get_mut().await;
@@ -225,8 +345,6 @@ async fn ours_items(connection: &Connection, changed: mpsc::Sender<()>) -> Vec<S
             let _ = guard
                 .registered_status_notifier_items_changed(emitter)
                 .await;
-            drop(guard);
-            let _ = changed.clone().try_send(());
         }
     }
     alive
@@ -242,14 +360,29 @@ async fn their_items(connection: &Connection) -> Vec<String> {
             &(WATCHER, "RegisteredStatusNotifierItems"),
         )
         .await;
-    reply
+    let names = reply
         .ok()
         .and_then(|reply| reply.body().deserialize::<OwnedValue>().ok())
         .and_then(|value| Vec::<String>::try_from(value).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // Another watcher may keep an app that left; it'd be read and lost over and over.
+    let mut alive = Vec::new();
+    for name in names {
+        if here(connection, split(&name).0).await {
+            alive.push(name);
+        }
+    }
+    alive
 }
 
-async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<()>) {
+async fn here(connection: &Connection, service: &str) -> bool {
+    match (DBusProxy::new(connection).await, BusName::try_from(service)) {
+        (Ok(bus), Ok(service)) => bus.name_has_owner(service).await.unwrap_or(false),
+        _ => false,
+    }
+}
+
+async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<Heard>) {
     let rules = [
         MatchRule::builder()
             .msg_type(Type::Signal)
@@ -259,11 +392,6 @@ async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<()>) {
             .msg_type(Type::Signal)
             .interface(WATCHER)
             .build(),
-        MatchRule::builder()
-            .msg_type(Type::Signal)
-            .interface("org.freedesktop.DBus")
-            .member("NameOwnerChanged")
-            .build(),
     ];
     let mut streams = Vec::new();
     for rule in rules.into_iter().flatten() {
@@ -272,8 +400,21 @@ async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<()>) {
         }
     }
     let mut all = iced::futures::stream::select_all(streams);
-    while all.next().await.is_some() {
-        if changed.try_send(()).is_err_and(|err| err.is_disconnected()) {
+    while let Some(message) = all.next().await {
+        let Ok(message) = message else {
+            continue;
+        };
+        let header = message.header();
+        let heard = match (header.interface(), header.sender(), header.path()) {
+            (Some(interface), Some(sender), Some(path)) if interface == ITEM => {
+                Heard::Item(sender.to_string(), path.to_string())
+            }
+            _ => Heard::List,
+        };
+        if changed
+            .try_send(heard)
+            .is_err_and(|err| err.is_disconnected())
+        {
             return;
         }
     }
@@ -284,17 +425,6 @@ fn split(name: &str) -> (&str, &str) {
         Some(at) => (&name[..at], &name[at..]),
         None => (name, DEFAULT_ITEM_PATH),
     }
-}
-
-async fn read_all(connection: &Connection, names: &[String]) -> Vec<Item> {
-    let mut items = Vec::new();
-    for name in names {
-        let (service, path) = split(name);
-        if let Some(item) = read(connection, service, path).await {
-            items.push(item);
-        }
-    }
-    items
 }
 
 async fn read(connection: &Connection, service: &str, path: &str) -> Option<Item> {
