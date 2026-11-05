@@ -1018,6 +1018,8 @@
 "Remove it for good" = "Удалить насовсем"
 "{name} is removed" = "{name} удалён"
 "{name} is installed. Once enabled, it runs: {commands}" = "{name} установлен. Включённый, он запускает: {commands}"
+"“{name}” is installed already. Putting this one in its place turns it off and forgets its secrets." = "«{name}» уже установлен. Если поставить этот на его место, плагин выключится, а его секреты забудутся."
+"Replace it" = "Заменить"
 "On the bar: add “{piece}” to [bar] left, center or right" = "На панели: добавьте «{piece}» в [bar] left, center или right"
 "On the desktop: add “{widget}” to [desktop] widgets" = "На рабочем столе: добавьте «{widget}» в [desktop] widgets"
 "In quick settings: add “{tile}” to [panel] tiles" = "В быстрых настройках: добавьте «{tile}» в [panel] tiles"

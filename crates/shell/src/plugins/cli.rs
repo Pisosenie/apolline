@@ -2,22 +2,26 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, Plugin};
 
+use super::install::Refused;
 use super::{Installed, install, installed};
 
-pub const USAGE: &str =
-    "apolline plugin list | install PATH|LINK | remove NAME | enable NAME | disable NAME";
+pub const USAGE: &str = "apolline plugin list | install [--replace] PATH|LINK | remove NAME | enable NAME | disable NAME";
 
 pub fn main(args: &[String]) -> ExitCode {
-    let name = args.get(1).map(String::as_str);
-    let done = match (args.first().map(String::as_str), name) {
+    let replace = args.iter().any(|a| a == "--replace");
+    let mut words = args
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--replace");
+    let done = match (words.next(), words.next()) {
         (None | Some("list"), _) => {
             list();
             Ok(())
         }
-        (Some("install"), Some(from)) => install::install(from).map(|found| installed_one(&found)),
+        (Some("install"), Some(from)) => install(from, replace),
         (Some("remove"), Some(name)) => install::remove(name).and_then(|()| {
             println!("{name} is removed");
-            switch(name, false)
+            retire(name)
         }),
         (Some("enable"), Some(name)) => enable(name),
         (Some("disable"), Some(name)) => switch(name, false).map(|()| println!("{name} is off")),
@@ -68,6 +72,31 @@ fn list() {
             );
         }
     }
+}
+
+fn install(from: &str, replace: bool) -> Result<(), String> {
+    let found = install::install(from, replace).map_err(|refused| match refused {
+        Refused::Taken(name) => format!(
+            "“{name}” is installed already; `apolline plugin install --replace {from}` puts this one in its place"
+        ),
+        Refused::Wrong(why) => why,
+    })?;
+    if replace {
+        retire(&found.plugin.name)?;
+    }
+    installed_one(&found);
+    Ok(())
+}
+
+// Off, and its secrets forgotten, so nothing put in its place under the name runs at once or
+// inherits them.
+fn retire(name: &str) -> Result<(), String> {
+    switch(name, false)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| err.to_string())?;
+    runtime.block_on(crate::secrets::plugin_forget_all(name))
 }
 
 // What it will run, said before it's ever enabled.

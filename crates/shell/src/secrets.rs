@@ -216,6 +216,16 @@ pub async fn plugin_forget(plugin: &str, key: &str) -> Result<(), String> {
         .await
 }
 
+// Every secret of a plugin's, so one put in its place under the same name starts without them.
+// With no keyring there's nothing to forget.
+pub async fn plugin_forget_all(plugin: &str) -> Result<(), String> {
+    let Ok(keyring) = Keyring::open().await else {
+        return Ok(());
+    };
+    let attributes = HashMap::from([("xdg:schema", PLUGIN_SCHEMA), ("plugin", plugin)]);
+    keyring.remove(attributes).await
+}
+
 struct Keyring {
     connection: Connection,
     service: ServiceProxy<'static>,

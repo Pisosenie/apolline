@@ -3,6 +3,7 @@ use iced::widget::column;
 
 use apolline_config::{Kind, Plugin, Setting};
 
+use crate::plugins::install::Refused;
 use crate::plugins::{Installed, cli, install};
 
 // The Plugins page's own state: what's installed, and what's being typed or done.
@@ -15,6 +16,8 @@ pub(super) struct Shelf {
     // Values being typed, by plugin and key, written on Enter; secrets go to the keyring.
     drafts: std::collections::HashMap<(String, String), String>,
     removing: Option<String>,
+    // A plugin by that name is installed: the one being added replaces it only when asked.
+    taken: Option<String>,
 }
 
 impl Shelf {
@@ -36,7 +39,10 @@ pub(super) enum Ask {
     Kept(Result<String, String>),
     From(String),
     Install,
+    Taken(String),
+    Replace,
     Installed(Result<String, String>),
+    Replaced(String, String),
     Remove(String),
     OpenFolder,
 }
@@ -100,6 +106,9 @@ impl Settings {
                 .on_press(Message::Plugin(Ask::OpenFolder)),
             ),
         ];
+        if let Some(name) = &self.shelf.taken {
+            rows.push(self.replace_plugin(name));
+        }
         match &self.shelf.note {
             Some(Ok(line)) => rows.push(padded(
                 text(line.as_str())
@@ -115,6 +124,31 @@ impl Settings {
             ));
         }
         group("Plugins", rows)
+    }
+
+    fn replace_plugin(&self, name: &str) -> Element<'_, Message> {
+        let said = crate::i18n::fill(
+            "“{name}” is installed already. Putting this one in its place turns it off and forgets its secrets.",
+            &[("name", &name)],
+        );
+        let ready = !self.shelf.busy;
+        column![
+            warning(&said),
+            button(
+                row![
+                    icon(Icon::Download, 14.0, neutral::text()),
+                    text("Replace it").size(13)
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            )
+            .padding([8, 14])
+            .style(style::secondary)
+            .on_press_maybe(ready.then_some(Message::Plugin(Ask::Replace))),
+        ]
+        .spacing(10)
+        .padding([14, 16])
+        .into()
     }
 
     fn plugin_card<'a>(&'a self, found: &'a Installed, palette: Palette) -> Element<'a, Message> {
@@ -276,17 +310,22 @@ impl Settings {
                 self.edit(|e| e.set_in(&["plugins", &name], &key, choice.as_str()));
             }
             Ask::Kept(said) => self.shelf.note = Some(said),
-            Ask::From(from) => self.shelf.from = from,
-            Ask::Install => return self.install_plugin(),
-            Ask::Installed(said) => {
-                self.shelf.busy = false;
-                if said.is_ok() {
-                    self.shelf.from.clear();
-                }
-                self.shelf.note = Some(said);
-                self.shelf.installed = crate::plugins::installed();
+            Ask::From(from) => {
+                self.shelf.from = from;
+                self.shelf.taken = None;
             }
-            Ask::Remove(name) => self.remove_plugin_now(name),
+            Ask::Install => return self.install_plugin(false),
+            Ask::Replace => return self.install_plugin(true),
+            Ask::Taken(name) => {
+                self.shelf.busy = false;
+                self.shelf.taken = Some(name);
+            }
+            Ask::Installed(said) => self.installed(said),
+            Ask::Replaced(name, said) => {
+                self.installed(Ok(said));
+                return self.retire_plugin(name);
+            }
+            Ask::Remove(name) => return self.remove_plugin_now(name),
             Ask::OpenFolder => {
                 let dir = crate::plugins::dir();
                 let _ = std::fs::create_dir_all(&dir);
@@ -345,36 +384,65 @@ impl Settings {
         Task::none()
     }
 
-    fn install_plugin(&mut self) -> Task<Message> {
+    fn install_plugin(&mut self, replace: bool) -> Task<Message> {
         let from = self.shelf.from.trim().to_owned();
         if from.is_empty() || self.shelf.busy {
             return Task::none();
         }
         self.shelf.busy = true;
         self.shelf.note = None;
+        self.shelf.taken = None;
         // A clone can take a while, so it's off the window's thread.
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || install::install(&from))
+                tokio::task::spawn_blocking(move || install::install(&from, replace))
                     .await
-                    .map_err(|err| err.to_string())
-                    .and_then(|done| done.map(|found| installed_note(&found.plugin)))
+                    .map_err(|err| Refused::Wrong(err.to_string()))
+                    .and_then(|done| done)
             },
-            |said| Message::Plugin(Ask::Installed(said)),
+            move |done| {
+                Message::Plugin(match done {
+                    Ok(found) if replace => {
+                        Ask::Replaced(found.plugin.name.clone(), installed_note(&found.plugin))
+                    }
+                    Ok(found) => Ask::Installed(Ok(installed_note(&found.plugin))),
+                    Err(Refused::Taken(name)) => Ask::Taken(name),
+                    Err(Refused::Wrong(why)) => Ask::Installed(Err(why)),
+                })
+            },
         )
     }
 
+    fn installed(&mut self, said: Result<String, String>) {
+        self.shelf.busy = false;
+        if said.is_ok() {
+            self.shelf.from.clear();
+        }
+        self.shelf.note = Some(said);
+        self.shelf.installed = crate::plugins::installed();
+    }
+
     // The first press arms it; the second removes the folder and turns it off.
-    fn remove_plugin_now(&mut self, name: String) {
+    fn remove_plugin_now(&mut self, name: String) -> Task<Message> {
         if self.shelf.removing.as_deref() != Some(&name) {
             self.shelf.removing = Some(name);
-            return;
+            return Task::none();
         }
         self.shelf.removing = None;
-        self.shelf.note = Some(
-            install::remove(&name)
-                .map(|()| crate::i18n::fill("{name} is removed", &[("name", &name)])),
-        );
+        let removed = install::remove(&name);
+        let retired = match removed {
+            Ok(()) => self.retire_plugin(name.clone()),
+            Err(_) => Task::none(),
+        };
+        self.shelf.note =
+            Some(removed.map(|()| crate::i18n::fill("{name} is removed", &[("name", &name)])));
+        self.shelf.installed = crate::plugins::installed();
+        retired
+    }
+
+    // Off, and its secrets forgotten, so nothing put in its place under the name runs at once or
+    // inherits them.
+    fn retire_plugin(&mut self, name: String) -> Task<Message> {
         let enabled: Vec<String> = self
             .config
             .plugins
@@ -386,7 +454,12 @@ impl Settings {
         if enabled != self.config.plugins.enabled {
             self.edit(|e| cli::set_enabled(e, &enabled));
         }
-        self.shelf.installed = crate::plugins::installed();
+        Task::future(async move {
+            if let Err(err) = crate::secrets::plugin_forget_all(&name).await {
+                eprintln!("apolline: plugin {name}: {err}");
+            }
+        })
+        .discard()
     }
 
     // Names of what enabled plugins bring, as "plugin.part", for the boards elsewhere.

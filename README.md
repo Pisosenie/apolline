@@ -139,13 +139,14 @@ A plugin is a folder with a `plugin.toml`, and everything it adds is a command, 
 ```sh
 apolline plugin install ~/src/my-plugin                     # a folder, copied
 apolline plugin install https://github.com/someone/plugin   # a git link, cloned
+apolline plugin install --replace ~/src/my-plugin           # in place of one by the same name
 apolline plugin list
 apolline plugin enable ip                                   # off until you do
 apolline plugin disable ip
 apolline plugin remove ip
 ```
 
-Plugins live in `~/.local/share/apolline/plugins/NAME`, and packages put theirs in `/usr/share/apolline/plugins`. Installing one checks its `plugin.toml` and lists every command it will run, and none of them runs until it's in `[plugins] enabled`. A plugin runs its commands as you, with your files and your network, so enable only what you trust. Settings → Plugins does the same with a switch for each, its settings, and a field for a folder or a link. The shell reads plugins along with the config, so an edit to an enabled plugin's `plugin.toml` shows once the config is saved again.
+Plugins live in `~/.local/share/apolline/plugins/NAME`, and packages put theirs in `/usr/share/apolline/plugins`. Installing one checks its `plugin.toml` and lists every command it will run, and none of them runs until it's in `[plugins] enabled`. One by a name already installed is refused unless it's `--replace`d, which turns the plugin off and forgets its secrets, as removing it does. A plugin runs its commands as you, with your files and your network, so enable only what you trust. Settings → Plugins does the same with a switch for each, its settings, and a field for a folder or a link. The shell reads plugins along with the config, so an edit to an enabled plugin's `plugin.toml` shows once the config is saved again.
 
 ```toml
 [plugin]
