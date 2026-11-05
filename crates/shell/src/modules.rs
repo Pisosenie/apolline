@@ -178,7 +178,7 @@ fn cut(line: &str, longest: usize) -> String {
 }
 
 // Pango markup, which Waybar scripts often print, as the words alone.
-fn plain(markup: &str) -> String {
+pub fn plain(markup: &str) -> String {
     let mut out = String::with_capacity(markup.len());
     let mut rest = markup;
     while let Some(open) = rest.find('<') {

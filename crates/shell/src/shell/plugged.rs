@@ -1,4 +1,5 @@
 use super::*;
+use crate::plugins::search;
 use crate::plugins::tiles::{self, State};
 
 impl Shell {
@@ -29,5 +30,20 @@ impl Shell {
         Task::perform(tiles::switch(runs, tile, on), move |state| {
             Message::PluginTile(key.clone(), state)
         })
+    }
+}
+
+impl Shell {
+    // Plugins' launcher sources, asked once typing pauses; a newer search ends the one before.
+    pub(super) fn ask_plugins(&mut self, query: &str) -> Task<Message> {
+        self.searching = None;
+        let asked = search::asked(&self.plugins, query);
+        if asked.is_empty() {
+            self.launcher.set_plugin_found(Vec::new());
+            return Task::none();
+        }
+        let (task, handle) = Task::perform(search::search(asked), Message::PluginFound).abortable();
+        self.searching = Some(handle.abort_on_drop());
+        task
     }
 }

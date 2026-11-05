@@ -11,6 +11,12 @@ impl Shell {
                 self.spawn(&command)
             }
             Target::Run(command) => self.spawn(&command),
+            Target::Plugin(plugin, command) => {
+                match crate::plugins::runs(&self.plugins, Some(&plugin)) {
+                    Some(runs) => self.plugin_spawn(runs, &command),
+                    None => Task::none(),
+                }
+            }
             Target::Web(query) => {
                 let opener = if cfg!(target_os = "macos") {
                     "open"

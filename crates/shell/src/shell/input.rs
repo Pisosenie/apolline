@@ -217,6 +217,7 @@ impl Shell {
     }
 
     pub(super) fn search(&mut self, query: String) -> Task<Message> {
+        let plugins = self.ask_plugins(&query);
         let found = self.launcher.search(query);
         let rates = if self.launcher.wants_rates() {
             Task::perform(crate::rates::load(), Message::Rates)
@@ -228,7 +229,7 @@ impl Shell {
         } else {
             Task::none()
         };
-        Task::batch([found, rates, files])
+        Task::batch([found, rates, files, plugins])
     }
 
     pub(super) fn marks_key(

@@ -3,6 +3,7 @@ use std::process::Stdio;
 
 use apolline_config::{Config, Diagnostic, Module, Plugin};
 
+pub mod search;
 pub mod tiles;
 
 // Plugins are folders with a plugin.toml: yours first, then the ones a package put in.
