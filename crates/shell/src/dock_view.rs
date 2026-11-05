@@ -180,7 +180,7 @@ fn icon<'a>(look: &Look<'a>, item: &Item, size: f32, offset: f32) -> Element<'a,
     let scrolled = key.clone();
     let area = mouse_area(pressed)
         .on_middle_press(say(Event::Launch(key.clone())))
-        .on_right_press(say(Event::Menu(key, offset)))
+        .on_right_press(say(Event::Menu(key, offset, look.output.clone())))
         .on_scroll(move |delta| say(Event::Scroll(scrolled.clone(), forward(delta))));
     let name =
         apps::find(look.apps, &item.key).map_or_else(|| item.key.clone(), |app| app.name.clone());

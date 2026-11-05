@@ -78,6 +78,8 @@ struct Layers {
     popups_place: (Corner, f32, u16),
     popups_hold: Hold,
     overlay: Option<(window::Id, Overlay)>,
+    // The screen it was opened on, when it belongs on one.
+    overlay_on: Option<String>,
     osd: Option<window::Id>,
     docks: dock::Docks,
 }
@@ -97,6 +99,7 @@ impl Layers {
             popups_place: (Corner::TopRight, 1.0, 360),
             popups_hold: Hold::default(),
             overlay: None,
+            overlay_on: None,
             osd: None,
             docks: dock::Docks::default(),
         };
@@ -239,7 +242,8 @@ impl Layers {
 
     fn fit_overlay(&mut self) -> Task<Message> {
         let wanted = self.shell.overlay();
-        if self.overlay.map(|(_, kind)| kind) == wanted {
+        let on = self.shell.overlay_output();
+        if self.overlay.map(|(_, kind)| kind) == wanted && self.overlay_on == on {
             return Task::none();
         }
         let close = match self.overlay.take() {
@@ -267,10 +271,14 @@ impl Layers {
             anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
             exclusive_zone: Some(-1),
             keyboard_interactivity: KeyboardInteractivity::Exclusive,
+            output_option: on
+                .clone()
+                .map_or_else(OutputOption::default, OutputOption::OutputName),
             namespace: Some(namespace.into()),
             ..Default::default()
         });
         self.overlay = Some((id, kind));
+        self.overlay_on = on;
         Task::batch([close, open])
     }
 

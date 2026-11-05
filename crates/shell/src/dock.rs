@@ -155,8 +155,9 @@ pub enum Event {
     // Another of the app's windows, from a middle click or the menu.
     Launch(String),
     Scroll(String, bool),
-    // The app's menu, by its icon this far from the dock's middle, and what's picked in it.
-    Menu(String, f32),
+    // The app's menu, by its icon this far from the dock's middle on that screen's dock, and
+    // what's picked in it.
+    Menu(String, f32, Option<String>),
     Pick(u64),
     Pin(String),
     CloseAll(String),
@@ -195,8 +196,8 @@ pub struct Dock {
     grow: Animation<bool>,
     pub now: Instant,
     pub dragging: Option<Drag>,
-    // Whose menu is open, and how far from the dock's middle its icon is.
-    pub menu: Option<(String, f32)>,
+    // Whose menu is open, how far from the dock's middle its icon is, and on which screen.
+    pub menu: Option<(String, f32, Option<String>)>,
     pub scrolled: Option<Instant>,
 }
 

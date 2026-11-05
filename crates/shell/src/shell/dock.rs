@@ -139,6 +139,15 @@ impl Shell {
         self.dock_shape(&dock::items(&self.config.pinned, self.dock_windows()))
     }
 
+    // The screen an overlay belongs on: a dock's menu by its dock, the rest where the keyboard is.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn overlay_output(&self) -> Option<String> {
+        match (self.overlay, &self.dock.menu) {
+            (Some(Overlay::DockMenu), Some((_, _, output))) => output.clone(),
+            _ => None,
+        }
+    }
+
     pub fn dock_edge(&self) -> Edge {
         self.config.dock.position
     }
@@ -196,7 +205,7 @@ impl Shell {
     }
 
     pub(super) fn dock_menu(&self) -> Element<'_, Message> {
-        let Some((key, offset)) = &self.dock.menu else {
+        let Some((key, offset, _)) = &self.dock.menu else {
             return space().into();
         };
         let items = self.dock_items(&self.config.pinned);
@@ -255,8 +264,8 @@ impl Shell {
                 let close = self.set_overlay(None);
                 return Task::batch([close, self.launch(&key, true)]);
             }
-            Event::Menu(key, offset) => {
-                self.dock.menu = Some((key, offset));
+            Event::Menu(key, offset, output) => {
+                self.dock.menu = Some((key, offset, output));
                 return self.set_overlay(Some(Overlay::DockMenu));
             }
             Event::Pick(window) => {
