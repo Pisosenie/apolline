@@ -7,6 +7,7 @@ mod handle;
 mod handle_more;
 mod input;
 mod modes;
+mod plugged;
 mod views;
 mod widgets;
 
@@ -102,6 +103,9 @@ pub enum Message {
     ModuleScroll(usize, f32),
     // Starts a module's command again: the one at that index, or every one.
     ModuleRerun(Option<usize>),
+    // A plugin's tile, by "plugin.tile": what its state is now, or a click to switch it.
+    PluginTile(String, Option<crate::plugins::tiles::State>),
+    PluginSwitch(String),
     StartTimer(Duration, Option<String>),
     StopTimer(u64),
     NightLight(bool),
@@ -238,8 +242,9 @@ pub struct Shell {
     rotated: Option<(String, Instant)>,
     picked: String,
     plain: Config,
-    // The enabled plugins, read with the config.
+    // The enabled plugins, read with the config, and their tiles' states by "plugin.tile".
     plugins: Vec<crate::plugins::Loaded>,
+    tiles: Vec<(String, crate::plugins::tiles::State)>,
     handed: Vec<(&'static str, Option<String>)>,
     started: Instant,
     system: Option<System>,
@@ -443,6 +448,7 @@ impl Shell {
             thumbs: HashMap::new(),
             plain: config.clone(),
             plugins: crate::plugins::load(&config),
+            tiles: Vec::new(),
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
@@ -847,6 +853,11 @@ impl Shell {
             fading,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
             crate::modules::subscription(&self.config.modules, &self.module_runs, &self.plugins),
+            if self.overlay == Some(Overlay::Panel) {
+                crate::plugins::tiles::subscription(&self.plugins, &self.config.panel.tiles)
+            } else {
+                iced::Subscription::none()
+            },
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,

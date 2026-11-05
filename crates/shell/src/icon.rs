@@ -11,6 +11,8 @@ macro_rules! icons {
         }
 
         impl Icon {
+            const ALL: &[(&str, Icon)] = &[$(($file, Icon::$name),)*];
+
             fn bytes(self) -> &'static [u8] {
                 match self {
                     $(Icon::$name => include_bytes!(concat!("../../../assets/icons/", $file, ".svg")),)*
@@ -135,6 +137,15 @@ icons! {
 }
 
 impl Icon {
+    // An icon by its file's name, "globe" or "square-terminal", or a mode's, as plugins name them.
+    pub fn by_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .chain(&MODE_ICONS)
+            .find(|(n, _)| *n == name)
+            .map(|(_, icon)| *icon)
+    }
+
     pub fn named(name: &str) -> Self {
         MODE_ICONS
             .iter()
