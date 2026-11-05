@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use apolline_config::{Config, Diagnostic, Module, Plugin};
+use apolline_config::{Config, Diagnostic, Module, Piece, Plugin};
 
 pub mod cli;
 pub mod install;
@@ -110,8 +110,9 @@ pub fn load(config: &Config) -> Vec<Loaded> {
         .collect()
 }
 
-// Bar pieces and widgets as [[module]]s called "plugin.name", run the same way.
-pub fn modules(loaded: &[Loaded]) -> Vec<Module> {
+// Bar pieces and widgets as [[module]]s called "plugin.name", run the same way: only those
+// placed on a bar or the desktop, since each runs its command over and over.
+pub fn modules(loaded: &[Loaded], config: &Config) -> Vec<Module> {
     loaded
         .iter()
         .flat_map(|loaded| {
@@ -126,7 +127,18 @@ pub fn modules(loaded: &[Loaded]) -> Vec<Module> {
                     ..module.clone()
                 })
         })
+        .filter(|module| {
+            module
+                .name
+                .as_deref()
+                .is_some_and(|name| placed(config, name))
+        })
         .collect()
+}
+
+fn placed(config: &Config, name: &str) -> bool {
+    config.bar.has(&Piece::Module(name.to_owned()))
+        || config.desktop.widgets.iter().any(|widget| widget == name)
 }
 
 pub fn runs<'a>(loaded: &'a [Loaded], plugin: Option<&str>) -> Option<&'a Runs> {
@@ -225,6 +237,7 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
         assert_eq!(found.len(), 1);
         let (config, _) = Config::parse("[plugins]\nenabled = [\"ip\"]\n");
+        assert_eq!(modules(&[], &config), []);
         let loaded = Loaded {
             runs: Runs::of(&found[0], &config),
             plugin: found[0].plugin.clone(),
@@ -234,7 +247,10 @@ mod tests {
             loaded.runs.env,
             [("APOLLINE_SERVICE".to_owned(), "ifconfig.me".to_owned())]
         );
-        let modules = modules(std::slice::from_ref(&loaded));
+        let loose = modules(std::slice::from_ref(&loaded), &config);
+        assert_eq!(loose, [], "not placed, it doesn't run");
+        let (placed, _) = Config::parse("[bar.\"DP-1\"]\nright = [\"ip.address\"]\n");
+        let modules = modules(std::slice::from_ref(&loaded), &placed);
         assert_eq!(modules[0].name.as_deref(), Some("ip.address"));
         assert_eq!(modules[0].plugin.as_deref(), Some("ip"));
         assert!(runs(&[loaded], Some("ip")).is_some());
