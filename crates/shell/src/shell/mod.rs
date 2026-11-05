@@ -8,6 +8,7 @@ mod handle;
 mod handle_more;
 mod input;
 mod modes;
+mod plugged;
 mod views;
 mod widgets;
 
@@ -103,6 +104,10 @@ pub enum Message {
     ModuleScroll(usize, f32),
     // Starts a module's command again: the one at that index, or every one.
     ModuleRerun(Option<usize>),
+    // A plugin's tile, by "plugin.tile": what its state is now, or a click to switch it.
+    PluginTile(String, Option<crate::plugins::tiles::State>),
+    PluginSwitch(String),
+    PluginFound(Vec<crate::plugins::search::Found>),
     StartTimer(Duration, Option<String>),
     StopTimer(u64),
     NightLight(bool),
@@ -242,6 +247,11 @@ pub struct Shell {
     rotated: Option<(String, Instant)>,
     picked: String,
     plain: Config,
+    // The enabled plugins, read with the config, and their tiles' states by "plugin.tile".
+    plugins: Vec<crate::plugins::Loaded>,
+    tiles: Vec<(String, crate::plugins::tiles::State)>,
+    // The plugin search on its way, ended when dropped.
+    searching: Option<iced::task::Handle>,
     handed: Vec<(&'static str, Option<String>)>,
     started: Instant,
     system: Option<System>,
@@ -445,6 +455,9 @@ impl Shell {
             armed: None,
             thumbs: HashMap::new(),
             plain: config.clone(),
+            plugins: crate::plugins::load(&config),
+            tiles: Vec::new(),
+            searching: None,
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
@@ -605,6 +618,7 @@ impl Shell {
             config.desktop.wallpaper = name.clone();
         }
         self.mode = key.and_then(|key| config.find(&key));
+        self.plugins = crate::plugins::load(&config);
         self.plain = config;
         self.dress();
         if self.config.desktop.icons != icons {
@@ -856,7 +870,12 @@ impl Shell {
             fading,
             growing,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
-            crate::modules::subscription(&self.config.modules, &self.module_runs),
+            crate::modules::subscription(&self.config.modules, &self.module_runs, &self.plugins),
+            if self.overlay == Some(Overlay::Panel) {
+                crate::plugins::tiles::subscription(&self.plugins, &self.config.panel.tiles)
+            } else {
+                iced::Subscription::none()
+            },
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,

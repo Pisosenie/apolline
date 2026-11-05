@@ -6,6 +6,7 @@ use iced::Subscription;
 use iced::futures::{SinkExt, Stream};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+use crate::plugins::{Loaded, Runs};
 use crate::shell::Message;
 
 const LONGEST: usize = 48;
@@ -54,19 +55,26 @@ impl Act {
     }
 }
 
-// Each module runs under a count of its own: bumping it starts the command again.
-pub fn subscription(modules: &[Module], runs: &[u32]) -> Subscription<Message> {
+type Run = (usize, Module, u32, Option<Runs>);
+
+// Each module runs under a count of its own: bumping it starts the command again. A plugin's
+// pieces run as that plugin's.
+pub fn subscription(modules: &[Module], runs: &[u32], plugins: &[Loaded]) -> Subscription<Message> {
     Subscription::batch(modules.iter().cloned().enumerate().map(|(index, module)| {
         let run = runs.get(index).copied().unwrap_or_default();
-        Subscription::run_with((index, module, run), run_one)
+        let plugin = crate::plugins::runs(plugins, module.plugin.as_deref()).cloned();
+        Subscription::run_with((index, module, run, plugin), run_one)
     }))
 }
 
-fn run_one((index, module, _): &(usize, Module, u32)) -> impl Stream<Item = Message> + use<> {
-    let (index, module) = (*index, module.clone());
+fn run_one((index, module, _, plugin): &Run) -> impl Stream<Item = Message> + use<> {
+    let (index, module, plugin) = (*index, module.clone(), plugin.clone());
     iced::stream::channel(4, async move |mut output| {
         loop {
             let mut command = tokio::process::Command::new("sh");
+            if let Some(plugin) = &plugin {
+                plugin.apply(&mut command).await;
+            }
             command
                 .args(["-c", &grouped(&module.command)])
                 .stdin(Stdio::null())
@@ -170,7 +178,7 @@ fn cut(line: &str, longest: usize) -> String {
 }
 
 // Pango markup, which Waybar scripts often print, as the words alone.
-fn plain(markup: &str) -> String {
+pub fn plain(markup: &str) -> String {
     let mut out = String::with_capacity(markup.len());
     let mut rest = markup;
     while let Some(open) = rest.find('<') {

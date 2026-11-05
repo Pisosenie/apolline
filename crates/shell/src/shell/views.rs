@@ -130,6 +130,8 @@ impl Shell {
                 busy: self.net_busy,
                 layout: &self.config.panel,
                 tunnels: &self.tunnels,
+                plugins: &self.plugins,
+                tiles: &self.tiles,
             }),
             None => space().into(),
         }

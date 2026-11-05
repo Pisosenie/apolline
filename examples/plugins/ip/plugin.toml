@@ -1,0 +1,48 @@
+# An example plugin: your public address on the bar and the desktop, a tile that switches a
+# file on and off, and man pages in the launcher. Every command runs in this folder.
+
+[plugin]
+name = "ip"
+version = "1.0"
+author = "Apolline"
+about = "Your public address, a test tile and man pages in the launcher"
+
+# On the bar as "ip.address"; a click copies the address.
+[[bar]]
+name = "address"
+command = "./address.sh"
+every = 600
+click = "./address.sh --copy"
+
+# Under the desktop clock as "ip.line".
+[[widget]]
+name = "line"
+command = "./address.sh --line"
+every = 600
+
+# In quick settings as "ip.dummy". It only makes a file, to show how a tile works.
+[[tile]]
+name = "dummy"
+label = "Dummy"
+icon = "zap"
+state = "./dummy.sh state"
+toggle = "./dummy.sh toggle"
+every = 10
+
+# "man printf" in the launcher lists the pages; Enter opens one in your terminal.
+[[launcher]]
+prefix = "man "
+command = "./man.sh"
+
+[[setting]]
+key = "service"
+label = "Where the address comes from"
+kind = "choice"
+choices = ["ifconfig.me", "icanhazip.com", "api.ipify.org"]
+default = "ifconfig.me"
+
+[[setting]]
+key = "label"
+label = "Shown before it"
+kind = "text"
+default = "IP"

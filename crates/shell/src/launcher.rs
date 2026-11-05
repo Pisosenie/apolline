@@ -42,6 +42,8 @@ pub enum Target {
     Timer(std::time::Duration, Option<String>),
     // The search, looked up on the web.
     Web(String),
+    // A plugin's command, run as that plugin's: its name, then the command.
+    Plugin(String, String),
 }
 
 // Above anything found by its name, below a sum's answer.
@@ -74,6 +76,9 @@ pub struct Launcher {
     finds: apolline_config::Launcher,
     // Console apps and commands run in it.
     terminal: String,
+    // What plugins found for the search, and the prefixes that keep a search to them.
+    plugin_found: Vec<crate::plugins::search::Found>,
+    prefixes: Vec<String>,
 }
 
 pub struct OpenWindow {
@@ -190,6 +195,7 @@ impl Launcher {
 
     pub fn close(&mut self) {
         self.open = false;
+        self.plugin_found.clear();
         self.files = None;
         self.walking = false;
         self.shown.clear();
@@ -262,6 +268,50 @@ impl Launcher {
         }
     }
 
+    // What came back after the launcher closed, or for a search since emptied, isn't shown.
+    pub fn set_plugin_found(&mut self, found: Vec<crate::plugins::search::Found>) {
+        if self.open && !self.query.trim().is_empty() {
+            self.plugin_found = found;
+            self.refresh();
+        }
+    }
+
+    pub fn set_prefixes(&mut self, prefixes: Vec<String>) {
+        self.prefixes = prefixes;
+    }
+
+    fn plugin_entries(&self) -> Vec<Entry> {
+        use crate::plugins::search::Act;
+        self.plugin_found
+            .iter()
+            .map(|found| {
+                let (glyph, target) = match &found.act {
+                    Act::Run(command) => (
+                        Icon::Terminal,
+                        Target::Plugin(found.plugin.clone(), command.clone()),
+                    ),
+                    Act::Terminal(command) => (
+                        Icon::Terminal,
+                        Target::Plugin(
+                            found.plugin.clone(),
+                            crate::terminal::running(&self.terminal, command),
+                        ),
+                    ),
+                    Act::Copy(words) => (Icon::Copy, Target::Copy(words.clone())),
+                    Act::Open(what) => (Icon::External, Target::Open(what.into())),
+                };
+                let named = found.icon.as_deref().and_then(Icon::by_name);
+                Entry {
+                    title: found.title.clone(),
+                    about: found.about.clone(),
+                    picture: Pic::Icon(named.unwrap_or(glyph)),
+                    target,
+                    game: false,
+                }
+            })
+            .collect()
+    }
+
     pub fn set_finds(&mut self, finds: apolline_config::Launcher, terminal: &str) {
         self.finds = finds;
         self.terminal = terminal.to_owned();
@@ -315,6 +365,13 @@ impl Launcher {
 
     fn entries(&self) -> Vec<Entry> {
         let query = self.query.trim();
+        let prefixed = self
+            .prefixes
+            .iter()
+            .any(|p| self.query.trim_start().starts_with(p.as_str()));
+        if prefixed {
+            return self.plugin_entries();
+        }
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
         let finds = |what: &str| self.finds.finds(what);
@@ -539,6 +596,9 @@ impl Launcher {
         }
         ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
         let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
+        if !query.is_empty() {
+            entries.extend(self.plugin_entries());
+        }
         // Nothing found by name: run it, or look it up.
         if entries.iter().all(|entry| entry.title.starts_with('=')) {
             entries.extend(fallbacks(query, &self.finds, &self.terminal));

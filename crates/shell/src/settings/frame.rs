@@ -37,6 +37,7 @@ impl Settings {
             Page::Keyboard => self.keyboard(),
             Page::Pointer => self.pointer(),
             Page::Shortcuts => self.shortcuts(),
+            Page::Plugins => self.plugins(),
             Page::About => self.about(),
             Page::Welcome => self.welcome(),
         }

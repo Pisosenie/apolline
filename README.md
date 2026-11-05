@@ -132,6 +132,76 @@ scroll_up = "wpctl set-volume @DEFAULT_SINK@ 5%+"
 scroll_down = "wpctl set-volume @DEFAULT_SINK@ 5%-"
 ```
 
+## Plugins
+
+A plugin is a folder with a `plugin.toml`, and everything it adds is a command, so it can be written in shell, Python, Go or anything else that prints lines. One plugin can put pieces on the bar, lines on the desktop, tiles in quick settings and answers in the launcher, and ask for settings of its own. `examples/plugins/ip` shows each of them.
+
+```sh
+apolline plugin install ~/src/my-plugin                     # a folder, copied
+apolline plugin install https://github.com/someone/plugin   # a git link, cloned
+apolline plugin list
+apolline plugin enable ip                                   # off until you do
+apolline plugin disable ip
+apolline plugin remove ip
+```
+
+Plugins live in `~/.local/share/apolline/plugins/NAME`, and packages put theirs in `/usr/share/apolline/plugins`. Installing one checks its `plugin.toml` and lists every command it will run, and none of them runs until it's in `[plugins] enabled`. A plugin runs its commands as you, with your files and your network, so enable only what you trust. Settings → Plugins does the same with a switch for each, its settings, and a field for a folder or a link. The shell reads plugins along with the config, so an edit to an enabled plugin's `plugin.toml` shows once the config is saved again.
+
+```toml
+[plugin]
+name = "ip"                    # lowercase letters, digits, - and _
+version = "1.0"
+author = "Ann"
+about = "Your public address"
+
+[[bar]]                        # on the bar as "ip.address"
+name = "address"
+command = "./address.sh"       # commands run in the plugin's folder
+every = 600
+click = "./address.sh --copy"
+
+[[widget]]                     # under the desktop clock as "ip.line"
+name = "line"
+command = "./address.sh --line"
+
+[[tile]]                       # in quick settings as "ip.dummy"
+name = "dummy"                 # without one, made from the label
+label = "Dummy"
+icon = "zap"
+state = "./dummy.sh state"     # prints on or off, and a line under the label if it likes
+toggle = "./dummy.sh toggle"   # or on = "…" and off = "…"
+every = 10
+
+[[launcher]]
+prefix = "man "                # only searches that start with it; without one, every search
+command = "./man.sh"
+
+[[setting]]
+key = "service"                # reaches every command as APOLLINE_SERVICE
+label = "Where the address comes from"
+kind = "choice"                # text, secret, switch, number or choice
+choices = ["ifconfig.me", "icanhazip.com"]
+default = "ifconfig.me"
+```
+
+`[[bar]]` and `[[widget]]` are `[[module]]`s in every way, Waybar's JSON and the click and scroll commands included. A plugin's parts are always placed by the plugin's name and theirs: `"ip.address"` in `[bar] left`, `center` or `right`, `"ip.line"` in `[desktop] widgets`, `"ip.dummy"` in `[panel] tiles`. Enabling a plugin places nothing for you; Settings → Bar and Settings → Appearance offer its parts beside the built-in ones.
+
+A tile reads its state while quick settings is open: `on` or `off` on the first line and a detail on the next, or `{"on": true, "detail": "Since 12:00"}`. A click runs `on`, `off` or `toggle` and reads the state again. A tile without a `state` command shows what it was last switched to. `icon` is one of the shell's icons by its file name in `assets/icons` (`globe`, `square-terminal`, `wifi`) or a mode icon's name; anything else is a sparkle.
+
+A launcher source gets the search, without its prefix, as its last argument and in `$APOLLINE_QUERY`, a moment after typing stops. It prints one JSON line a result: `{"title": "…", "about": "…", "icon": "…"}` with one of `"run": "a command"`, `"copy": "text"`, `"open": "a file or a link"` or `"terminal": "a command for your terminal"`. A source that takes longer than three seconds is cut off, a newer search ends the one before, and at most twenty results a source are shown.
+
+Settings live in your config under `[plugins."NAME"]`, and Settings → Plugins draws a field for each from its `kind`. A `secret` is kept in the keyring (GNOME Keyring, KeePassXC or another Secret Service), never in the file, and read each time a command starts. Every setting reaches every command of the plugin as `APOLLINE_` and its key in capitals, its default when you haven't set it, and empty when there's neither.
+
+```toml
+[plugins]
+enabled = ["ip"]
+
+[plugins.ip]
+service = "icanhazip.com"
+```
+
+`apolline check` reads the plugin.toml of each enabled plugin as well, and says when a name in `[plugins]`, the bar, the desktop or quick settings belongs to nothing installed, with the closest match.
+
 ## Laying out the bar
 
 The bar has three places, and each takes a list of what goes there, in order:

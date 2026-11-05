@@ -165,6 +165,11 @@ impl Shell {
         {
             theme.dress(&mut config);
         }
+        config
+            .modules
+            .extend(crate::plugins::modules(&self.plugins));
+        self.launcher
+            .set_prefixes(crate::plugins::search::prefixes(&self.plugins));
         self.config = config;
     }
 

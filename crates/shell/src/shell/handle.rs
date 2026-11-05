@@ -249,6 +249,10 @@ impl Shell {
                     }
                 }
             }
+            Message::PluginTile(key, Some(state)) => self.tile_is(key, state),
+            Message::PluginTile(_, None) => {}
+            Message::PluginSwitch(key) => return self.switch_tile(key),
+            Message::PluginFound(found) => self.launcher.set_plugin_found(found),
             Message::Control(Command::Module(name)) => {
                 let named = self
                     .config

@@ -95,6 +95,9 @@ pub struct Panel<'a> {
     pub tunnels: &'a [crate::vpn::Tunnel],
     // What it shows and in what order.
     pub layout: &'a apolline_config::Panel,
+    // Enabled plugins, whose tiles are placed by "plugin.tile", and those tiles' states.
+    pub plugins: &'a [crate::plugins::Loaded],
+    pub tiles: &'a [(String, crate::plugins::tiles::State)],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,7 +212,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             "night" => night.take(),
             "power" => power.take(),
             "vpn" => vpn.take(),
-            _ => None,
+            key => plugin_tile(&panel, key),
         })
         .collect();
     // Two to a row, the last one alone beside an empty half.
@@ -647,9 +650,32 @@ fn radio_tile<'a>(
     }
 }
 
+// A plugin's tile: what its state command last said, switched by its own commands.
+fn plugin_tile<'a>(panel: &Panel<'a>, key: &str) -> Option<Element<'a, Message>> {
+    let (_, found) = crate::plugins::tiles::find(panel.plugins, key)?;
+    let state = panel
+        .tiles
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, state)| state.clone())
+        .unwrap_or_default();
+    let glyph = found.icon.as_deref().and_then(Icon::by_name);
+    let subtitle = state
+        .detail
+        .unwrap_or_else(|| if state.on { "On" } else { "Off" }.to_owned());
+    Some(tile(
+        glyph.unwrap_or(Icon::Sparkles),
+        &found.label,
+        subtitle,
+        state.on,
+        panel.palette,
+        Some(Message::PluginSwitch(key.to_owned())),
+    ))
+}
+
 fn tile<'a>(
     glyph: Icon,
-    title: &'static str,
+    title: &'a str,
     subtitle: String,
     on: bool,
     palette: Palette,

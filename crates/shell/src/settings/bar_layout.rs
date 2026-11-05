@@ -211,7 +211,12 @@ impl Settings {
             .iter()
             .flat_map(|zone| zone.iter().map(|p| p.name().to_owned()))
             .collect();
-        let named = self.config.modules.iter().filter_map(|m| m.name.clone());
+        let named = self
+            .config
+            .modules
+            .iter()
+            .filter_map(|m| m.name.clone())
+            .chain(self.plugin_parts(plugins::bar_pieces));
         let spare = Piece::NAMED
             .iter()
             .map(|(name, _)| (*name).to_owned())
