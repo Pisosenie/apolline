@@ -434,6 +434,7 @@ impl Settings {
                 ]
             ),
             group("Pinned apps", self.pinned_apps(palette)),
+            group("Dock", self.dock_rows(palette)),
             group("Your modules", self.module_rows(palette)),
             group(
                 "Calendar",

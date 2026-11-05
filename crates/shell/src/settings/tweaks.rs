@@ -157,6 +157,7 @@ impl Settings {
             }
             Message::BarEdge(edge) => self.edit(|e| e.set("bar", "position", edge.key())),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
+            Message::Dock(change) => self.set_dock(change),
             Message::PanelLyrics(true) => self.edit(|e| e.set("panel", "lyrics", true)),
             Message::PanelLyrics(false) => self.edit(|e| e.unset("panel", "lyrics")),
             Message::BarAutohide(true) => self.edit(|e| e.set("bar", "autohide", true)),

@@ -4,6 +4,7 @@ mod catalog;
 mod colors;
 mod desk_widgets;
 mod displays;
+mod dock;
 mod file;
 mod find;
 mod frame;
@@ -55,6 +56,7 @@ use crate::{bar, caldav, fonts, keys, notify, secrets, shot, style, themes, wall
 use appearance::*;
 use bar_layout::*;
 use displays::*;
+use dock::DockSet;
 use file::*;
 use input::*;
 use modes::*;
@@ -211,7 +213,7 @@ impl Page {
                 "How windows open, move, fade and animate, for all of them or one app."
             }
             Page::Displays => "Resolution, refresh rate, scale and where each screen sits.",
-            Page::Bar => "Where the bar sits and what it shows.",
+            Page::Bar => "Where the bar and the dock sit and what they show.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
             Page::Keyboard => {
@@ -253,7 +255,7 @@ impl Page {
             Page::Appearance => &["desktop", "colors", "layout", "apps", "style", "launcher"],
             Page::Windows => &["windows"],
             Page::Displays => &["night", "bar.skip", "bar.screens"],
-            Page::Bar => &["bar", "style.bar", "clock", "panel"],
+            Page::Bar => &["bar", "style.bar", "dock", "style.dock", "clock", "panel"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],
@@ -400,6 +402,7 @@ enum Message {
     BarShape(apolline_config::Shape),
     BarOpacity(u16),
     BarBlur(bool),
+    Dock(DockSet),
     Date(bool),
     BatteryPercent(bool),
     DoNotDisturb(bool),
