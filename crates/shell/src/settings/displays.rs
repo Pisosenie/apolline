@@ -76,8 +76,9 @@ impl Settings {
                 container(
                     row![
                         icon(Icon::Monitor, 16.0, palette.accent),
-                        text(format!(
-                            "Keep these display settings? Going back in {left} s"
+                        text(crate::i18n::fill(
+                            "Keep these display settings? Going back in {seconds} s",
+                            &[("seconds", &left)]
                         ))
                         .size(13)
                         .width(Fill),
@@ -229,10 +230,12 @@ impl Settings {
                 ),
                 setting_owned(
                     "Position",
-                    Some(format!(
-                        "Now at {}, {} in the shared space of all screens",
-                        logical.map_or(0, |l| l.x),
-                        logical.map_or(0, |l| l.y)
+                    Some(crate::i18n::fill(
+                        "Now at {x}, {y} in the shared space of all screens",
+                        &[
+                            ("x", &logical.map_or(0, |l| l.x)),
+                            ("y", &logical.map_or(0, |l| l.y)),
+                        ],
                     )),
                     row![
                         text_input(

@@ -732,9 +732,12 @@ impl Settings {
         });
         match taken {
             Some(other) => {
-                self.shortcut_error = Some(format!(
-                    "{combo} already opens “{}”",
-                    fragment::action(other).0
+                self.shortcut_error = Some(crate::i18n::fill(
+                    "{combo} already opens “{action}”",
+                    &[
+                        ("combo", &combo),
+                        ("action", &crate::i18n::t(fragment::action(other).0)),
+                    ],
                 ));
             }
             None => {

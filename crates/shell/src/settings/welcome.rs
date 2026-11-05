@@ -164,9 +164,9 @@ impl Settings {
                 .style(style::pill(palette.accent)),
             column![
                 text("Apolline").size(34).font(style::light()),
-                text(format!(
-                    "Version {} · a calm shell for niri",
-                    env!("CARGO_PKG_VERSION")
+                text(crate::i18n::fill(
+                    "Version {version} · a calm shell for niri",
+                    &[("version", &env!("CARGO_PKG_VERSION"))]
                 ))
                 .size(13)
                 .color(style::color(style::faint())),

@@ -11,10 +11,13 @@ impl Settings {
             .map(|(index, module)| {
                 let mut about = Vec::new();
                 if let Some(every) = module.every {
-                    about.push(format!("every {every} s"));
+                    about.push(crate::i18n::fill(
+                        "every {seconds} s",
+                        &[("seconds", &every)],
+                    ));
                 }
                 if module.click.is_some() {
-                    about.push("clickable".to_owned());
+                    about.push(crate::i18n::t("clickable").to_owned());
                 }
                 row![
                     text(module.command.as_str())

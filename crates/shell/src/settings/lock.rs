@@ -226,9 +226,9 @@ impl Settings {
                 "The login screen has it from the next time it shows",
             )),
             Some(Err(err)) => rows.push(note(err)),
-            None => rows.push(note(&format!(
-                "Kept in {}; with greetd running `apolline greet --kiosk`. A font has to be installed for everyone to show there.",
-                crate::greet_look::SYSTEM
+            None => rows.push(note(&crate::i18n::fill(
+                "Kept in {path}; with greetd running `apolline greet --kiosk`. A font has to be installed for everyone to show there.",
+                &[("path", &crate::greet_look::SYSTEM)],
             ))),
         }
         group("Login screen", rows)

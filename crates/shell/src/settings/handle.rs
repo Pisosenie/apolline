@@ -108,7 +108,10 @@ impl Settings {
                 let taken = self.config.find(&name).is_some_and(|other| other != index);
                 if name.is_empty() || taken {
                     self.error = Some(if taken {
-                        format!("there is already a mode called “{name}”")
+                        crate::i18n::fill(
+                            "there is already a mode called “{name}”",
+                            &[("name", &name)],
+                        )
                     } else {
                         "a mode needs a name".to_owned()
                     });

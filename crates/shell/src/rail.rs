@@ -108,7 +108,9 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
                 button(
                     column![
                         container(space().width(8).height(8)).style(style::pill(style::DANGER)),
-                        text(format!("{minutes}m")).size(10).font(style::mono()),
+                        text(crate::i18n::fill("{minutes}m", &[("minutes", &minutes)]))
+                            .size(10)
+                            .font(style::mono()),
                     ]
                     .spacing(3)
                     .align_x(Alignment::Center),

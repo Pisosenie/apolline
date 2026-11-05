@@ -257,9 +257,12 @@ fn day_list<'a>(
     }
     if items.len() > LISTED {
         list = list.push(
-            text(format!("+{} more", items.len() - LISTED))
-                .size(11)
-                .color(style::color(style::faint())),
+            text(crate::i18n::fill(
+                "+{count} more",
+                &[("count", &(items.len() - LISTED))],
+            ))
+            .size(11)
+            .color(style::color(style::faint())),
         );
     }
     list.into()

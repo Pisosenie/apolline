@@ -266,19 +266,28 @@ impl Settings {
         }
         let and = |words: &[&str]| match words.split_last() {
             Some((last, [])) => (*last).to_owned(),
-            Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+            Some((last, rest)) => crate::i18n::fill(
+                "{rest} and {last}",
+                &[("rest", &rest.join(", ")), ("last", last)],
+            ),
             None => String::new(),
         };
-        let tweaks = theme.map_or_else(Vec::new, |(_, (t, _))| {
+        let tweaks: Vec<&str> = theme.map_or_else(Vec::new, |(_, (t, _))| {
             t.tweaks(&Look::of(&self.config, "now", None))
+                .into_iter()
+                .map(crate::i18n::t)
+                .collect()
         });
         let mut words = Column::new().spacing(2).width(Fill);
         if let Some((_, (theme, _))) = theme {
             words = words.push(
                 text(if tweaks.is_empty() {
-                    format!("{} as it comes", theme.name)
+                    crate::i18n::fill("{theme} as it comes", &[("theme", &theme.name)])
                 } else {
-                    format!("{}, with your own {}", theme.name, and(&tweaks))
+                    crate::i18n::fill(
+                        "{theme}, with your own {changes}",
+                        &[("theme", &theme.name), ("changes", &and(&tweaks))],
+                    )
                 })
                 .size(13),
             );
@@ -286,9 +295,12 @@ impl Settings {
         if let (Some(mode), Some(over)) = (mode, &over) {
             let refs: Vec<&str> = over.iter().map(String::as_str).collect();
             words = words.push(
-                text(format!("{} is on: {} for now", mode.name, and(&refs)))
-                    .size(12)
-                    .color(style::color(style::faint())),
+                text(crate::i18n::fill(
+                    "{mode} is on: {changes} for now",
+                    &[("mode", &mode.name), ("changes", &and(&refs))],
+                ))
+                .size(12)
+                .color(style::color(style::faint())),
             );
         }
         let mut line = row![icon(Icon::Layers, 15.0, palette.accent), words]
