@@ -1845,6 +1845,36 @@ mod tests {
     }
 
     #[test]
+    fn a_bar_option_written_as_a_table_is_not_a_screen() {
+        let (config, diagnostics) = parse(
+            "[bar.stats]\ncpu = true\n\n[bar.stat]\nleft = []\n\n[bar.HDMI-A-1]\nleft = []\n",
+        );
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+        assert_eq!(
+            diagnostics[0].message,
+            "“stats” is a [bar] option, not a screen"
+        );
+        assert_eq!(
+            diagnostics[1].hint.as_deref(),
+            Some("did you mean the option “stats”?")
+        );
+        let screens: Vec<&str> = config
+            .bar
+            .per_screen
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(screens, ["HDMI-A-1", "stat"]);
+
+        let (config, diagnostics) = parse("[bar]\nstats = [\"cpu\", \"temprature\"]\n");
+        assert_eq!(
+            diagnostics[0].hint.as_deref(),
+            Some("did you mean “temperature”?")
+        );
+        assert!(config.bar.stats.cpu);
+    }
+
+    #[test]
     fn broken_syntax_is_reported_and_the_rest_applies() {
         let (config, diagnostics) = parse("[layout]\ngaps = \nborders = false\n");
         assert!(diagnostics.iter().any(|d| d.line == 2), "{diagnostics:?}");

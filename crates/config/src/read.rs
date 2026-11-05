@@ -450,6 +450,25 @@ impl Reader<'_> {
                     }
                 }
                 name if matches!(value.get_ref(), DeValue::Table(_)) => {
+                    if BAR_OPTIONS.contains(&name) {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                self.line(key.span()),
+                                format!("“{name}” is a [bar] option, not a screen"),
+                            )
+                            .hint(format!("write it as {name} = … under [bar]")),
+                        );
+                        continue;
+                    }
+                    if let Some(close) = suggest(name, &BAR_OPTIONS) {
+                        self.diagnostics.push(
+                            Diagnostic::new(
+                                self.line(key.span()),
+                                format!("[bar.{name}] is the bar of a screen called “{name}”"),
+                            )
+                            .hint(format!("did you mean the option “{close}”?")),
+                        );
+                    }
                     if let Some(t) = self.section(key, value) {
                         let pieces = self.screen_pieces(t);
                         screens.push((name.to_owned(), pieces));
@@ -549,13 +568,12 @@ impl Reader<'_> {
                                 "cpu" => stats.cpu = true,
                                 "memory" => stats.memory = true,
                                 "temperature" => stats.temperature = true,
-                                _ => {
-                                    self.wrong::<()>(
-                                        key,
-                                        value,
-                                        r#"a list of "cpu", "memory" and "temperature""#,
-                                    );
-                                }
+                                _ => self.unknown_name(
+                                    value,
+                                    name,
+                                    "stat",
+                                    &["cpu", "memory", "temperature"],
+                                ),
                             }
                         }
                         bar.stats = stats;
@@ -576,32 +594,7 @@ impl Reader<'_> {
                         config.calendars = v
                     }
                 }
-                _ => self.unknown(
-                    key,
-                    "option",
-                    &[
-                        "workspaces",
-                        "seconds",
-                        "date",
-                        "battery_percent",
-                        "position",
-                        "floating",
-                        "autohide",
-                        "shape",
-                        "opacity",
-                        "blur",
-                        "pinned",
-                        "weather",
-                        "calendars",
-                        "stats",
-                        "left",
-                        "center",
-                        "right",
-                        "tray",
-                        "screens",
-                        "skip",
-                    ],
-                ),
+                _ => self.unknown(key, "option", &BAR_OPTIONS),
             }
         }
         // Each screen's bar is the common one with its own pieces, so a screen named later
@@ -1941,6 +1934,29 @@ fn key_combo(combo: &str) -> Option<String> {
     };
     combo_is_valid(&combo).then_some(combo)
 }
+
+const BAR_OPTIONS: [&str; 20] = [
+    "workspaces",
+    "seconds",
+    "date",
+    "battery_percent",
+    "position",
+    "floating",
+    "autohide",
+    "shape",
+    "opacity",
+    "blur",
+    "pinned",
+    "weather",
+    "calendars",
+    "stats",
+    "left",
+    "center",
+    "right",
+    "tray",
+    "screens",
+    "skip",
+];
 
 fn combo_is_valid(combo: &str) -> bool {
     !combo.is_empty()
