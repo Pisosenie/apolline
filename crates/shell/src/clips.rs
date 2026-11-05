@@ -51,14 +51,7 @@ impl Picker {
         clips
             .iter()
             .enumerate()
-            .filter(|(_, clip)| {
-                query.is_empty()
-                    || clip
-                        .text()
-                        .unwrap_or("image")
-                        .to_lowercase()
-                        .contains(&query)
-            })
+            .filter(|(_, clip)| query.is_empty() || clip.words.contains(&query))
             .map(|(index, _)| index)
             .collect()
     }

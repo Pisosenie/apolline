@@ -395,11 +395,10 @@ impl Shell {
             Message::ClipQuery(query) => return self.picker.search(query),
             Message::ClipCopy(index) => {
                 if let Some(index) = index.or_else(|| self.picker.chosen(&self.clips))
-                    && let Some(clip) = self.clips.get(index)
+                    && let Some(clip) = self.clips.get(index).map(Clip::again)
                 {
-                    let content = clip.content.clone();
-                    clipboard::copy(&content);
-                    clipboard::remember(&mut self.clips, Clip::new(content));
+                    clipboard::copy(&clip.content);
+                    clipboard::remember(&mut self.clips, clip);
                     return self.set_overlay(None);
                 }
             }
