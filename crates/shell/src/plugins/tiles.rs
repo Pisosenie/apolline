@@ -47,11 +47,7 @@ pub fn state(output: &str) -> Option<State> {
     })
 }
 
-// "plugin.tile", as [panel] tiles places it.
-pub fn key(plugin: &str, tile: &Tile) -> String {
-    format!("{plugin}.{}", tile.name)
-}
-
+// A tile by "plugin.tile", as [panel] tiles places it.
 pub fn find<'a>(plugins: &'a [Loaded], key: &str) -> Option<(&'a Runs, &'a Tile)> {
     let (plugin, name) = key.split_once('.')?;
     let loaded = plugins.iter().find(|l| l.plugin.name == plugin)?;

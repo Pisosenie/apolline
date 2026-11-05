@@ -20,7 +20,8 @@ impl Settings {
         let names = Desktop::WIDGETS
             .iter()
             .map(|name| (*name).to_owned())
-            .chain(self.config.modules.iter().filter_map(|m| m.name.clone()));
+            .chain(self.config.modules.iter().filter_map(|m| m.name.clone()))
+            .chain(self.plugin_parts(super::plugins::widgets));
         let chips = Row::with_children(names.map(|name| {
             let on = shown.contains(&name);
             button(text(widget_label(&name)).size(12))

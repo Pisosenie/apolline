@@ -101,23 +101,23 @@ pub fn placing(plugin: &Plugin) -> Vec<String> {
     for piece in &plugin.bar {
         let piece = piece.name.as_deref().unwrap_or_default();
         lines.push(format!(
-            "on the bar: add “{name}.{piece}” to [bar] left, center or right"
+            "On the bar: add “{name}.{piece}” to [bar] left, center or right"
         ));
     }
     for widget in &plugin.widgets {
         let widget = widget.name.as_deref().unwrap_or_default();
         lines.push(format!(
-            "on the desktop: add “{name}.{widget}” to [desktop] widgets"
+            "On the desktop: add “{name}.{widget}” to [desktop] widgets"
         ));
     }
     for tile in &plugin.tiles {
         lines.push(format!(
-            "in quick settings: add “{name}.{}” to [panel] tiles",
+            "In quick settings: add “{name}.{}” to [panel] tiles",
             tile.name
         ));
     }
     if !plugin.launchers.is_empty() {
-        lines.push("in the launcher: it answers searches now".into());
+        lines.push("In the launcher: it answers searches now".into());
     }
     lines
 }

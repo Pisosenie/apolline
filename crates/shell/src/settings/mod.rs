@@ -16,6 +16,7 @@ mod modes;
 mod notifications;
 mod panel_layout;
 mod pickers;
+mod plugins;
 #[cfg(test)]
 mod tests;
 mod tweaks;
@@ -146,12 +147,13 @@ enum Page {
     Keyboard,
     Pointer,
     Shortcuts,
+    Plugins,
     About,
     Welcome,
 }
 
 impl Page {
-    const ALL: [Page; 12] = [
+    const ALL: [Page; 13] = [
         Page::Modes,
         Page::Themes,
         Page::Appearance,
@@ -163,6 +165,7 @@ impl Page {
         Page::Keyboard,
         Page::Pointer,
         Page::Shortcuts,
+        Page::Plugins,
         Page::About,
     ];
 
@@ -179,6 +182,7 @@ impl Page {
             Page::Keyboard => "keyboard",
             Page::Pointer => "pointer",
             Page::Shortcuts => "shortcuts",
+            Page::Plugins => "plugins",
             Page::About => "about",
             Page::Welcome => "welcome",
         }
@@ -197,6 +201,7 @@ impl Page {
             Page::Keyboard => "Keyboard",
             Page::Pointer => "Mouse & touchpad",
             Page::Shortcuts => "Shortcuts",
+            Page::Plugins => "Plugins",
             Page::About => "About",
             Page::Welcome => "Welcome to Apolline",
         }
@@ -219,6 +224,9 @@ impl Page {
             }
             Page::Pointer => "Tapping, scrolling and pointer speed.",
             Page::Shortcuts => "Keys that open Apolline, and what they replace.",
+            Page::Plugins => {
+                "Bar pieces, tiles, widgets and searches others wrote, in any language."
+            }
             Page::About => "Version, setup and a health check of your config.",
             Page::Welcome => {
                 "Four quick steps, all optional. Everything here can be changed later."
@@ -239,6 +247,7 @@ impl Page {
             Page::Keyboard => Icon::Keyboard,
             Page::Pointer => Icon::Pointer,
             Page::Shortcuts => Icon::Command,
+            Page::Plugins => Icon::Zap,
             Page::About => Icon::Info,
             Page::Welcome => Icon::Sparkles,
         }
@@ -259,6 +268,7 @@ impl Page {
             Page::Keyboard => &["keyboard"],
             Page::Pointer => &["touchpad", "mouse"],
             Page::Shortcuts => &["shortcuts"],
+            Page::Plugins => &["plugins"],
         }
     }
 }
@@ -500,6 +510,7 @@ enum Message {
     Redo,
     Tick,
     Shot(window::Screenshot),
+    Plugin(plugins::Ask),
     Noop,
 }
 
@@ -599,6 +610,8 @@ struct Settings {
     error: Option<String>,
     screenshot: Option<PathBuf>,
     shooting: bool,
+    // The Plugins page.
+    shelf: plugins::Shelf,
 }
 
 impl Settings {
@@ -706,6 +719,7 @@ impl Settings {
             error: None,
             screenshot,
             shooting: false,
+            shelf: plugins::Shelf::new(),
         };
         let mut settings = settings;
         let custom = settings.custom_thumb();

@@ -54,8 +54,14 @@ fn board_of(shown: &[String], all: &[&str]) -> board::Board {
 impl Settings {
     pub(super) fn panel_boards(&self) -> [board::Board; 3] {
         let panel = &self.config.panel;
+        // Enabled plugins' tiles wait beside the built-in ones.
+        let plugin_tiles = self.plugin_parts(super::plugins::tiles);
+        let tiles: Vec<&str> = Panel::TILES
+            .into_iter()
+            .chain(plugin_tiles.iter().map(String::as_str))
+            .collect();
         [
-            board_of(&panel.tiles, &Panel::TILES),
+            board_of(&panel.tiles, &tiles),
             board_of(&panel.sliders, &Panel::SLIDERS),
             board_of(&panel.parts, &Panel::PARTS),
         ]

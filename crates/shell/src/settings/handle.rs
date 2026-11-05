@@ -532,6 +532,7 @@ impl Settings {
             | Message::CatalogPicture(..)
             | Message::CatalogInstall(_)
             | Message::CatalogInstalled(_)) => return self.browse(message),
+            Message::Plugin(ask) => return self.ask_plugins(ask),
             message => return self.tweak(message),
         }
         Task::none()
