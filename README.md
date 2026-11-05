@@ -115,6 +115,18 @@ every = 900
 click = "xdg-open https://wttr.in"
 ```
 
+Scripts written for Waybar work as they are. A line that is Waybar's JSON (`{"text": "…", "tooltip": "…", "class": "warning"}`) shows its text, its tooltip on hover, and a class of `warning` in amber, `critical` in red and `good` in the accent; Pango markup comes out as plain words. `right_click`, `middle_click`, `scroll_up` and `scroll_down` run commands of their own, and after any of them the module runs its command again so it shows what changed. `apolline module NAME` does the same from a script (`apolline module` for all of them), in place of Waybar's signals.
+
+```toml
+[[module]]
+name = "volume"
+command = "~/.config/waybar/scripts/volume.sh"
+every = 60
+click = "pavucontrol"
+scroll_up = "wpctl set-volume @DEFAULT_SINK@ 5%+"
+scroll_down = "wpctl set-volume @DEFAULT_SINK@ 5%-"
+```
+
 ## Laying out the bar
 
 The bar has three places, and each takes a list of what goes there, in order:

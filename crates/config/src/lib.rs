@@ -306,6 +306,10 @@ pub struct Module {
     pub command: String,
     pub every: Option<u32>,
     pub click: Option<String>,
+    pub right_click: Option<String>,
+    pub middle_click: Option<String>,
+    pub scroll_up: Option<String>,
+    pub scroll_down: Option<String>,
 }
 
 // A file of yours with {{accent}}, {{background}} and the like, filled in from the palette and
@@ -1335,6 +1339,21 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_module_answers_each_button_and_the_wheel() {
+        let (config, problems) = super::Config::parse(
+            "[[module]]\ncommand = \"vol.sh\"\nright_click = \"pavucontrol\"\nmiddle_click = \" \"\nscroll_up = \"vol.sh up\"\nscroll_down = \"vol.sh down\"\non-click = \"x\"\n",
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        let module = &config.modules[0];
+        assert_eq!(module.right_click.as_deref(), Some("pavucontrol"));
+        assert_eq!(module.middle_click, None);
+        assert_eq!(
+            (module.scroll_up.as_deref(), module.scroll_down.as_deref()),
+            (Some("vol.sh up"), Some("vol.sh down"))
+        );
+    }
+
     #[test]
     fn quiet_hours_read_as_minutes_of_the_day() {
         let (config, problems) =

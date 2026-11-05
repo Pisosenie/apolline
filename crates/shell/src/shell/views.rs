@@ -245,11 +245,11 @@ impl Shell {
                 .module_text
                 .iter()
                 .filter(|(i, _)| *i < self.config.modules.len())
-                .map(|(i, text)| bar::Module {
+                .map(|(i, said)| bar::Module {
                     index: *i,
                     name: self.config.modules[*i].name.as_deref(),
-                    text,
-                    clickable: self.config.modules[*i].click.is_some(),
+                    said,
+                    config: &self.config.modules[*i],
                 })
                 .collect(),
         })

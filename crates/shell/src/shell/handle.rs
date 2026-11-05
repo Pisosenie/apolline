@@ -201,17 +201,47 @@ impl Shell {
             }
             Message::Picked(None) => {}
             Message::StopRecording => return self.stop_recording(),
-            Message::Module(index, text) => {
+            Message::Module(index, said) => {
                 self.module_text.retain(|(i, _)| *i != index);
-                if !text.is_empty() {
-                    self.module_text.push((index, text));
+                if !said.text.is_empty() {
+                    self.module_text.push((index, said));
                     self.module_text.sort_by_key(|(i, _)| *i);
                 }
             }
-            Message::ModuleClick(index) => {
-                if let Some(click) = self.config.modules.get(index).and_then(|m| m.click.clone()) {
-                    return self.spawn(&click);
+            Message::ModuleAct(index, act) => return self.module_act(index, act),
+            Message::ModuleScroll(index, y) => {
+                let act = match y {
+                    y if y > 0.0 => crate::modules::Act::Up,
+                    y if y < 0.0 => crate::modules::Act::Down,
+                    _ => return Task::none(),
+                };
+                let now = std::time::Instant::now();
+                let soon = self.module_scrolled.is_some_and(|(i, at)| {
+                    i == index && now.duration_since(at) < crate::modules::SCROLL_GAP
+                });
+                if !soon {
+                    self.module_scrolled = Some((index, now));
+                    return self.module_act(index, act);
                 }
+            }
+            Message::ModuleRerun(which) => {
+                let count = self.config.modules.len();
+                self.module_runs.resize(count, 0);
+                for (i, run) in self.module_runs.iter_mut().enumerate() {
+                    if which.is_none_or(|w| w == i) {
+                        *run = run.wrapping_add(1);
+                    }
+                }
+            }
+            Message::Control(Command::Module(name)) => {
+                let named = self
+                    .config
+                    .modules
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| name.is_none() || m.name == name)
+                    .map(|(i, _)| Task::done(Message::ModuleRerun(Some(i))));
+                return Task::batch(named);
             }
             Message::Frame => {
                 for shown in &mut self.shown {

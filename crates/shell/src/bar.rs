@@ -58,12 +58,12 @@ pub struct Pinned {
     pub focused: bool,
 }
 
-// A [[module]]'s latest line.
+// A [[module]]'s latest line, with what it answers to.
 pub struct Module<'a> {
     pub index: usize,
     pub name: Option<&'a str>,
-    pub text: &'a str,
-    pub clickable: bool,
+    pub said: &'a crate::modules::Said,
+    pub config: &'a apolline_config::Module,
 }
 
 pub fn view(bar: Bar<'_>) -> Element<'_, Message> {
@@ -195,7 +195,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
                 .modules
                 .iter()
                 .filter(|m| m.name.is_none())
-                .map(module)
+                .map(|m| module(m, bar.palette, true))
                 .collect();
             (!loose.is_empty()).then(|| Row::with_children(loose).spacing(6).into())
         }
@@ -203,7 +203,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
             .modules
             .iter()
             .find(|m| m.name == Some(name.as_str()))
-            .map(module),
+            .map(|m| module(m, bar.palette, true)),
     }
 }
 
@@ -457,19 +457,55 @@ fn recording<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     )
 }
 
-pub fn module<'a>(module: &Module<'a>) -> Element<'a, Message> {
-    let label = text(module.text.to_owned())
+pub fn module<'a>(module: &Module<'a>, palette: Palette, across: bool) -> Element<'a, Message> {
+    use crate::modules::{Act, Tone};
+    let tint = match module.said.tone {
+        Tone::Plain => neutral::muted(),
+        Tone::Good => palette.accent,
+        Tone::Warn => style::WARN,
+        Tone::Urgent => style::DANGER,
+    };
+    let label = text(module.said.text.clone())
         .size(12)
-        .color(style::color(neutral::muted()));
-    button(label)
-        .padding([4, 8])
-        .style(style::ghost(8.0))
-        .on_press_maybe(
-            module
-                .clickable
-                .then_some(Message::ModuleClick(module.index)),
+        .color(style::color(tint));
+    let index = module.index;
+    let has = |act: Act| act.command(module.config).is_some();
+    let mut area = mouse_area(
+        button(label)
+            .padding([4, 8])
+            .style(style::ghost(8.0))
+            .on_press_maybe(has(Act::Click).then_some(Message::ModuleAct(index, Act::Click))),
+    );
+    if has(Act::Right) {
+        area = area.on_right_press(Message::ModuleAct(index, Act::Right));
+    }
+    if has(Act::Middle) {
+        area = area.on_middle_press(Message::ModuleAct(index, Act::Middle));
+    }
+    if has(Act::Up) || has(Act::Down) {
+        area = area.on_scroll(move |delta| {
+            let y = match delta {
+                iced::mouse::ScrollDelta::Lines { y, .. }
+                | iced::mouse::ScrollDelta::Pixels { y, .. } => y,
+            };
+            Message::ModuleScroll(index, y)
+        });
+    }
+    match &module.said.tooltip {
+        Some(tip) => iced::widget::tooltip(
+            area,
+            container(style::verbatim(tip.clone()).size(12))
+                .padding([4, 8])
+                .style(style::surface),
+            if across {
+                iced::widget::tooltip::Position::Bottom
+            } else {
+                iced::widget::tooltip::Position::Right
+            },
         )
-        .into()
+        .into(),
+        None => area.into(),
+    }
 }
 
 fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {

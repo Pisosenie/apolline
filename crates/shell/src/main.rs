@@ -97,6 +97,7 @@ use apolline_config::{Config, Editor, slug};
 const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
        apolline switch | launcher | panel | clipboard | keys | replay | terminal | machine | updates
+       apolline module [NAME]
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME] | theme install PATH|LINK
        apolline pick [--prompt TEXT] < lines
@@ -131,7 +132,7 @@ fn main() -> ExitCode {
         }
         Some(
             "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal"
-            | "machine" | "updates",
+            | "machine" | "updates" | "module",
         ) => {
             return command(&args.join(" "));
         }

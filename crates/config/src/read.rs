@@ -47,6 +47,17 @@ const SECTIONS: [&str; 25] = [
     "launcher",
 ];
 
+const MODULE_OPTIONS: [&str; 8] = [
+    "name",
+    "command",
+    "every",
+    "click",
+    "right_click",
+    "middle_click",
+    "scroll_up",
+    "scroll_down",
+];
+
 const MODE_OPTIONS: [&str; 12] = [
     "name",
     "icon",
@@ -995,28 +1006,27 @@ impl Reader<'_> {
                 command: String::new(),
                 every: None,
                 click: None,
+                right_click: None,
+                middle_click: None,
+                scroll_up: None,
+                scroll_down: None,
             };
             for (key, value) in table.iter() {
+                let text = |me: &mut Self| {
+                    me.string(key, value)
+                        .map(|v| v.trim().to_owned())
+                        .filter(|v| !v.is_empty())
+                };
                 match key.get_ref().as_ref() {
-                    "name" => {
-                        module.name = self
-                            .string(key, value)
-                            .map(|v| v.trim().to_owned())
-                            .filter(|v| !v.is_empty())
-                    }
-                    "command" => {
-                        if let Some(v) = self.string(key, value) {
-                            module.command = v.trim().to_owned()
-                        }
-                    }
+                    "name" => module.name = text(self),
+                    "command" => module.command = text(self).unwrap_or_default(),
                     "every" => module.every = self.number(key, value, 1..=65535).map(u32::from),
-                    "click" => {
-                        module.click = self
-                            .string(key, value)
-                            .map(|v| v.trim().to_owned())
-                            .filter(|v| !v.is_empty())
-                    }
-                    _ => self.unknown(key, "option", &["name", "command", "every", "click"]),
+                    "click" => module.click = text(self),
+                    "right_click" => module.right_click = text(self),
+                    "middle_click" => module.middle_click = text(self),
+                    "scroll_up" => module.scroll_up = text(self),
+                    "scroll_down" => module.scroll_down = text(self),
+                    _ => self.unknown(key, "option", &MODULE_OPTIONS),
                 }
             }
             if module.command.is_empty() {

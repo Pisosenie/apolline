@@ -157,6 +157,19 @@ impl Shell {
         }
     }
 
+    // A module's own command for that button or wheel, then the module looks again, as Waybar does.
+    pub(super) fn module_act(&self, index: usize, act: crate::modules::Act) -> Task<Message> {
+        let Some(command) = self.config.modules.get(index).and_then(|m| act.command(m)) else {
+            return Task::none();
+        };
+        Task::batch([
+            self.spawn(command),
+            Task::perform(tokio::time::sleep(crate::modules::RERUN_AFTER), move |()| {
+                Message::ModuleRerun(Some(index))
+            }),
+        ])
+    }
+
     pub(super) fn spawn(&self, command: &str) -> Task<Message> {
         if self.niri.is_some() {
             return niri::send(apolline_niri::Request::Spawn(command.to_owned()));

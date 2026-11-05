@@ -145,7 +145,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
                 .modules
                 .iter()
                 .filter(|m| m.name.is_none())
-                .map(module)
+                .map(|m| module(m, bar.palette, false))
                 .collect();
             (!loose.is_empty()).then(|| Column::with_children(loose).spacing(4).into())
         }
@@ -153,7 +153,7 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
             .modules
             .iter()
             .find(|m| m.name == Some(name.as_str()))
-            .map(module),
+            .map(|m| module(m, bar.palette, false)),
     }
 }
 
