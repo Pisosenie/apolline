@@ -35,6 +35,8 @@ mod keys;
 mod launcher;
 mod lock;
 mod logind;
+mod machine;
+mod machine_view;
 mod marks;
 mod media;
 mod modules;
@@ -125,7 +127,8 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Some(
-            "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal",
+            "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal"
+            | "machine",
         ) => {
             return command(&args.join(" "));
         }
@@ -242,6 +245,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     Some("keys") => overlay(shell::Overlay::Keys),
                     Some("polkit") => shell::Message::Polkit(polkit::sample()),
                     Some("calendar") => overlay(shell::Overlay::Calendar),
+                    Some("machine") => overlay(shell::Overlay::Machine),
                     Some("wifi") => {
                         options.open.push(overlay(shell::Overlay::Panel));
                         shell::Message::Detail(Some(panel::Detail::Wifi))

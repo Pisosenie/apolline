@@ -402,10 +402,15 @@ fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     })
     .collect();
     (!figures.is_empty()).then(|| {
-        Row::with_children(figures)
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .into()
+        button(
+            Row::with_children(figures)
+                .spacing(6)
+                .align_y(Alignment::Center),
+        )
+        .padding([4, 6])
+        .style(style::ghost(8.0))
+        .on_press(Message::Overlay(Some(Overlay::Machine)))
+        .into()
     })
 }
 

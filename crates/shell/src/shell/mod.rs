@@ -99,6 +99,9 @@ pub enum Message {
     CalendarMonth(i32),
     CalendarDay(chrono::NaiveDate),
     Stats(crate::stats::Stats),
+    Machine(Box<crate::machine::Machine>),
+    MachineSort(bool),
+    EndProcess(u32),
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
     Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
@@ -183,6 +186,8 @@ pub enum Overlay {
     Keys,
     Polkit,
     Calendar,
+    // What the machine is doing, from the bar's numbers.
+    Machine,
     Marks,
     // An app's tray menu.
     TrayMenu,
@@ -241,6 +246,9 @@ pub struct Shell {
     month: i32,
     day: Option<chrono::NaiveDate>,
     stats: crate::stats::Stats,
+    machine: Option<Box<crate::machine::Machine>>,
+    by_memory: bool,
+    ending: Option<u32>,
     profiles: Option<crate::profile::Profiles>,
     agenda: std::sync::Arc<crate::events::Agenda>,
     weather: Option<crate::weather::Weather>,
@@ -353,6 +361,9 @@ impl Shell {
             month: 0,
             day: None,
             stats: crate::stats::Stats::default(),
+            machine: None,
+            by_memory: false,
+            ending: None,
             profiles: demo.then(|| crate::profile::Profiles {
                 active: "balanced".into(),
                 available: ["power-saver", "balanced", "performance"]
@@ -734,6 +745,7 @@ impl Shell {
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
+                crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
                 if self.overlay == Some(Overlay::Panel) {
                     iced::Subscription::none()
                 } else {

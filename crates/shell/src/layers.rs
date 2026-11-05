@@ -167,6 +167,7 @@ impl Layers {
             Overlay::Keys => "apolline-keys",
             Overlay::Polkit => "apolline-polkit",
             Overlay::Calendar => "apolline-calendar",
+            Overlay::Machine => "apolline-machine",
             Overlay::TrayMenu => "apolline-tray-menu",
             Overlay::Marks => "apolline-marks",
         };

@@ -67,7 +67,7 @@ fn watch() -> impl Stream<Item = Message> {
 }
 
 // Busy and total jiffies from the first line of /proc/stat.
-fn cpu_times(stat: &str) -> Option<(u64, u64)> {
+pub fn cpu_times(stat: &str) -> Option<(u64, u64)> {
     let line = stat.lines().find(|line| line.starts_with("cpu "))?;
     let fields: Vec<u64> = line
         .split_whitespace()
@@ -79,24 +79,26 @@ fn cpu_times(stat: &str) -> Option<(u64, u64)> {
     Some((total.saturating_sub(idle), total))
 }
 
+// A /proc/meminfo line's kilobytes.
+pub fn kb(meminfo: &str, name: &str) -> Option<u64> {
+    meminfo
+        .lines()
+        .find(|line| line.starts_with(name))?
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()
+}
+
 // The share of memory in use, counting what the kernel could hand back as free.
 fn memory(meminfo: &str) -> Option<u8> {
-    let field = |name: &str| -> Option<u64> {
-        meminfo
-            .lines()
-            .find(|line| line.starts_with(name))?
-            .split_whitespace()
-            .nth(1)?
-            .parse()
-            .ok()
-    };
-    let total = field("MemTotal:")?;
-    let available = field("MemAvailable:")?;
+    let total = kb(meminfo, "MemTotal:")?;
+    let available = kb(meminfo, "MemAvailable:")?;
     (total > 0).then(|| ((total.saturating_sub(available)) * 100 / total) as u8)
 }
 
 // The CPU's own sensor when there's one, else the first thermal zone that says it's the CPU.
-fn temperature() -> Option<i16> {
+pub fn temperature() -> Option<i16> {
     const CPUS: [&str; 6] = [
         "k10temp",
         "coretemp",

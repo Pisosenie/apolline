@@ -921,3 +921,13 @@
 "{d} d" = "{d} д"
 "Keep the history" = "Хранить историю"
 "Through restarts, for a week, readable by you alone" = "Между перезапусками, неделю, доступно только вам"
+"Reading…" = "Читаю…"
+"Processor" = "Процессор"
+"Network" = "Сеть"
+"Disk" = "Диск"
+"Processes" = "Процессы"
+"End" = "Завершить"
+"of {total}" = "из {total}"
+"swap {used}" = "подкачка {used}"
+"{used} of {total}" = "{used} из {total}"
+"{n} cores" = ["{n} ядро", "{n} ядра", "{n} ядер"]

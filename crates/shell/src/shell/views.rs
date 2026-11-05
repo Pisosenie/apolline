@@ -38,7 +38,7 @@ impl Shell {
     pub(super) fn overlay_font(&self) -> Option<apolline_config::FontName> {
         match self.overlay {
             Some(Overlay::Launcher) => self.config.style.launcher.font,
-            Some(Overlay::Panel | Overlay::Calendar | Overlay::TrayMenu) => {
+            Some(Overlay::Panel | Overlay::Calendar | Overlay::Machine | Overlay::TrayMenu) => {
                 self.config.style.panel.font
             }
             _ => None,
@@ -81,6 +81,14 @@ impl Shell {
                 style::under_bar(&self.config.bar, &self.config.style, 1.0),
                 self.config.calendars.len(),
             ),
+            Some(Overlay::Machine) => crate::machine_view::view(crate::machine_view::Look {
+                machine: self.machine.as_deref(),
+                by_memory: self.by_memory,
+                ending: self.ending,
+                palette,
+                edge: self.config.bar.position,
+                gap: style::under_bar(&self.config.bar, &self.config.style, 1.0),
+            }),
             Some(Overlay::Polkit) => match &self.polkit {
                 Some(dialog) => polkit::view(dialog, palette),
                 None => space().into(),

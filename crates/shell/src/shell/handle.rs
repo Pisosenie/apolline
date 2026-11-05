@@ -41,6 +41,19 @@ impl Shell {
             }
             Message::CalendarDay(day) => self.day = Some(day),
             Message::Stats(stats) => self.stats = stats,
+            Message::Machine(machine) => self.machine = Some(machine),
+            Message::MachineSort(by_memory) => {
+                self.by_memory = by_memory;
+                self.ending = None;
+            }
+            // The first click asks, the second ends it.
+            Message::EndProcess(pid) if self.ending != Some(pid) => self.ending = Some(pid),
+            Message::EndProcess(pid) => {
+                self.ending = None;
+                if let Err(err) = crate::machine::end(pid) {
+                    return self.show(Osd::Note(err));
+                }
+            }
             Message::Rates(Ok(rates)) => self.launcher.set_rates(rates),
             Message::Rates(Err(err)) => eprintln!("apolline: exchange rates: {err}"),
             Message::Agenda(agenda) => self.agenda = agenda,
@@ -228,6 +241,7 @@ impl Shell {
             Message::Control(Command::Panel) => return self.toggle(Overlay::Panel),
             Message::Control(Command::Clipboard) => return self.toggle(Overlay::Clipboard),
             Message::Control(Command::Keys) => return self.toggle(Overlay::Keys),
+            Message::Control(Command::Machine) => return self.toggle(Overlay::Machine),
             Message::Control(Command::Replay) => return self.save_replay(),
             Message::Control(Command::Terminal) => {
                 let terminal = self.config.terminal.clone();

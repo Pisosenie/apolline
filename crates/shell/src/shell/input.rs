@@ -170,6 +170,11 @@ impl Shell {
                 self.read_controls()
             }
             Some(Overlay::Clipboard) => self.picker.open(),
+            Some(Overlay::Machine) => {
+                self.machine = None;
+                self.ending = None;
+                Task::none()
+            }
             Some(Overlay::Calendar) => {
                 self.month = 0;
                 self.day = None;
