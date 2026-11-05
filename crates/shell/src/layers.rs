@@ -510,7 +510,11 @@ impl Layers {
         Subscription::batch([
             self.shell.subscription(),
             iced::event::listen_with(|event, _, id| match event {
-                iced::Event::Window(window::Event::Unfocused)
+                iced::Event::Window(
+                    window::Event::Unfocused
+                    | window::Event::Opened { .. }
+                    | window::Event::Resized(_),
+                )
                 | iced::Event::Mouse(
                     mouse::Event::CursorEntered
                     | mouse::Event::CursorLeft

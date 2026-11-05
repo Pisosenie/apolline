@@ -126,12 +126,19 @@ impl Shell {
 
     pub(super) fn dock_shape(&self, items: &[Item]) -> Shape {
         let pinned = items.iter().filter(|item| item.pinned).count();
-        Shape {
+        let shape = Shape {
             size: f32::from(self.config.dock.size),
             count: items.len(),
             split: (pinned > 0 && pinned < items.len()).then_some(pinned),
             sideways: self.config.dock.position.vertical(),
-        }
+        };
+        self.dock.room.map_or(shape, |room| shape.within(room))
+    }
+
+    // The screens' length along the dock's edge, so a long dock shrinks to fit the shortest.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn dock_room(&mut self, room: Option<f32>) {
+        self.dock.room = room;
     }
 
     // The shape of the dock as it rests, before any drag moves things.

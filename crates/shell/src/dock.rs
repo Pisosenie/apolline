@@ -189,6 +189,8 @@ pub struct Dock {
     // dock is drawn.
     pub unread: HashMap<String, usize>,
     pub counted: Option<Marks>,
+    // How long the shortest screen with a dock is along its edge, once it's known.
+    pub room: Option<f32>,
     front: Option<String>,
     // The window each app had in front last, to go back to.
     last: HashMap<String, u64>,
@@ -208,6 +210,7 @@ impl Default for Dock {
             since: SystemTime::now(),
             unread: HashMap::new(),
             counted: None,
+            room: None,
             front: None,
             last: HashMap::new(),
             pointer: None,

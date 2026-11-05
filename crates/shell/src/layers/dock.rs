@@ -24,6 +24,8 @@ pub(super) struct Docks {
     leavings: u64,
     shown: BTreeMap<window::Id, bool>,
     regions: BTreeMap<window::Id, (i32, i32, i32, i32)>,
+    // The surfaces' sizes, of which the wallpapers' are their screens'.
+    sizes: BTreeMap<window::Id, iced::Size>,
 }
 
 impl Docks {
@@ -48,6 +50,18 @@ impl Layers {
     // What a dock hears of the pointer coming and going, or None when it isn't the dock's.
     pub(super) fn dock_felt(&mut self, message: &Message) -> Option<Task<Message>> {
         match message {
+            Message::LayerEvent(
+                id,
+                iced::Event::Window(
+                    window::Event::Opened { size, .. } | window::Event::Resized(size),
+                ),
+            ) => {
+                let screen = self.screens.values().any(|s| s.wallpaper == *id);
+                if !screen || self.docks.sizes.insert(*id, *size) == Some(*size) {
+                    return Some(Task::none());
+                }
+                Some(self.fit_docks())
+            }
             Message::LayerEvent(id, iced::Event::Mouse(mouse::Event::CursorEntered))
                 if self.docks.has(*id) =>
             {
@@ -86,6 +100,8 @@ impl Layers {
     // A dock on each screen that wants one, sized to its icons, feeling the pointer only where
     // it is or, hidden, along the edge.
     pub(super) fn fit_docks(&mut self) -> Task<Message> {
+        let room = self.dock_room();
+        self.shell.dock_room(room);
         let (edge, autohide, shape) = self.shell.dock_look();
         let wanted: Vec<Output> = self
             .outputs()
@@ -116,6 +132,26 @@ impl Layers {
         }
         tasks.push(self.fit_dock_regions(edge, autohide, shape));
         Task::batch(tasks)
+    }
+
+    // The shortest of the screens with a dock, along its edge, as their wallpapers measure them.
+    fn dock_room(&mut self) -> Option<f32> {
+        let wallpapers: Vec<window::Id> = self.screens.values().map(|s| s.wallpaper).collect();
+        self.docks.sizes.retain(|id, _| wallpapers.contains(id));
+        let edge = self.shell.dock_edge();
+        self.screens
+            .iter()
+            .filter(|(output, _)| self.shell.dock_on(output.as_deref()))
+            .filter_map(|(_, screen)| self.docks.sizes.get(&screen.wallpaper))
+            .map(|size| {
+                if edge.vertical() {
+                    size.height
+                } else {
+                    size.width
+                }
+            })
+            .filter(|length| *length > 0.0)
+            .reduce(f32::min)
     }
 
     fn close_docks(&mut self, gone: impl Fn(&Output) -> bool) -> Vec<Task<Message>> {

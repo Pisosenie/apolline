@@ -24,6 +24,8 @@ const LABEL_BESIDE: f32 = 180.0;
 pub const LINE: f32 = 1.0;
 // What a hidden dock feels the pointer through, at the screen edge.
 const STRIP: f32 = 2.0;
+// As small as icons get on a dock too long for its screen.
+const SMALLEST: f32 = 16.0;
 
 // How much of the growth an icon gets `distance` icons from the pointer: all of it right under
 // it, none from REACH on, a cosine between so the bump has no corners.
@@ -133,6 +135,15 @@ impl Shape {
         (along.ceil(), across.ceil())
     }
 
+    // Icons as large as fit a screen `room` long, room to grow included, down to SMALLEST.
+    pub fn within(self, room: f32) -> Shape {
+        let mut shape = self;
+        while shape.size > SMALLEST && shape.surface().0 > room {
+            shape.size -= 1.0;
+        }
+        shape
+    }
+
     // Where the resting row starts along a surface `along` long, with the row in its middle.
     pub fn row_start(self, along: f32) -> f32 {
         (along - self.length()) / 2.0
@@ -206,6 +217,16 @@ mod tests {
         let end = falloff(REACH - 0.1) - falloff(REACH);
         let middle = falloff(REACH / 2.0 - 0.05) - falloff(REACH / 2.0 + 0.05);
         assert!(end < middle / 10.0);
+    }
+
+    #[test]
+    fn a_dock_too_long_for_its_screen_shrinks_its_icons() {
+        let long = Shape { count: 30, ..DOCK };
+        assert_eq!(DOCK.within(1920.0), DOCK);
+        let fitted = long.within(1280.0);
+        assert!(fitted.size < 48.0 && fitted.surface().0 <= 1280.0);
+        assert!(long.within(1280.0).within(1280.0) == fitted);
+        assert_eq!(long.within(100.0).size, SMALLEST);
     }
 
     #[test]
