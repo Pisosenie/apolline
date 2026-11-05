@@ -779,11 +779,16 @@ impl Shell {
             Vec::new()
         } else {
             let on_battery = self.battery().is_some_and(|b| !b.charging);
-            if on_battery {
+            let stages = if on_battery {
                 idle::stages(&self.config.idle.on_battery())
             } else {
                 idle::stages(&self.config.idle)
-            }
+            };
+            // A running timer has to be awake to ring: the screen may go, the machine stays.
+            stages
+                .into_iter()
+                .filter(|(stage, _)| self.timers.is_empty() || *stage != idle::Stage::Suspend)
+                .collect()
         };
         let clipboard = if self.sample() {
             iced::Subscription::none()
