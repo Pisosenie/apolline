@@ -118,6 +118,7 @@ name = "apolline-config"
 version = "0.1.0"
 dependencies = [
  "apolline-theme",
+ "chrono",
  "strsim",
  "toml",
  "toml_edit",
