@@ -119,6 +119,9 @@ pub struct Window {
     pub is_focused: bool,
     #[serde(default)]
     pub is_floating: bool,
+    // Asking to be looked at; niri before 25.05 doesn't say.
+    #[serde(default)]
+    pub is_urgent: bool,
     #[serde(default)]
     pub layout: Option<WindowLayout>,
     #[serde(default)]
@@ -175,6 +178,10 @@ pub enum Event {
     WindowFocusTimestampChanged {
         id: u64,
         focus_timestamp: Option<Timestamp>,
+    },
+    WindowUrgencyChanged {
+        id: u64,
+        urgent: bool,
     },
     KeyboardLayoutsChanged {
         keyboard_layouts: KeyboardLayouts,
@@ -265,6 +272,11 @@ impl State {
             } => {
                 if let Some(window) = self.windows.get_mut(&id) {
                     window.focus_timestamp = focus_timestamp;
+                }
+            }
+            Event::WindowUrgencyChanged { id, urgent } => {
+                if let Some(window) = self.windows.get_mut(&id) {
+                    window.is_urgent = urgent;
                 }
             }
             Event::KeyboardLayoutsChanged { keyboard_layouts } => {
@@ -490,6 +502,27 @@ mod tests {
         assert!(state.casting());
         apply(&mut state, r#"{"CastStopped":{"stream_id":5}}"#);
         assert!(!state.casting());
+    }
+
+    #[test]
+    fn a_window_asks_for_attention_and_is_answered() {
+        let mut state = State::default();
+        let apply = |state: &mut State, line: &str| state.apply(Event::parse(line).unwrap());
+        apply(
+            &mut state,
+            r#"{"WindowOpenedOrChanged":{"window":{"id":4,"title":"chat","app_id":"telegram","workspace_id":1,"is_focused":false,"is_urgent":false}}}"#,
+        );
+        assert!(!state.recent()[0].is_urgent);
+        apply(
+            &mut state,
+            r#"{"WindowUrgencyChanged":{"id":4,"urgent":true}}"#,
+        );
+        assert!(state.recent()[0].is_urgent);
+        apply(
+            &mut state,
+            r#"{"WindowUrgencyChanged":{"id":4,"urgent":false}}"#,
+        );
+        assert!(!state.recent()[0].is_urgent);
     }
 
     #[test]
