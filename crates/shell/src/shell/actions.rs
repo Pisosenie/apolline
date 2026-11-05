@@ -120,7 +120,11 @@ impl Shell {
         }
         match apps::find(&self.apps, id) {
             Some(app) => {
-                let exec = app.exec.clone();
+                let exec = if app.terminal {
+                    crate::terminal::running(&self.config.terminal, &app.exec)
+                } else {
+                    app.exec.clone()
+                };
                 self.spawn(&exec)
             }
             None => Task::none(),

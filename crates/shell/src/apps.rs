@@ -11,6 +11,8 @@ pub struct App {
     pub game: bool,
     pub keywords: String,
     pub class: Option<String>,
+    // A console app (htop, nvim) that runs inside the terminal.
+    pub terminal: bool,
     // What the entry offers besides starting it, like a private window: (name, command).
     pub actions: Vec<(String, String)>,
 }
@@ -73,6 +75,7 @@ pub fn sample() -> Vec<App> {
         game,
         keywords: String::new(),
         class: None,
+        terminal: false,
         actions: Vec::new(),
     };
     let firefox = App {
@@ -108,7 +111,6 @@ fn parse(id: &str, text: &str) -> Option<App> {
     if field("Type").as_deref() != Some("Application")
         || flag(field("NoDisplay"))
         || flag(field("Hidden"))
-        || flag(field("Terminal"))
     {
         return None;
     }
@@ -152,6 +154,7 @@ fn parse(id: &str, text: &str) -> Option<App> {
             .collect::<Vec<_>>()
             .join(" ")
             .replace(';', " "),
+        terminal: flag(field("Terminal")),
         class: field("StartupWMClass"),
         actions: field("Actions")
             .unwrap_or_default()
@@ -408,11 +411,11 @@ Categories=Game;
     }
 
     #[test]
-    fn hidden_and_terminal_entries_are_skipped() {
+    fn hidden_entries_are_skipped_and_console_ones_run_in_the_terminal() {
         let hidden = "[Desktop Entry]\nType=Application\nName=x\nExec=x\nNoDisplay=true\n";
         let terminal = "[Desktop Entry]\nType=Application\nName=htop\nExec=htop\nTerminal=true\n";
         assert_eq!(parse("x", hidden), None);
-        assert_eq!(parse("htop", terminal), None);
+        assert!(parse("htop", terminal).is_some_and(|app| app.terminal));
     }
 
     #[test]

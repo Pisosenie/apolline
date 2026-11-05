@@ -288,7 +288,20 @@ impl Reader<'_> {
                                         config.apps.colors = v
                                     }
                                 }
-                                _ => self.unknown(key, "option", &["colors"]),
+                                "terminal" => match self.string(key, value) {
+                                    Some(command) if !command.trim().is_empty() => {
+                                        config.terminal = command.trim().to_owned()
+                                    }
+                                    Some(_) => {
+                                        self.wrong::<()>(
+                                            key,
+                                            value,
+                                            "a terminal's command, like \"vif\"",
+                                        );
+                                    }
+                                    None => {}
+                                },
+                                _ => self.unknown(key, "option", &["colors", "terminal"]),
                             }
                         }
                     }

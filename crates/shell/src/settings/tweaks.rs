@@ -444,7 +444,10 @@ impl Settings {
                 };
                 self.setup_log =
                     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
-                        Ok(done) => done,
+                        Ok(done) => done
+                            .into_iter()
+                            .chain(crate::terminal::set_up(&apolline_config::config_home()))
+                            .collect(),
                         Err(err) => vec![format!("could not set up: {err}")],
                     };
             }

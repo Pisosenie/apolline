@@ -474,6 +474,7 @@ pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
         Shortcut::Clipboard => ("Clipboard history", "clipboard"),
         Shortcut::Keys => ("Keyboard shortcuts", "keys"),
         Shortcut::Replay => ("Save the last moments", "replay"),
+        Shortcut::Terminal => ("Terminal", "terminal"),
     }
 }
 

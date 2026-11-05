@@ -229,6 +229,10 @@ impl Shell {
             Message::Control(Command::Clipboard) => return self.toggle(Overlay::Clipboard),
             Message::Control(Command::Keys) => return self.toggle(Overlay::Keys),
             Message::Control(Command::Replay) => return self.save_replay(),
+            Message::Control(Command::Terminal) => {
+                let terminal = self.config.terminal.clone();
+                return self.spawn(&terminal);
+            }
             Message::KeysQuery(query) => self.keys_query = query,
             Message::FocusWindow(id) => {
                 if self.niri.is_some() {

@@ -37,6 +37,8 @@ pub struct Config {
     pub lock: Lock,
     pub idle: Idle,
     pub apps: Apps,
+    // The terminal Mod+T opens and terminal apps run in, as a command.
+    pub terminal: String,
     pub windows: Windows,
     pub rules: Vec<Rule>,
     pub displays: Vec<Display>,
@@ -683,6 +685,7 @@ pub struct Shortcuts {
     pub clipboard: String,
     pub keys: String,
     pub replay: String,
+    pub terminal: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -694,10 +697,12 @@ pub enum Shortcut {
     Clipboard,
     Keys,
     Replay,
+    Terminal,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 7] = [
+    pub const ALL: [Shortcut; 8] = [
+        Shortcut::Terminal,
         Shortcut::Keys,
         Shortcut::Launcher,
         Shortcut::Panel,
@@ -716,6 +721,7 @@ impl Shortcut {
             Shortcut::Clipboard => "clipboard",
             Shortcut::Keys => "keys",
             Shortcut::Replay => "replay",
+            Shortcut::Terminal => "terminal",
         }
     }
 }
@@ -751,6 +757,7 @@ impl Shortcuts {
             Shortcut::Clipboard => &self.clipboard,
             Shortcut::Keys => &self.keys,
             Shortcut::Replay => &self.replay,
+            Shortcut::Terminal => &self.terminal,
         }
     }
 
@@ -763,6 +770,7 @@ impl Shortcuts {
             Shortcut::Clipboard => &mut self.clipboard,
             Shortcut::Keys => &mut self.keys,
             Shortcut::Replay => &mut self.replay,
+            Shortcut::Terminal => &mut self.terminal,
         }
     }
 }
@@ -777,6 +785,7 @@ impl Default for Shortcuts {
             clipboard: "Mod+Alt+V".into(),
             keys: "Mod+Slash".into(),
             replay: "Mod+Alt+R".into(),
+            terminal: "Mod+T".into(),
         }
     }
 }
@@ -1095,6 +1104,7 @@ impl Default for Config {
                 suspend_after: 0,
             },
             apps: Apps { colors: false },
+            terminal: "vif".into(),
             style: Styles::default(),
             night: Night {
                 hours: None,

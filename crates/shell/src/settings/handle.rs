@@ -16,6 +16,13 @@ impl Settings {
             Message::LauncherFinds(name, on) => self.set_finds(name, on),
             Message::WebDraft(text) => self.web_draft = Some(text),
             Message::WebSet => self.set_web(),
+            Message::Terminal(terminal) => self.edit(|e| {
+                if terminal == "vif" {
+                    e.unset("apps", "terminal");
+                } else {
+                    e.set("apps", "terminal", terminal.as_str());
+                }
+            }),
             Message::ColorReset(role) => {
                 self.color_drafts.remove(role);
                 self.edit(|e| e.unset("colors", role));

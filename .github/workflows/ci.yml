@@ -60,6 +60,7 @@ jobs:
           cp -r packaging/arch /home/builder/pkg
           sed -i "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" /home/builder/pkg/PKGBUILD
           chown -R builder /home/builder/pkg
-          su builder -c "cd /home/builder/pkg && makepkg --noconfirm --nocheck"
-          pacman -U --noconfirm /home/builder/pkg/apolline-git-*.pkg.tar.zst
+          # vif, the terminal it depends on, isn't in Arch's repositories to install from here.
+          su builder -c "cd /home/builder/pkg && makepkg --noconfirm --nocheck --nodeps"
+          pacman -Udd --noconfirm /home/builder/pkg/apolline-git-*.pkg.tar.zst
           su builder -c "apolline check"

@@ -18,6 +18,12 @@ Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar
 
 ## Install on Arch
 
+Apolline's terminal is [vif](https://github.com/Pisosenie/vif), so it goes first (`vif-bin` is the prebuilt one):
+
+```sh
+git clone https://github.com/Pisosenie/vif && cd vif/packaging/arch/vif && makepkg -si
+```
+
 ```sh
 cd packaging/arch && makepkg -si   # apolline-git: the binary, the PAM file, the settings entry and icon
 apolline setup                     # once, as your user: adds Apolline to your niri config
@@ -51,6 +57,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 | Key | Opens |
 |---|---|
 | `Mod+Space` | the launcher: apps and games from `.desktop` files (Steam games included) and what they offer besides (`private` or `firefox new` finds Firefox's new private window), open windows, sums like `15% of 340`, units like `10 km in mi` and money like `100 usd in eur` (today's rates from ExchangeRate-API, asked for only when you type a sum of money; Enter copies the answer), `:emoji` by name, `/files` in your home, screenshots of an area, the screen or the window, a color picker, screen recording (with wf-recorder), modes, settings, lock. What you start often and lately comes first, and a search that finds nothing offers to run it as a command or look it up on the web |
+| `Mod+T` | the terminal, vif unless `[apps] terminal` names another; console apps like htop and the launcher's commands open in it too |
 | `Mod+A` | quick settings: Wi-Fi, Bluetooth, do not disturb, keep awake, night light, power profile, VPN and WireGuard tunnels saved in NetworkManager, volume, each app playing with a level of its own, the microphone, brightness, mode, the player, past notifications, screenshot, power |
 | `Mod+Shift+M` | the mode switcher |
 | `Mod+Alt+V` | clipboard history: kept in memory only, except what you pin, which stays in `~/.local/share/apolline/pinned.json` (readable only by you); password managers' secrets are never kept |
@@ -189,6 +196,12 @@ after = "pkill -USR2 btop"
 `assets/templates` has `colors.css`, `colors.json` and `btop.theme` to start from. A file is rewritten only when what it says changes, through a copy next to it, so an app never reads half of one.
 
 Applying a theme rewrites only these keys in your config and leaves the rest alone. With `accent = "auto"` and your own wallpaper, the accent is the picture's most present vivid color, softened to sit next to the built-in accents and lightened until it reads on the bar's glass; window borders in niri follow it.
+
+## The terminal
+
+[vif](https://github.com/Pisosenie/vif) is Apolline's terminal: `Mod+T` opens it, console apps from the launcher (htop, nvim, anything whose `.desktop` file says `Terminal=true`) run in it, and a command the launcher can't find as an app can run in it as well as in the background. `[apps] terminal = "foot"` (or Settings → Appearance → Terminal) picks another; Apolline knows how foot, alacritty, kitty, ghostty, wezterm, konsole, gnome-terminal and xterm take a command.
+
+Apolline keeps 16 terminal colors made from the palette, readable on its ground and leaning a little toward the accent, in `~/.cache/apolline/terminal.json` (pywal's format), and rewrites it as the palette, the wallpaper or the mode changes. `apolline setup` writes vif's config with `[colors] from = "~/.cache/apolline/terminal.json"` when vif has none yet, so vif changes colors with the desktop; a `vif.toml` of your own is left as it is, and `apolline doctor` names the line to add. Setup also lists vif in `~/.config/xdg-terminals.list` where nothing is there, for apps that open a terminal through xdg-terminal-exec.
 
 ## Apps in your colors
 

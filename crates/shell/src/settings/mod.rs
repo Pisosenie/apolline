@@ -430,6 +430,7 @@ enum Message {
     LauncherFinds(&'static str, bool),
     WebDraft(String),
     WebSet,
+    Terminal(String),
     ColorSet(&'static str),
     ColorReset(&'static str),
     FoundSetting(Page, String),

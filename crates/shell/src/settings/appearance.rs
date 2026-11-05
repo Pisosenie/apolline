@@ -457,6 +457,7 @@ impl Settings {
             ),
             self.surfaces(palette),
             self.launcher_finds(),
+            self.terminal_group(),
         ]
         .spacing(22)
         .into()

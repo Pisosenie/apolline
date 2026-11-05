@@ -90,3 +90,40 @@ impl Settings {
         }
     }
 }
+
+impl Settings {
+    pub(super) fn terminal_group(&self) -> Element<'_, Message> {
+        let mut choices: Vec<String> = crate::terminal::installed()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        if !choices.contains(&self.config.terminal) {
+            choices.insert(0, self.config.terminal.clone());
+        }
+        let missing = !crate::launcher::on_path(
+            self.config
+                .terminal
+                .split_whitespace()
+                .next()
+                .unwrap_or_default(),
+        );
+        let mut rows = vec![setting(
+            "Terminal",
+            "Mod+T opens it, and console apps like htop run in it",
+            iced::widget::pick_list(
+                choices,
+                Some(self.config.terminal.clone()),
+                Message::Terminal,
+            )
+            .text_size(13)
+            .padding([7, 12]),
+        )];
+        if missing {
+            rows.push(warning(&crate::i18n::fill(
+                "{terminal} isn't installed",
+                &[("terminal", &self.config.terminal)],
+            )));
+        }
+        group("Terminal", rows)
+    }
+}

@@ -56,6 +56,8 @@ pub struct Launcher {
     asked: bool,
     usage: crate::usage::Usage,
     finds: apolline_config::Launcher,
+    // Console apps and commands run in it.
+    terminal: String,
 }
 
 pub struct OpenWindow {
@@ -208,8 +210,18 @@ impl Launcher {
         self.files = files;
     }
 
-    pub fn set_finds(&mut self, finds: apolline_config::Launcher) {
+    pub fn set_finds(&mut self, finds: apolline_config::Launcher, terminal: &str) {
         self.finds = finds;
+        self.terminal = terminal.to_owned();
+    }
+
+    // How an app's command is run: console apps open in the terminal.
+    fn command(&self, app: &App, exec: &str) -> String {
+        if app.terminal && !self.terminal.is_empty() {
+            crate::terminal::running(&self.terminal, exec)
+        } else {
+            exec.to_owned()
+        }
     }
 
     pub fn set_look(&mut self, look: apolline_config::Surface, grid: bool) {
@@ -418,7 +430,7 @@ impl Launcher {
                             title: name.clone(),
                             about: app.name.clone(),
                             picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
-                            target: Target::App(exec.clone()),
+                            target: Target::App(self.command(app, exec)),
                             game: false,
                         },
                     ));
@@ -432,7 +444,7 @@ impl Launcher {
                         title: app.name.clone(),
                         about: app.about.clone(),
                         picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
-                        target: Target::App(app.exec.clone()),
+                        target: Target::App(self.command(app, &app.exec)),
                         game: app.game,
                     },
                 ));
@@ -442,7 +454,7 @@ impl Launcher {
         let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
         // Nothing found by name: run it, or look it up.
         if entries.iter().all(|entry| entry.title.starts_with('=')) {
-            entries.extend(fallbacks(query, &self.finds));
+            entries.extend(fallbacks(query, &self.finds, &self.terminal));
         }
         entries
     }
@@ -686,7 +698,11 @@ impl Launcher {
 }
 
 // Last in any search: run it if it's a command, or look it up on the web.
-fn fallbacks(query: &str, finds: &apolline_config::Launcher) -> Vec<Entry<'static>> {
+fn fallbacks(
+    query: &str,
+    finds: &apolline_config::Launcher,
+    terminal: &str,
+) -> Vec<Entry<'static>> {
     if query.is_empty() {
         return Vec::new();
     }
@@ -696,6 +712,17 @@ fn fallbacks(query: &str, finds: &apolline_config::Launcher) -> Vec<Entry<'stati
         about: "As a command, in the background".to_owned(),
         picture: Pic::Icon(Icon::Terminal),
         target: Target::Run(query.to_owned()),
+        game: false,
+    });
+    // The same command where you can see what it says, and answer it.
+    let shown = (finds.finds("run") && runnable(program) && !terminal.is_empty()).then(|| Entry {
+        title: crate::i18n::fill(
+            "Run “{query}” in {terminal}",
+            &[("query", &query), ("terminal", &terminal)],
+        ),
+        about: "In a terminal window".to_owned(),
+        picture: Pic::Icon(Icon::Terminal),
+        target: Target::Run(crate::terminal::running(terminal, query)),
         game: false,
     });
     let web = finds.finds("web").then(|| Entry {
@@ -708,7 +735,7 @@ fn fallbacks(query: &str, finds: &apolline_config::Launcher) -> Vec<Entry<'stati
         target: Target::Web(query.to_owned()),
         game: false,
     });
-    run.into_iter().chain(web).collect()
+    run.into_iter().chain(shown).chain(web).collect()
 }
 
 fn runnable(program: &str) -> bool {
@@ -825,10 +852,13 @@ mod tests {
     #[test]
     fn it_looks_only_where_it_is_told_and_searches_your_site() {
         let mut launcher = launcher();
-        launcher.set_finds(apolline_config::Launcher {
-            finds: vec!["emoji".into(), "web".into()],
-            web: Some("https://www.startpage.com/do/search?q={query}".into()),
-        });
+        launcher.set_finds(
+            apolline_config::Launcher {
+                finds: vec!["emoji".into(), "web".into()],
+                web: Some("https://www.startpage.com/do/search?q={query}".into()),
+            },
+            "vif",
+        );
         launcher.query = "fire".into();
         let entries = launcher.entries();
         assert!(
@@ -938,6 +968,7 @@ mod tests {
             icon: None,
             game: false,
             keywords: String::new(),
+            terminal: false,
             class: None,
             actions: Vec::new(),
         });

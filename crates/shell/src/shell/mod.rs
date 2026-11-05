@@ -482,6 +482,9 @@ impl Shell {
         }
         let wanted = (palette.accent, scheme, self.config.templates.clone());
         if self.templated.as_ref() != Some(&wanted) {
+            if let Err(err) = crate::terminal::write_colors(&scheme, palette) {
+                eprintln!("apolline: terminal colors: {err}");
+            }
             let (ran, problems) = crate::templates::write(&self.config.templates, &scheme, palette);
             for problem in problems {
                 eprintln!("apolline: template: {problem}");

@@ -1,5 +1,6 @@
 mod color;
 pub mod palettes;
+pub mod terminal;
 
 pub use color::{Rgba, accent_of};
 

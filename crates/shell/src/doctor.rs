@@ -31,6 +31,7 @@ pub async fn gather() -> Vec<Line> {
     let mut lines = vec![niri(), setup(), config(), pam()];
     lines.extend(programs());
     lines.push(sounds());
+    lines.push(terminal());
     lines.extend(services().await);
     lines
 }
@@ -111,6 +112,35 @@ fn config() -> Line {
             ),
         ),
     }
+}
+
+fn terminal() -> Line {
+    let config = apolline_config::config_home();
+    let (chosen, _) = apolline_config::Config::load(&apolline_config::default_path());
+    let program = chosen
+        .terminal
+        .split_whitespace()
+        .next()
+        .unwrap_or("vif")
+        .to_owned();
+    if !crate::launcher::on_path(&program) {
+        return line(
+            State::Bad,
+            "Terminal",
+            fill("{program} isn't installed", &[("program", &program)]),
+        );
+    }
+    if program == "vif" && !crate::terminal::vif_follows(&config) {
+        return line(
+            State::Optional,
+            "Terminal",
+            fill(
+                "vif, in its own colors; [colors] from = \"{file}\" in vif.toml puts it in Apolline's",
+                &[("file", &crate::terminal::FROM)],
+            ),
+        );
+    }
+    line(State::Good, "Terminal", program)
 }
 
 fn sounds() -> Line {

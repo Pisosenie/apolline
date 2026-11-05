@@ -7,7 +7,8 @@ pkgdesc='A desktop shell for niri: bar, launcher, quick settings, lock and login
 arch=('x86_64' 'aarch64')
 url='https://github.com/Pisosenie/apolline'
 license=('MIT OR Apache-2.0')
-depends=('niri' 'pam' 'libxkbcommon' 'libgcc' 'glibc' 'hicolor-icon-theme')
+# vif is Apolline's terminal: Mod+T, console apps and the launcher's commands open in it.
+depends=('niri' 'vif' 'pam' 'libxkbcommon' 'libgcc' 'glibc' 'hicolor-icon-theme')
 optdepends=(
   'wireplumber: volume in quick settings'
   'libpulse: the volume on the bar follows changes made elsewhere'
@@ -20,6 +21,9 @@ optdepends=(
   'greetd: the login screen, apolline greet'
   'cage: a kiosk compositor to run apolline greet in'
   'wf-recorder: screen recording from the launcher'
+  'gpu-screen-recorder: a mode can keep the last moments of a game'
+  'sound-theme-freedesktop: the sound notifications can make'
+  'xdg-terminal-exec: apps that open a terminal open vif'
 )
 # clang: pam-sys makes its bindings with bindgen
 makedepends=('cargo' 'clang' 'git')

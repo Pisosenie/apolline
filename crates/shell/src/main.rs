@@ -62,6 +62,7 @@ mod strip;
 mod style;
 mod switcher;
 mod templates;
+mod terminal;
 mod themes;
 mod tray;
 mod tray_menu;
@@ -89,7 +90,7 @@ use apolline_config::{Config, Editor, slug};
 
 const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none
-       apolline switch | launcher | panel | clipboard | keys | replay
+       apolline switch | launcher | panel | clipboard | keys | replay | terminal
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME] | theme install PATH|LINK
        apolline pick [--prompt TEXT] < lines
@@ -122,7 +123,9 @@ fn main() -> ExitCode {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
         }
-        Some("mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay") => {
+        Some(
+            "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal",
+        ) => {
             return command(&args.join(" "));
         }
         Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
@@ -396,6 +399,9 @@ fn setup() -> ExitCode {
     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
         Ok(done) => {
             done.iter().for_each(|line| println!("{line}"));
+            for line in terminal::set_up(&apolline_config::config_home()) {
+                println!("{line}");
+            }
             ExitCode::SUCCESS
         }
         Err(err) => {
