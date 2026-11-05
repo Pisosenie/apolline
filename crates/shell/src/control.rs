@@ -1,11 +1,13 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream as StdStream;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use iced::Subscription;
+use iced::futures::channel::mpsc::Sender;
 use iced::futures::{SinkExt, Stream};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
-use tokio::net::UnixListener;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixListener, UnixStream};
 
 use crate::controls::Nudge;
 use crate::shell::Message;
@@ -175,9 +177,19 @@ pub fn listen() -> Subscription<Message> {
     Subscription::run(stream)
 }
 
+// A command is one short line; a client that sends more, or nothing, is let go.
+const LONGEST: u64 = 4096;
+const PATIENCE: Duration = Duration::from_secs(2);
+
 pub fn send(line: &str) -> Result<(), String> {
     let path = socket();
     let mut stream = StdStream::connect(&path).map_err(|_| "not running".to_owned())?;
+    // A shell that's stuck shouldn't hang whoever asked, the lock screen least of all.
+    let wait = Some(PATIENCE * 2);
+    stream
+        .set_read_timeout(wait)
+        .and_then(|()| stream.set_write_timeout(wait))
+        .map_err(|e| e.to_string())?;
     stream
         .write_all(format!("{line}\n").as_bytes())
         .map_err(|e| e.to_string())?;
@@ -192,7 +204,7 @@ pub fn send(line: &str) -> Result<(), String> {
 }
 
 fn stream() -> impl Stream<Item = Message> {
-    iced::stream::channel(16, async |mut output| {
+    iced::stream::channel(16, async |output| {
         let path = socket();
         if StdStream::connect(&path).is_ok() {
             eprintln!(
@@ -209,33 +221,39 @@ fn stream() -> impl Stream<Item = Message> {
                 return;
             }
         };
-
         while let Ok((stream, _)) = listener.accept().await {
-            let (read, mut write) = stream.into_split();
-            let mut line = String::new();
-            if tokio::io::BufReader::new(read)
-                .read_line(&mut line)
-                .await
-                .is_err()
-            {
-                continue;
-            }
-            let reply = match Command::parse(&line) {
-                Ok(Command::Locked) => {
-                    crate::logind::may_sleep();
-                    "ok\n".to_owned()
-                }
-                Ok(command) => {
-                    if output.send(Message::Control(command)).await.is_err() {
-                        return;
-                    }
-                    "ok\n".to_owned()
-                }
-                Err(err) => format!("error: {err}\n"),
-            };
-            let _ = write.write_all(reply.as_bytes()).await;
+            tokio::spawn(serve(stream, output.clone()));
         }
     })
+}
+
+// Each client on its own, so a slow one holds up nobody else.
+async fn serve(stream: UnixStream, mut output: Sender<Message>) {
+    let (read, mut write) = stream.into_split();
+    let mut line = String::new();
+    let mut read = tokio::io::BufReader::new(read.take(LONGEST));
+    let read = read.read_line(&mut line);
+    if !matches!(tokio::time::timeout(PATIENCE, read).await, Ok(Ok(_))) {
+        return;
+    }
+    let reply = if line.len() as u64 >= LONGEST {
+        "error: too long\n".to_owned()
+    } else {
+        match Command::parse(&line) {
+            Ok(Command::Locked) => {
+                crate::logind::may_sleep();
+                "ok\n".to_owned()
+            }
+            Ok(command) => {
+                if output.send(Message::Control(command)).await.is_err() {
+                    return;
+                }
+                "ok\n".to_owned()
+            }
+            Err(err) => format!("error: {err}\n"),
+        }
+    };
+    let _ = tokio::time::timeout(PATIENCE, write.write_all(reply.as_bytes())).await;
 }
 
 #[cfg(test)]
@@ -255,6 +273,33 @@ mod tests {
         };
         assert_eq!(Shared::parse(&shared.text()), shared);
         assert_eq!(Shared::parse("garbage"), Shared::default());
+    }
+
+    fn served(sent: &[u8]) -> (String, Option<Message>) {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (mut client, server) = UnixStream::pair().unwrap();
+            let (output, mut messages) = iced::futures::channel::mpsc::channel(1);
+            let serving = tokio::spawn(serve(server, output));
+            client.write_all(sent).await.unwrap();
+            let mut reply = String::new();
+            client.read_to_string(&mut reply).await.unwrap();
+            serving.await.unwrap();
+            (reply, messages.try_recv().ok())
+        })
+    }
+
+    #[test]
+    fn the_socket_answers_a_line_and_turns_down_a_flood() {
+        let (reply, message) = served(b"launcher\n");
+        assert_eq!(reply, "ok\n");
+        assert!(matches!(message, Some(Message::Control(Command::Launcher))));
+        let (reply, message) = served(&[b'a'; 5000]);
+        assert_eq!(reply, "error: too long\n");
+        assert!(message.is_none());
     }
 
     #[test]
