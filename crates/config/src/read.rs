@@ -252,8 +252,6 @@ impl Reader<'_> {
                                         "option",
                                         if launcher {
                                             &["radius", "opacity", "size", "font", "grid"]
-                                        } else if bar {
-                                            &["radius", "opacity", "size", "font"]
                                         } else {
                                             &["radius", "opacity", "size", "font"]
                                         },
