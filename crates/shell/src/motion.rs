@@ -14,6 +14,8 @@ pub const CLOSE: Duration = Duration::from_millis(120);
 pub const FRAME: Duration = Duration::from_millis(16);
 // Cards closing a gap, the workspace pill, a level bar.
 pub const MOVE: Duration = Duration::from_millis(220);
+// Where something coming in starts.
+const FIRST: f32 = 0.04;
 // How far an overlay slides in from its edge, and how much smaller it starts.
 const SLIDE: f32 = 10.0;
 const SHRINK: f32 = 0.04;
@@ -134,8 +136,15 @@ impl Reveal {
         Self(Tween::still(0.0, now))
     }
 
+    // Never from quite nothing: a compositor may not call back for the next frame of a surface
+    // whose first one showed nothing, and then the next never comes.
     pub fn show(self, now: Instant, speed: Speed) -> Self {
-        self.turn(1.0, OPEN, now, speed)
+        let from = if self.0.value(now) < FIRST {
+            Self(Tween::still(FIRST, now))
+        } else {
+            self
+        };
+        from.turn(1.0, OPEN, now, speed)
     }
 
     pub fn hide(self, now: Instant, speed: Speed) -> Self {
@@ -317,7 +326,12 @@ mod tests {
         let speed = Speed::default();
         let open = Reveal::hidden(now).show(now, speed);
         assert!(open.is_open() && open.ends(now).is_some() && !open.is_gone(now));
-        assert_eq!(open.ends(now), Some(now + OPEN));
+        let first = open.progress(now);
+        assert!(
+            first > 0.0 && first < 0.1,
+            "never drawn quite empty: {first}"
+        );
+        assert_eq!(open.ends(now), Some(now + OPEN.mul_f32(1.0 - first)));
         assert_eq!(open.progress(now + OPEN), 1.0);
         assert_eq!(open.ends(now + OPEN), None);
 
