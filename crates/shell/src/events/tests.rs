@@ -603,10 +603,10 @@ fn what_review_found_in_real_calendars() {
 fn a_page_that_isnt_a_calendar_is_refused() {
     let file = std::env::temp_dir().join(format!("apolline-not-ics-{}", std::process::id()));
     std::fs::write(&file, "<html>Sign in to the Wi-Fi</html>").unwrap();
-    assert!(read(file.to_str().unwrap()).is_err());
+    assert!(read(file.to_str().unwrap(), &Tag::default()).is_err());
     std::fs::write(&file, b"BEGIN:VCALENDAR\r\nX:\xff\r\nEND:VCALENDAR\r\n").unwrap();
     assert!(
-        read(file.to_str().unwrap()).is_ok(),
+        read(file.to_str().unwrap(), &Tag::default()).is_ok(),
         "a bad byte isn't the end of it"
     );
     std::fs::remove_file(file).unwrap();
