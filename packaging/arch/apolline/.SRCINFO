@@ -35,6 +35,6 @@ pkgbase = apolline
 	options = !lto
 	backup = etc/pam.d/apolline
 	source = apolline-0.1.0.tar.gz::https://github.com/Pisosenie/apolline/archive/v0.1.0.tar.gz
-	sha256sums = SKIP
+	sha256sums = 46e2c936da9bd48e3baf8f27af960cc6dec377d551baf6b4144e2b85db822015
 
 pkgname = apolline
