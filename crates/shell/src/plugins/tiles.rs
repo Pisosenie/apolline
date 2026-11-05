@@ -141,7 +141,7 @@ async fn read(runs: &Runs, line: &str) -> Option<State> {
         .map_err(|err| eprintln!("apolline: plugin {}: {err}", runs.plugin))
         .ok()?;
     let _group = crate::child::Group::new(child.id());
-    let mut stdout = child.stdout.take()?;
+    let mut stdout = child.stdout.take()?.take(super::OUTPUT);
     let mut out = Vec::new();
     match tokio::time::timeout(STATE_PATIENCE, stdout.read_to_end(&mut out)).await {
         Ok(Ok(_)) => state(&String::from_utf8_lossy(&out)),

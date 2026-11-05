@@ -4,7 +4,7 @@ use std::time::Duration;
 use apolline_config::Module;
 use iced::Subscription;
 use iced::futures::{SinkExt, Stream};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 
 use crate::plugins::{Loaded, Runs};
 use crate::shell::Message;
@@ -16,6 +16,9 @@ const LONGEST_TIP: usize = 120;
 pub const SCROLL_GAP: Duration = Duration::from_millis(150);
 // Long enough for a quick command like pactl to be done before the module looks again.
 pub const RERUN_AFTER: Duration = Duration::from_millis(250);
+// The most of one line of a command's output that's kept, so one that never ends a line can't
+// fill memory.
+pub const LINE: usize = 16 * 1024;
 
 // What a module's last line says: plain text, or Waybar's JSON with a tooltip and a class.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -80,8 +83,8 @@ fn run_one((index, module, _, plugin): &Run) -> impl Stream<Item = Message> + us
                 Ok(mut child) => {
                     let mut group = crate::child::Group::new(child.id());
                     if let Some(stdout) = child.stdout.take() {
-                        let mut lines = BufReader::new(stdout).lines();
-                        while let Ok(Some(line)) = lines.next_line().await {
+                        let mut lines = BufReader::new(stdout);
+                        while let Some(line) = next_line(&mut lines).await {
                             if output
                                 .send(Message::Module(index, said(&line)))
                                 .await
@@ -123,6 +126,27 @@ pub fn in_group(line: &str) -> tokio::process::Command {
 // sh itself. It ends with the command's own status.
 fn grouped(command: &str) -> String {
     format!("trap 'trap - TERM; kill 0' TERM\n{{ {command}\n}} &\nwait $!")
+}
+
+// The next line without its end, at most LINE bytes of it; the rest is read and let go. None once
+// the output ends.
+pub async fn next_line(reader: &mut (impl AsyncBufRead + Unpin)) -> Option<String> {
+    let mut line = Vec::new();
+    loop {
+        let buffer = reader.fill_buf().await.ok()?;
+        if buffer.is_empty() {
+            return (!line.is_empty()).then(|| String::from_utf8_lossy(&line).into_owned());
+        }
+        let end = buffer.iter().position(|b| *b == b'\n');
+        let part = &buffer[..end.unwrap_or(buffer.len())];
+        let room = LINE.saturating_sub(line.len());
+        line.extend_from_slice(&part[..part.len().min(room)]);
+        let used = end.map_or(buffer.len(), |at| at + 1);
+        reader.consume(used);
+        if end.is_some() {
+            return Some(String::from_utf8_lossy(&line).into_owned());
+        }
+    }
 }
 
 pub fn said(line: &str) -> Said {
@@ -215,6 +239,26 @@ pub fn plain(markup: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_without_an_end_is_kept_to_a_limit() {
+        let long = "x".repeat(LINE * 3);
+        let output = format!("{long}\nshort\ntail");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let lines = runtime.block_on(async {
+            let mut reader = output.as_bytes();
+            let mut lines = Vec::new();
+            while let Some(line) = next_line(&mut reader).await {
+                lines.push(line);
+            }
+            lines
+        });
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].len(), LINE);
+        assert_eq!(lines[1..], ["short", "tail"]);
+    }
 
     #[test]
     fn long_lines_are_cut_with_an_ellipsis() {

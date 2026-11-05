@@ -10,6 +10,8 @@ pub mod tiles;
 
 // Plugins are folders with a plugin.toml: yours first, then the ones a package put in.
 const SYSTEM: &str = "/usr/share/apolline/plugins";
+// The most of a command's output that's read, so a runaway one can't fill memory.
+pub const OUTPUT: u64 = 64 * 1024;
 
 pub struct Installed {
     pub plugin: Plugin,

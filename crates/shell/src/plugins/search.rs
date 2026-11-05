@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use apolline_config::Source;
 use iced::futures::future::join_all;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncReadExt, BufReader};
 
 use super::{Loaded, Runs};
 
@@ -127,11 +127,11 @@ async fn ask(runs: &Runs, source: &Source, query: &str) -> Vec<Found> {
     let Some(stdout) = child.stdout.take() else {
         return Vec::new();
     };
-    let mut lines = BufReader::new(stdout).lines();
+    let mut lines = BufReader::new(stdout.take(super::OUTPUT));
     let mut results = Vec::new();
     let read = async {
         while results.len() < EACH
-            && let Ok(Some(line)) = lines.next_line().await
+            && let Some(line) = crate::modules::next_line(&mut lines).await
         {
             results.extend(found(&runs.plugin, &line));
         }
