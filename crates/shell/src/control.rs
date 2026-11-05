@@ -62,11 +62,25 @@ impl Command {
     }
 }
 
+// Never the shared /tmp: another user could take the socket or the lock's guard there first.
 pub fn runtime_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
-        .unwrap_or_else(std::env::temp_dir)
+        .unwrap_or_else(own_dir)
+}
+
+// Where logind makes the runtime dir anyway, private to the user.
+#[cfg(target_os = "linux")]
+fn own_dir() -> PathBuf {
+    // SAFETY: getuid can't fail and touches nothing.
+    PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }))
+}
+
+// The temp dir on a Mac is already one per user.
+#[cfg(not(target_os = "linux"))]
+fn own_dir() -> PathBuf {
+    std::env::temp_dir()
 }
 
 pub fn socket() -> PathBuf {
