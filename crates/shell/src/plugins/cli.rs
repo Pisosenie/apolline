@@ -96,28 +96,29 @@ fn enable(name: &str) -> Result<(), String> {
 
 // Where its parts go, since nothing is placed for you.
 pub fn placing(plugin: &Plugin) -> Vec<String> {
-    let name = &plugin.name;
+    let named = |part: &str| format!("{}.{part}", plugin.name);
+    let fill = crate::i18n::fill;
     let mut lines = Vec::new();
-    for piece in &plugin.bar {
-        let piece = piece.name.as_deref().unwrap_or_default();
-        lines.push(format!(
-            "On the bar: add “{name}.{piece}” to [bar] left, center or right"
+    for piece in plugin.bar.iter().filter_map(|m| m.name.as_deref()) {
+        lines.push(fill(
+            "On the bar: add “{piece}” to [bar] left, center or right",
+            &[("piece", &named(piece))],
         ));
     }
-    for widget in &plugin.widgets {
-        let widget = widget.name.as_deref().unwrap_or_default();
-        lines.push(format!(
-            "On the desktop: add “{name}.{widget}” to [desktop] widgets"
+    for widget in plugin.widgets.iter().filter_map(|m| m.name.as_deref()) {
+        lines.push(fill(
+            "On the desktop: add “{widget}” to [desktop] widgets",
+            &[("widget", &named(widget))],
         ));
     }
     for tile in &plugin.tiles {
-        lines.push(format!(
-            "In quick settings: add “{name}.{}” to [panel] tiles",
-            tile.name
+        lines.push(fill(
+            "In quick settings: add “{tile}” to [panel] tiles",
+            &[("tile", &named(&tile.name))],
         ));
     }
     if !plugin.launchers.is_empty() {
-        lines.push("In the launcher: it answers searches now".into());
+        lines.push(crate::i18n::t("In the launcher: it answers searches now").to_owned());
     }
     lines
 }
