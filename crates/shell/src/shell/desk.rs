@@ -2,13 +2,21 @@ use super::*;
 use iced::widget::column;
 
 impl Shell {
-    pub(super) fn load_thumbs(&self) -> Task<Message> {
+    // The wallpapers the switcher shows, one for each mode and the plain desktop.
+    pub(super) fn wallpapers(&self) -> Vec<String> {
         let mut names: Vec<String> = (0..self.config.modes.len())
             .map(|i| self.config.wallpaper(Some(i)).to_owned())
             .collect();
         names.push(self.config.desktop.wallpaper.clone());
         names.sort();
         names.dedup();
+        names
+    }
+
+    // Thumbnails of wallpapers no longer in use are let go.
+    pub(super) fn load_thumbs(&mut self) -> Task<Message> {
+        let names = self.wallpapers();
+        self.thumbs.retain(|name, _| names.contains(name));
         Task::batch(
             names
                 .into_iter()

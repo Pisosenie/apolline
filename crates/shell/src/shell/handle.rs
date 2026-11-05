@@ -534,7 +534,8 @@ impl Shell {
                 }
             }
             Message::PolkitCancel => return self.set_overlay(None),
-            Message::Thumb(name, Some(thumb)) => {
+            // One that arrives after its wallpaper went out of use isn't kept.
+            Message::Thumb(name, Some(thumb)) if self.wallpapers().contains(&name) => {
                 self.thumbs.insert(name, thumb);
             }
             Message::SettingsPage(page) => {
