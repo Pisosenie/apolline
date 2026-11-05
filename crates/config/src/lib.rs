@@ -1,4 +1,5 @@
 mod diagnostic;
+mod dock;
 mod edit;
 mod pieces;
 mod read;
@@ -10,6 +11,7 @@ use std::sync::RwLock;
 
 use apolline_theme::{ACCENTS, Palette, Rgba, Scheme, palettes};
 pub use diagnostic::Diagnostic;
+pub use dock::Dock;
 pub use edit::Editor;
 pub use pieces::{Piece, TrayItem};
 pub use theme::Theme;
@@ -27,6 +29,7 @@ pub struct Config {
     pub desktop: Desktop,
     pub layout: Layout,
     pub bar: Bar,
+    pub dock: Dock,
     pub keyboard: Keyboard,
     pub touchpad: Option<Touchpad>,
     pub mouse: Option<Mouse>,
@@ -222,6 +225,8 @@ pub struct Styles {
     pub bar: Surface,
     pub cards: Surface,
     pub osd: Surface,
+    // The dock's glass: its corners and opacity; its size is [dock] size.
+    pub dock: Surface,
     pub grid: bool,
 }
 
@@ -1153,6 +1158,7 @@ impl Default for Config {
                 skip: Vec::new(),
                 per_screen: Vec::new(),
             },
+            dock: Dock::default(),
             keyboard: Keyboard::default(),
             touchpad: None,
             mouse: None,

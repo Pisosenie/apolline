@@ -1,3 +1,5 @@
+mod dock;
+
 use std::ops::{Range, RangeInclusive};
 
 use apolline_theme::Rgba;
@@ -19,12 +21,13 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 25] = [
+const SECTIONS: [&str; 26] = [
     "general",
     "theme",
     "desktop",
     "layout",
     "bar",
+    "dock",
     "keyboard",
     "touchpad",
     "mouse",
@@ -168,6 +171,11 @@ impl Reader<'_> {
                         self.bar(t, config)
                     }
                 }
+                "dock" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.dock(t, &mut config.dock)
+                    }
+                }
                 "keyboard" => {
                     if let Some(t) = self.section(key, value) {
                         self.keyboard(t, &mut config.keyboard)
@@ -212,17 +220,26 @@ impl Reader<'_> {
                                 "notifications" => &mut config.style.cards,
                                 "osd" => &mut config.style.osd,
                                 "bar" => &mut config.style.bar,
+                                "dock" => &mut config.style.dock,
                                 _ => {
                                     self.unknown(
                                         key,
                                         "surface",
-                                        &["launcher", "panel", "bar", "notifications", "osd"],
+                                        &[
+                                            "launcher",
+                                            "panel",
+                                            "bar",
+                                            "dock",
+                                            "notifications",
+                                            "osd",
+                                        ],
                                     );
                                     continue;
                                 }
                             };
                             let launcher = key.get_ref().as_ref() == "launcher";
                             let bar = key.get_ref().as_ref() == "bar";
+                            let dock = key.get_ref().as_ref() == "dock";
                             let Some(table) = self.section(key, value) else {
                                 continue;
                             };
@@ -236,10 +253,16 @@ impl Reader<'_> {
                                         self.style_bar_opacity =
                                             self.fraction(key, value, 0.0..=1.0)
                                     }
+                                    // Glass like the bar's, so it may be as thin.
+                                    "opacity" if dock => {
+                                        surface.opacity = self.fraction(key, value, 0.0..=1.0)
+                                    }
                                     "opacity" => {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
-                                    "size" => surface.size = self.fraction(key, value, 0.8..=1.5),
+                                    "size" if !dock => {
+                                        surface.size = self.fraction(key, value, 0.8..=1.5)
+                                    }
                                     "font" => {
                                         surface.font = self
                                             .string(key, value)
@@ -252,6 +275,8 @@ impl Reader<'_> {
                                         "option",
                                         if launcher {
                                             &["radius", "opacity", "size", "font", "grid"]
+                                        } else if dock {
+                                            &["radius", "opacity", "font"]
                                         } else {
                                             &["radius", "opacity", "size", "font"]
                                         },
