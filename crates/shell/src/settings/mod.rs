@@ -211,7 +211,7 @@ impl Page {
                 "How windows open, move, fade and animate, for all of them or one app."
             }
             Page::Displays => "Resolution, refresh rate, scale and where each screen sits.",
-            Page::Bar => "What the bar at the top shows.",
+            Page::Bar => "Where the bar sits and what it shows.",
             Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
             Page::Keyboard => {
@@ -247,11 +247,13 @@ impl Page {
     fn sections(self) -> &'static [&'static str] {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
-            Page::Themes => &["desktop", "layout", "windows", "bar"],
+            Page::Themes => &[
+                "desktop", "colors", "layout", "windows", "bar", "lock", "style",
+            ],
             Page::Appearance => &["desktop", "colors", "layout", "apps", "style", "launcher"],
             Page::Windows => &["windows"],
-            Page::Displays => &["night"],
-            Page::Bar => &["bar", "clock", "panel"],
+            Page::Displays => &["night", "bar.skip", "bar.screens"],
+            Page::Bar => &["bar", "style.bar", "clock", "panel"],
             Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],

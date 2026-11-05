@@ -307,14 +307,32 @@ impl Editor {
         self.set("desktop", "accent", accent_text(accent));
     }
 
+    // A dotted name picks one part of a table: "style.bar", or "bar.skip" for just that key.
     pub fn sections(&self, names: &[&str]) -> String {
         let mut doc = DocumentMut::new();
-        for name in names {
-            if let Some(found) = self.doc.get(name)
-                && !found.is_array_of_tables()
-            {
-                doc[*name] = found.clone();
+        'names: for name in names {
+            let path: Vec<&str> = name.split('.').collect();
+            let Some(found) = path
+                .iter()
+                .try_fold(self.doc.as_item(), |item, key| item.get(key))
+                .filter(|found| !found.is_array_of_tables())
+            else {
+                continue;
+            };
+            let (last, parents) = path.split_last().expect("split gives at least one part");
+            let mut table = doc.as_table_mut();
+            for parent in parents {
+                let item = table.entry(parent).or_insert_with(|| {
+                    let mut implicit = Table::new();
+                    implicit.set_implicit(true);
+                    Item::Table(implicit)
+                });
+                let Some(inner) = item.as_table_mut() else {
+                    continue 'names;
+                };
+                table = inner;
             }
+            table.insert(last, found.clone());
         }
         doc.to_string()
     }
@@ -585,6 +603,20 @@ mod tests {
         assert_eq!(config.modes.len(), 2);
         assert!(config.modes[1].keep_awake);
         assert_eq!(config.modes[0].open, ["steam"]);
+    }
+
+    #[test]
+    fn sections_can_pick_a_part_of_a_table() {
+        let editor = Editor::parse(
+            "[bar]\nposition = \"left\"\nskip = [\"HDMI-A-1\"]\n\n[style.bar]\nsize = 0.9\n\n[style.launcher]\ngrid = true\n",
+        )
+        .unwrap();
+        assert_eq!(
+            editor
+                .sections(&["style.bar", "bar.skip", "bar.screens"])
+                .trim_start(),
+            "[style.bar]\nsize = 0.9\n\n[bar]\nskip = [\"HDMI-A-1\"]\n"
+        );
     }
 
     #[test]
