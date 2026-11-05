@@ -38,6 +38,7 @@ icons! {
     Briefcase = "briefcase",
     Brush = "paintbrush",
     Calculator = "calculator",
+    Calendar = "calendar",
     Camera = "camera",
     Check = "check",
     ChevronLeft = "chevron-left",

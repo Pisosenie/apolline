@@ -2,6 +2,7 @@ mod appearance;
 mod bar_layout;
 mod catalog;
 mod colors;
+mod desk_widgets;
 mod displays;
 mod file;
 mod find;
@@ -286,6 +287,7 @@ enum Message {
     DesktopAccent(Accent),
     Palette(String),
     DesktopClock(String),
+    DesktopWidget(String, bool),
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,

@@ -238,7 +238,7 @@ impl Settings {
                     switch(self.config.desktop.shuffle, Message::Shuffle, palette),
                 ),
                 padded(palette_picker(&self.config.desktop.palette, palette)),
-                setting(
+                self.with_widgets(setting(
                     "Clock on the desktop",
                     "The time and the date, big, on the wallpaper",
                     iced::widget::pick_list(
@@ -261,7 +261,7 @@ impl Settings {
                     )
                     .text_size(13)
                     .padding([7, 12]),
-                ),
+                )),
                 padded(accent_picker(
                     Some(self.config.desktop.accent),
                     auto_accent(&self.config.desktop.wallpaper),

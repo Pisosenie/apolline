@@ -482,3 +482,23 @@ fn a_battery_time_is_kept_only_while_it_differs() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn desktop_widgets_come_and_go_in_the_order_picked() {
+    let dir = std::env::temp_dir().join(format!("apolline-widgets-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[desktop]\nclock = \"bottom-left\"\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+
+    for (name, on) in [("media", true), ("weather", true), ("media", false)] {
+        let _ = settings.update(Message::DesktopWidget(name.into(), on));
+        let _ = settings.update(Message::Commit);
+    }
+    assert_eq!(settings.config.desktop.widgets, ["weather"]);
+    let _ = settings.update(Message::DesktopWidget("weather".into(), false));
+    let _ = settings.update(Message::Commit);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("widgets"), "{text}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

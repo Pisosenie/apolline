@@ -104,6 +104,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
         diagnostics: Vec::new(),
         start: None,
         placed: Vec::new(),
+        widgets_line: 0,
     };
     for error in &errors {
         let line = error.span().map_or(0, |span| reader.line(span));
@@ -128,6 +129,7 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
         config.mode = None;
     }
     reader.settle_bar(&mut config);
+    reader.settle_widgets(&mut config);
     reader.diagnostics.sort_by_key(|d| d.line);
     (config, reader.diagnostics)
 }
@@ -138,6 +140,8 @@ struct Reader<'s> {
     start: Option<usize>,
     // Names placed on the bar and their lines, checked once [[module]]s are known.
     placed: Vec<(String, usize)>,
+    // Where [desktop] widgets is, checked the same way.
+    widgets_line: usize,
 }
 
 impl Reader<'_> {
@@ -1269,6 +1273,16 @@ impl Reader<'_> {
                         desktop.gtk = Some(v.trim().to_owned()).filter(|v| !v.is_empty())
                     }
                 }
+                "widgets" => {
+                    if let Some(names) = self.strings(key, value) {
+                        self.widgets_line = self.line(value.span());
+                        desktop.widgets = names
+                            .into_iter()
+                            .map(|n| n.trim().to_owned())
+                            .filter(|n| !n.is_empty())
+                            .collect();
+                    }
+                }
                 "clock" => {
                     let mut spots: Vec<(&str, Option<crate::Spot>)> =
                         vec![("off", None), ("center", Some(crate::Spot::Center))];
@@ -1316,6 +1330,7 @@ impl Reader<'_> {
                         "icons",
                         "font",
                         "gtk",
+                        "widgets",
                     ],
                 ),
             }
@@ -1813,6 +1828,28 @@ impl Reader<'_> {
             }
             *zone = kept;
         }
+    }
+
+    // Widgets that name nothing, or that are there twice, come off the desktop.
+    fn settle_widgets(&mut self, config: &mut Config) {
+        let mut known: Vec<&str> = crate::Desktop::WIDGETS.to_vec();
+        known.extend(config.modules.iter().filter_map(|m| m.name.as_deref()));
+        let mut kept: Vec<String> = Vec::new();
+        for name in &config.desktop.widgets {
+            if !known.contains(&name.as_str()) {
+                let hint = match suggest(name, &known) {
+                    Some(close) => format!("did you mean “{close}”?"),
+                    None => format!("known: {}, or the name of a [[module]]", known.join(", ")),
+                };
+                self.diagnostics.push(
+                    Diagnostic::new(self.widgets_line, format!("no widget is called “{name}”"))
+                        .hint(hint),
+                );
+            } else if !kept.contains(name) {
+                kept.push(name.clone());
+            }
+        }
+        config.desktop.widgets = kept;
     }
 
     fn unknown_name(&mut self, value: &Value, name: &str, what: &str, known: &[&str]) {

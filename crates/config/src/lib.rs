@@ -377,6 +377,13 @@ pub struct Desktop {
     pub icons: Option<String>,
     pub font: Option<String>,
     pub gtk: Option<String>,
+    // Lines under the desktop clock: the weather, today's events, what's playing, or a named
+    // [[module]].
+    pub widgets: Vec<String>,
+}
+
+impl Desktop {
+    pub const WIDGETS: [&'static str; 3] = ["weather", "agenda", "media"];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1095,6 +1102,7 @@ impl Default for Config {
             launcher: Launcher::default(),
             theme: None,
             desktop: Desktop {
+                widgets: Vec::new(),
                 clock: None,
                 wallpaper: "fog.jpg".into(),
                 accent: Accent::Auto,
@@ -1339,6 +1347,16 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn desktop_widgets_name_what_there_is() {
+        let (config, problems) = super::Config::parse(
+            "[desktop]\nclock = \"bottom-left\"\nwidgets = [\"weather\", \"agendas\", \"week\", \"media\"]\n\n[[module]]\nname = \"week\"\ncommand = \"date +%V\"\n",
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].message.contains("agendas"), "{problems:?}");
+        assert_eq!(config.desktop.widgets, ["weather", "week", "media"]);
+    }
+
     #[test]
     fn a_module_answers_each_button_and_the_wheel() {
         let (config, problems) = super::Config::parse(

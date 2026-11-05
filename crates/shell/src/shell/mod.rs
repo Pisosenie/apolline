@@ -7,6 +7,7 @@ mod handle_more;
 mod input;
 mod modes;
 mod views;
+mod widgets;
 
 use apolline_theme::{metrics, neutral};
 use std::collections::HashMap;

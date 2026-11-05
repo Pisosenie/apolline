@@ -224,6 +224,7 @@ impl Settings {
                 return self.custom_thumb();
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
+            Message::DesktopWidget(name, on) => self.set_desktop_widget(name, on),
             Message::DesktopClock(label) => {
                 let spot = CLOCK_SPOTS
                     .iter()

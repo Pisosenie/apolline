@@ -191,6 +191,10 @@ impl Shell {
         ]
         .spacing(2)
         .align_x(x);
+        let clock = match self.desktop_widgets(x) {
+            Some(widgets) => column![clock, widgets].spacing(18).align_x(x),
+            None => clock,
+        };
         // Clear of the bar on its side, and of the screen's edges.
         let bar = style::under_bar(&self.config.bar, &self.config.style, 1.0) + 32.0;
         let padding = match self.config.bar.position {
