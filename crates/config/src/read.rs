@@ -217,6 +217,7 @@ impl Reader<'_> {
                                 }
                             };
                             let launcher = key.get_ref().as_ref() == "launcher";
+                            let bar = key.get_ref().as_ref() == "bar";
                             let Some(table) = self.section(key, value) else {
                                 continue;
                             };
@@ -224,6 +225,14 @@ impl Reader<'_> {
                             for (key, value) in table.iter() {
                                 match key.get_ref().as_ref() {
                                     "radius" => surface.radius = self.number(key, value, 0..=40),
+                                    // The bar's glass has always been [bar] opacity.
+                                    "opacity" if bar => self.diagnostics.push(
+                                        Diagnostic::new(
+                                            self.line(key.span()),
+                                            "the bar's opacity isn't a [style.bar] option",
+                                        )
+                                        .hint("set it as [bar] opacity"),
+                                    ),
                                     "opacity" => {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
@@ -240,6 +249,8 @@ impl Reader<'_> {
                                         "option",
                                         if launcher {
                                             &["radius", "opacity", "size", "font", "grid"]
+                                        } else if bar {
+                                            &["radius", "size", "font"]
                                         } else {
                                             &["radius", "opacity", "size", "font"]
                                         },

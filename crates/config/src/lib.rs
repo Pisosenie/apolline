@@ -1481,6 +1481,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_bar_glass_lives_in_bar() {
+        let (config, problems) =
+            parse("[bar]\nopacity = 0.4\n\n[style.bar]\nopacity = 0.9\nradius = 4\n");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(problems[0].hint.as_deref(), Some("set it as [bar] opacity"));
+        assert_eq!(config.bar.opacity, 0.4);
+        assert_eq!(config.style.bar.opacity, None);
+        assert_eq!(config.style.bar.radius, Some(4));
+    }
+
+    #[test]
     fn a_surface_can_have_its_own_font() {
         let (config, problems) = parse("[style.bar]\nfont = \"JetBrains Mono\"\n");
         assert!(problems.is_empty(), "{problems:?}");
