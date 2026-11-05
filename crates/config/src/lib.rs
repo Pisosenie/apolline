@@ -1820,6 +1820,20 @@ mod tests {
     }
 
     #[test]
+    fn punctuation_keys_read_as_niri_names_them() {
+        let (config, diagnostics) = parse(
+            "[shortcuts]\nkeys = \"Mod+/\"\nclipboard = \"Mod+Shift+,\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+[\" = \"foot\", \"Mod+`\" = \"btop\" }\n",
+        );
+        assert_eq!(diagnostics, vec![]);
+        assert_eq!(config.shortcuts.keys, "Mod+Slash");
+        assert_eq!(config.shortcuts.clipboard, "Mod+Shift+Comma");
+        assert_eq!(config.modes[0].keys[0].0, "Mod+BracketLeft");
+        assert_eq!(config.modes[0].keys[1].0, "Mod+Grave");
+        let (_, diagnostics) = parse("[shortcuts]\nkeys = \"Mod+?\"\n");
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn broken_syntax_is_reported_and_the_rest_applies() {
         let (config, diagnostics) = parse("[layout]\ngaps = \nborders = false\n");
         assert!(diagnostics.iter().any(|d| d.line == 2), "{diagnostics:?}");

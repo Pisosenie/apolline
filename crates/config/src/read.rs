@@ -737,8 +737,8 @@ impl Reader<'_> {
             let Some(combo) = self.string(key, value) else {
                 continue;
             };
-            if combo_is_valid(combo) {
-                *shortcuts.get_mut(shortcut) = combo.to_owned();
+            if let Some(combo) = key_combo(combo) {
+                *shortcuts.get_mut(shortcut) = combo;
             } else {
                 self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);
             }
@@ -1623,8 +1623,8 @@ impl Reader<'_> {
             let Some(command) = self.string(combo, command) else {
                 continue;
             };
-            if combo_is_valid(combo.get_ref()) {
-                keys.push((combo.get_ref().to_string(), command.to_owned()));
+            if let Some(written) = key_combo(combo.get_ref()) {
+                keys.push((written, command.to_owned()));
             } else {
                 self.diagnostics.push(
                     Diagnostic::new(
@@ -1904,6 +1904,31 @@ impl Reader<'_> {
             .count()
             + 1
     }
+}
+
+// Punctuation is spelled the way niri spells it, so Mod+/ reads as Mod+Slash.
+fn key_combo(combo: &str) -> Option<String> {
+    let (modifiers, key) = combo.rsplit_once('+').unwrap_or(("", combo));
+    let key = match key {
+        "/" => "Slash",
+        "\\" => "Backslash",
+        "," => "Comma",
+        "." => "Period",
+        ";" => "Semicolon",
+        "'" => "Apostrophe",
+        "[" => "BracketLeft",
+        "]" => "BracketRight",
+        "-" => "Minus",
+        "=" => "Equal",
+        "`" => "Grave",
+        other => other,
+    };
+    let combo = if modifiers.is_empty() {
+        key.to_owned()
+    } else {
+        format!("{modifiers}+{key}")
+    };
+    combo_is_valid(&combo).then_some(combo)
 }
 
 fn combo_is_valid(combo: &str) -> bool {
