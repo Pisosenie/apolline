@@ -266,6 +266,12 @@ impl Page {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Layout(&'static str, &'static str);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModuleField {
+    Name,
+    Every,
+}
+
 impl std::fmt::Display for Layout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}  ·  {}", self.1, self.0)
@@ -321,6 +327,8 @@ enum Message {
     ModuleDraft(String),
     AddModule,
     RemoveModule(usize),
+    ModuleField(usize, ModuleField, String),
+    ModuleFieldDone,
     WeatherDraft(String),
     SetWeather,
     CalendarDraft(String),
@@ -556,6 +564,8 @@ struct Settings {
     pin_query: String,
     app_draft: (&'static str, String),
     module_draft: String,
+    // A module's name or rerun as it's typed, written on Enter.
+    module_field: Option<(usize, ModuleField, String)>,
     weather_draft: Option<String>,
     calendar_draft: String,
     caldav: CalDavForm,
@@ -658,6 +668,7 @@ impl Settings {
             pin_query: String::new(),
             app_draft: ("", String::new()),
             module_draft: String::new(),
+            module_field: None,
             weather_draft: None,
             calendar_draft: String::new(),
             caldav: CalDavForm::default(),

@@ -107,7 +107,7 @@ Updates waiting for the system show on the bar as a count (`updates` in `[bar] r
 
 ## Your own bar modules
 
-Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.
+Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else. Settings → Bar adds a command and sets its `name` and `every`; the rest goes in the file.
 
 ```toml
 [[module]]

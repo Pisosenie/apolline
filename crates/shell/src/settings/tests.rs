@@ -546,3 +546,34 @@ fn idle_sliders_reach_the_hours_the_config_allows() {
     assert_eq!(minutes_at(notch(100)), 105);
     assert_eq!(minutes_at(notch(240)), 240);
 }
+
+#[test]
+fn a_module_takes_a_name_and_a_rerun() {
+    let dir = std::env::temp_dir().join(format!("apolline-module-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[[module]]\ncommand = \"date +%V\"\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let field = |which, draft: &str| Message::ModuleField(0, which, draft.to_owned());
+    let _ = settings.update(field(ModuleField::Every, "3600"));
+    let _ = settings.update(Message::ModuleFieldDone);
+    let _ = settings.update(field(ModuleField::Name, "week"));
+    let _ = settings.update(Message::ModuleFieldDone);
+    let module = &settings.config.modules[0];
+    assert_eq!(
+        (module.name.as_deref(), module.every),
+        (Some("week"), Some(3600))
+    );
+    let right: Vec<&str> = settings.config.bar.right.iter().map(|p| p.name()).collect();
+    let at = right.iter().position(|name| *name == "week");
+    assert_eq!(at.map(|at| right[at + 1]), Some("modules"), "{right:?}");
+
+    let _ = settings.update(field(ModuleField::Name, "wk"));
+    let _ = settings.update(Message::ModuleFieldDone);
+    let _ = settings.update(field(ModuleField::Every, ""));
+    let _ = settings.update(Message::ModuleFieldDone);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("\"wk\", \"modules\""), "{text}");
+    assert!(!text.contains("week") && !text.contains("every"), "{text}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

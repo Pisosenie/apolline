@@ -225,6 +225,20 @@ impl Editor {
         remove_kept(list(self.doc.as_table_mut(), "module"), index, "command");
     }
 
+    pub fn set_module(&mut self, index: usize, key: &str, value: impl Into<Value>) {
+        let modules = list(self.doc.as_table_mut(), "module");
+        if let Some(table) = kept(modules, index, "command").and_then(|at| modules.get_mut(at)) {
+            put(table, key, value.into());
+        }
+    }
+
+    pub fn unset_module(&mut self, index: usize, key: &str) {
+        let modules = list(self.doc.as_table_mut(), "module");
+        if let Some(table) = kept(modules, index, "command").and_then(|at| modules.get_mut(at)) {
+            table.remove(key);
+        }
+    }
+
     pub fn remove_rule(&mut self, index: usize) {
         remove_kept(list(self.doc.as_table_mut(), "rule"), index, "app");
     }
@@ -445,7 +459,14 @@ fn list<'a>(parent: &'a mut Table, key: &str) -> &'a mut ArrayOfTables {
 
 // The reader skips entries without their key, so its n-th entry is the n-th that has one.
 fn remove_kept(tables: &mut ArrayOfTables, index: usize, key: &str) {
-    let at = tables
+    if let Some(at) = kept(tables, index, key) {
+        tables.remove(at);
+    }
+}
+
+// Where the index-th entry the reader keeps (one with `key` written) sits among all of them.
+fn kept(tables: &ArrayOfTables, index: usize, key: &str) -> Option<usize> {
+    tables
         .iter()
         .enumerate()
         .filter(|(_, table)| {
@@ -455,10 +476,7 @@ fn remove_kept(tables: &mut ArrayOfTables, index: usize, key: &str) {
                 .is_some_and(|v| !v.trim().is_empty())
         })
         .nth(index)
-        .map(|(at, _)| at);
-    if let Some(at) = at {
-        tables.remove(at);
-    }
+        .map(|(at, _)| at)
 }
 
 fn table<'a>(parent: &'a mut Table, key: &str) -> &'a mut Table {
@@ -603,6 +621,22 @@ mod tests {
         assert_eq!(config.modes.len(), 2);
         assert!(config.modes[1].keep_awake);
         assert_eq!(config.modes[0].open, ["steam"]);
+    }
+
+    #[test]
+    fn a_module_gets_a_name_and_a_rerun_in_place() {
+        let mut editor =
+            Editor::parse("[[module]]\nname = \"broken\"\n\n[[module]]\ncommand = \"date +%V\"\n")
+                .unwrap();
+        editor.set_module(0, "name", "week");
+        editor.set_module(0, "every", 3600);
+        let (config, _) = Config::parse(&editor.text());
+        assert_eq!(config.modules[0].name.as_deref(), Some("week"));
+        assert_eq!(config.modules[0].every, Some(3600));
+        editor.unset_module(0, "every");
+        let (config, _) = Config::parse(&editor.text());
+        assert_eq!(config.modules[0].every, None);
+        assert!(editor.text().starts_with("[[module]]\nname = \"broken\""));
     }
 
     #[test]
