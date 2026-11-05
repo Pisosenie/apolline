@@ -48,6 +48,7 @@ mod osd;
 mod paint;
 mod panel;
 mod pick;
+mod plugins;
 mod polkit;
 mod popup;
 mod power;

@@ -160,15 +160,31 @@ impl Shell {
 
     // A module's own command for that button or wheel, then the module looks again, as Waybar does.
     pub(super) fn module_act(&self, index: usize, act: crate::modules::Act) -> Task<Message> {
-        let Some(command) = self.config.modules.get(index).and_then(|m| act.command(m)) else {
+        let Some(module) = self.config.modules.get(index) else {
             return Task::none();
         };
+        let Some(command) = act.command(module) else {
+            return Task::none();
+        };
+        let spawned = match crate::plugins::runs(&self.plugins, module.plugin.as_deref()) {
+            Some(runs) => self.plugin_spawn(runs, command),
+            None => self.spawn(command),
+        };
         Task::batch([
-            self.spawn(command),
+            spawned,
             Task::perform(tokio::time::sleep(crate::modules::RERUN_AFTER), move |()| {
                 Message::ModuleRerun(Some(index))
             }),
         ])
+    }
+
+    // A plugin's command runs in its folder and with its settings, so not through niri.
+    pub(super) fn plugin_spawn(&self, runs: &crate::plugins::Runs, command: &str) -> Task<Message> {
+        if self.demo {
+            println!("apolline: would run: {command}");
+            return Task::none();
+        }
+        Task::future(runs.clone().spawn(command.to_owned())).discard()
     }
 
     pub(super) fn spawn(&self, command: &str) -> Task<Message> {

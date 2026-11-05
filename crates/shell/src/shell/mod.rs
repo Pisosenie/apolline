@@ -238,6 +238,8 @@ pub struct Shell {
     rotated: Option<(String, Instant)>,
     picked: String,
     plain: Config,
+    // The enabled plugins, read with the config.
+    plugins: Vec<crate::plugins::Loaded>,
     handed: Vec<(&'static str, Option<String>)>,
     started: Instant,
     system: Option<System>,
@@ -440,6 +442,7 @@ impl Shell {
             armed: None,
             thumbs: HashMap::new(),
             plain: config.clone(),
+            plugins: crate::plugins::load(&config),
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
@@ -599,6 +602,7 @@ impl Shell {
             config.desktop.wallpaper = name.clone();
         }
         self.mode = key.and_then(|key| config.find(&key));
+        self.plugins = crate::plugins::load(&config);
         self.plain = config;
         self.dress();
         if self.config.desktop.icons != icons {
@@ -842,7 +846,7 @@ impl Shell {
             subscription(),
             fading,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
-            crate::modules::subscription(&self.config.modules, &self.module_runs),
+            crate::modules::subscription(&self.config.modules, &self.module_runs, &self.plugins),
             iced::Subscription::run_with(busy, ticks),
             watched,
             clipboard,

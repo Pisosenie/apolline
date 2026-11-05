@@ -4,11 +4,13 @@ use std::time::Duration;
 use iced::futures::StreamExt;
 use zbus::{Connection, ObjectPath, OwnedObjectPath, OwnedVariant, Variant};
 
-// Passwords for CalDAV calendars, kept by the Secret Service: GNOME Keyring, KeePassXC, KWallet.
+// Passwords for CalDAV calendars and plugins' secret settings, kept by the Secret Service: GNOME
+// Keyring, KeePassXC, KWallet.
 
 const NONE: &str = "There's no keyring to keep the password in: start GNOME Keyring, KeePassXC or another Secret Service";
 const SERVICE: &str = "org.freedesktop.secrets";
 const SCHEMA: &str = "org.apolline.CalDav";
+const PLUGIN_SCHEMA: &str = "org.apolline.Plugin";
 // How long the keyring's own window may wait for an answer.
 const PATIENCE: Duration = Duration::from_secs(120);
 
@@ -102,64 +104,51 @@ pub async fn here() -> Result<(), String> {
 // Read in the background, so a locked keyring isn't asked to unlock; that waits for Settings.
 pub async fn find(url: &str, user: &str) -> Result<Option<String>, String> {
     let keyring = Keyring::open().await?;
-    let (unlocked, locked) = keyring.search(url, user).await?;
-    if unlocked.is_empty() && !locked.is_empty() {
-        return Err("The keyring is locked; the calendar follows once it's open".into());
-    }
-    let secrets = keyring
-        .service
-        .get_secrets(&unlocked, &keyring.session)
-        .await
-        .map_err(said)?;
-    Ok(unlocked
-        .iter()
-        .find_map(|item| secrets.get(item))
-        .map(|(_, _, value, _)| String::from_utf8_lossy(value).into_owned()))
+    keyring
+        .read(attributes(url, user))
+        .await?
+        .ok_or_else(|| "The keyring is locked; the calendar follows once it's open".into())
 }
 
 pub async fn store(url: &str, user: &str, password: &str) -> Result<(), String> {
-    let keyring = Keyring::open().await?;
-    let collection = keyring.collection().await?;
     let label = format!("Apolline calendar: {user} at {}", crate::events::shown(url));
-    let properties = HashMap::from([
-        ("org.freedesktop.Secret.Item.Label", Variant::from(label)),
-        (
-            "org.freedesktop.Secret.Item.Attributes",
-            Variant::from(attributes(url, user)),
-        ),
-    ]);
-    let secret = (
-        keyring.session.clone(),
-        Vec::new(),
-        password.as_bytes().to_vec(),
-        "text/plain".to_owned(),
-    );
-    let (_, prompt) = CollectionProxy::new(&keyring.connection, collection)
+    Keyring::open()
+        .await?
+        .write(label, attributes(url, user), password)
         .await
-        .map_err(said)?
-        .create_item(properties, &secret, true)
-        .await
-        .map_err(said)?;
-    keyring.prompted(prompt).await.map(drop)
 }
 
 pub async fn forget(url: &str, user: &str) -> Result<(), String> {
+    Keyring::open().await?.remove(attributes(url, user)).await
+}
+
+// A plugin's secret settings by key, those there are; a locked keyring or none gives nothing.
+pub async fn plugin_find(plugin: &str, keys: &[String]) -> Vec<(String, String)> {
+    let Ok(keyring) = Keyring::open().await else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for key in keys {
+        if let Ok(Some(Some(value))) = keyring.read(plugin_attributes(plugin, key)).await {
+            found.push((key.clone(), value));
+        }
+    }
+    found
+}
+
+pub async fn plugin_store(plugin: &str, key: &str, value: &str) -> Result<(), String> {
+    let label = format!("Apolline plugin {plugin}: {key}");
     let keyring = Keyring::open().await?;
-    let (mut items, locked) = keyring.search(url, user).await?;
-    if !locked.is_empty() {
-        keyring.unlock(&locked).await?;
-        items.extend(locked);
-    }
-    for item in items {
-        let prompt = ItemProxy::new(&keyring.connection, item)
-            .await
-            .map_err(said)?
-            .delete()
-            .await
-            .map_err(said)?;
-        keyring.prompted(prompt).await?;
-    }
-    Ok(())
+    keyring
+        .write(label, plugin_attributes(plugin, key), value)
+        .await
+}
+
+pub async fn plugin_forget(plugin: &str, key: &str) -> Result<(), String> {
+    Keyring::open()
+        .await?
+        .remove(plugin_attributes(plugin, key))
+        .await
 }
 
 struct Keyring {
@@ -185,15 +174,80 @@ impl Keyring {
         })
     }
 
+    // The secret under those attributes, or None while the keyring is locked.
+    async fn read(
+        &self,
+        attributes: HashMap<&str, &str>,
+    ) -> Result<Option<Option<String>>, String> {
+        let (unlocked, locked) = self.search(attributes).await?;
+        if unlocked.is_empty() && !locked.is_empty() {
+            return Ok(None);
+        }
+        let secrets = self
+            .service
+            .get_secrets(&unlocked, &self.session)
+            .await
+            .map_err(said)?;
+        Ok(Some(
+            unlocked
+                .iter()
+                .find_map(|item| secrets.get(item))
+                .map(|(_, _, value, _)| String::from_utf8_lossy(value).into_owned()),
+        ))
+    }
+
+    async fn write(
+        &self,
+        label: String,
+        attributes: HashMap<&str, &str>,
+        secret: &str,
+    ) -> Result<(), String> {
+        let collection = self.collection().await?;
+        let properties = HashMap::from([
+            ("org.freedesktop.Secret.Item.Label", Variant::from(label)),
+            (
+                "org.freedesktop.Secret.Item.Attributes",
+                Variant::from(attributes),
+            ),
+        ]);
+        let secret = (
+            self.session.clone(),
+            Vec::new(),
+            secret.as_bytes().to_vec(),
+            "text/plain".to_owned(),
+        );
+        let (_, prompt) = CollectionProxy::new(&self.connection, collection)
+            .await
+            .map_err(said)?
+            .create_item(properties, &secret, true)
+            .await
+            .map_err(said)?;
+        self.prompted(prompt).await.map(drop)
+    }
+
+    async fn remove(&self, attributes: HashMap<&str, &str>) -> Result<(), String> {
+        let (mut items, locked) = self.search(attributes).await?;
+        if !locked.is_empty() {
+            self.unlock(&locked).await?;
+            items.extend(locked);
+        }
+        for item in items {
+            let prompt = ItemProxy::new(&self.connection, item)
+                .await
+                .map_err(said)?
+                .delete()
+                .await
+                .map_err(said)?;
+            self.prompted(prompt).await?;
+        }
+        Ok(())
+    }
+
     async fn search(
         &self,
-        url: &str,
-        user: &str,
+        attributes: HashMap<&str, &str>,
     ) -> Result<(Vec<OwnedObjectPath>, Vec<OwnedObjectPath>), String> {
-        self.service
-            .search_items(attributes(url, user))
-            .await
-            .map_err(said)
+        self.service.search_items(attributes).await.map_err(said)
     }
 
     // The default collection, made if there's none, and unlocked. Either may ask the user.
@@ -249,6 +303,14 @@ impl Keyring {
 
 fn attributes<'a>(url: &'a str, user: &'a str) -> HashMap<&'a str, &'a str> {
     HashMap::from([("xdg:schema", SCHEMA), ("url", url), ("user", user)])
+}
+
+fn plugin_attributes<'a>(plugin: &'a str, key: &'a str) -> HashMap<&'a str, &'a str> {
+    HashMap::from([
+        ("xdg:schema", PLUGIN_SCHEMA),
+        ("plugin", plugin),
+        ("key", key),
+    ])
 }
 
 fn said(err: zbus::Error) -> String {
