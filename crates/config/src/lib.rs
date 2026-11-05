@@ -403,14 +403,33 @@ pub struct Bar {
     pub center: Vec<Piece>,
     pub right: Vec<Piece>,
     pub tray: Vec<TrayItem>,
+    // The screens with a bar, by name; none given is every screen.
+    pub screens: Option<Vec<String>>,
+    // A screen's own pieces from [bar."DP-1"], everything else as on the others.
+    pub per_screen: Vec<(String, Bar)>,
 }
 
 impl Bar {
-    // Whether a piece is placed anywhere on the bar.
+    // Whether a piece is placed anywhere on a bar, any screen's.
     pub fn has(&self, piece: &Piece) -> bool {
         [&self.left, &self.center, &self.right]
             .into_iter()
             .any(|side| side.contains(piece))
+            || self.per_screen.iter().any(|(_, bar)| bar.has(piece))
+    }
+
+    // The bar as a screen has it.
+    pub fn on(&self, output: Option<&str>) -> &Bar {
+        output
+            .and_then(|name| self.per_screen.iter().find(|(screen, _)| screen == name))
+            .map_or(self, |(_, bar)| bar)
+    }
+
+    pub fn shown_on(&self, output: Option<&str>) -> bool {
+        match (&self.screens, output) {
+            (Some(screens), Some(name)) => screens.iter().any(|screen| screen == name),
+            _ => true,
+        }
     }
 }
 
@@ -1108,6 +1127,8 @@ impl Default for Config {
                 center: Piece::center(),
                 right: Piece::right(),
                 tray: TrayItem::all(),
+                screens: None,
+                per_screen: Vec::new(),
             },
             keyboard: Keyboard::default(),
             touchpad: None,

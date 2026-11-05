@@ -299,6 +299,7 @@ enum Message {
     DisplayScale(String, u16),
     DisplayTurn(String, &'static str),
     DisplayVrr(String, bool),
+    DisplayBar(String, bool),
     DisplayX(String, String),
     DisplayY(String, String),
     DisplayMove(String),

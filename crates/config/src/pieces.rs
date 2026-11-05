@@ -150,6 +150,34 @@ mod tests {
     }
 
     #[test]
+    fn a_screen_can_have_its_own_pieces_or_no_bar() {
+        let (config, problems) = Config::parse(
+            r#"
+[bar]
+screens = ["eDP-1", "DP-1"]
+left = ["workspaces"]
+
+[bar."DP-1"]
+right = ["clock"]
+wrong = 1
+"#,
+        );
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        let bar = &config.bar;
+        assert!(bar.shown_on(Some("eDP-1")) && !bar.shown_on(Some("HDMI-A-1")));
+        assert!(bar.shown_on(None), "without niri there's one bar");
+        let screen = bar.on(Some("DP-1"));
+        assert_eq!(names(&screen.right), ["clock"]);
+        assert_eq!(
+            names(&screen.left),
+            ["workspaces"],
+            "the rest as everywhere"
+        );
+        assert_eq!(names(&bar.on(Some("eDP-1")).right), names(&bar.right));
+        assert!(bar.has(&Piece::Clock));
+    }
+
+    #[test]
     fn pieces_go_where_they_are_named_and_modules_by_their_name() {
         let (config, problems) = Config::parse(
             r#"

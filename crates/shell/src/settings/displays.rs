@@ -241,6 +241,18 @@ impl Settings {
                     .align_y(Alignment::Center),
                 ),
             ];
+            rows.push(setting(
+                "The bar",
+                "Off leaves this screen to its windows and wallpaper",
+                switch(
+                    self.config.bar.shown_on(Some(&name)),
+                    {
+                        let name = name.clone();
+                        move |on| Message::DisplayBar(name.clone(), on)
+                    },
+                    palette,
+                ),
+            ));
             if output.vrr_supported {
                 rows.push(setting(
                     "Variable refresh rate",

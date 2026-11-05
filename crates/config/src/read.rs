@@ -5,8 +5,8 @@ use toml::Spanned;
 use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
-    Accent, Alerts, Appear, Blur, Calendar, Center, Config, Corner, Desktop, Diagnostic, Display,
-    Edge, Idle, IdleTimes, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse,
+    Accent, Alerts, Appear, Bar, Blur, Calendar, Center, Config, Corner, Desktop, Diagnostic,
+    Display, Edge, Idle, IdleTimes, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse,
     Notifications, Piece, Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem,
     Trigger, Width, Windows, Workspaces, slug,
 };
@@ -410,8 +410,20 @@ impl Reader<'_> {
 
     fn bar(&mut self, table: &DeTable, config: &mut Config) {
         let bar = &mut config.bar;
+        let mut screens = Vec::new();
         for (key, value) in table.iter() {
             match key.get_ref().as_ref() {
+                "screens" => {
+                    if let Some(v) = self.strings(key, value) {
+                        bar.screens = Some(v)
+                    }
+                }
+                name if matches!(value.get_ref(), DeValue::Table(_)) => {
+                    if let Some(t) = self.section(key, value) {
+                        let pieces = self.screen_pieces(t);
+                        screens.push((name.to_owned(), pieces));
+                    }
+                }
                 "workspaces" => {
                     if let Some(v) = self.choice(key, value, &WORKSPACES) {
                         bar.workspaces = v
@@ -555,10 +567,52 @@ impl Reader<'_> {
                         "center",
                         "right",
                         "tray",
+                        "screens",
                     ],
                 ),
             }
         }
+        // Each screen's bar is the common one with its own pieces, so a screen named later
+        // than an option still gets that option.
+        let common = Bar {
+            per_screen: Vec::new(),
+            ..bar.clone()
+        };
+        bar.per_screen = screens
+            .into_iter()
+            .map(|(name, [left, center, right])| {
+                let screen = Bar {
+                    left: left.unwrap_or_else(|| common.left.clone()),
+                    center: center.unwrap_or_else(|| common.center.clone()),
+                    right: right.unwrap_or_else(|| common.right.clone()),
+                    ..common.clone()
+                };
+                (name, screen)
+            })
+            .collect();
+    }
+
+    // left, center and right for one screen, in [bar."DP-1"].
+    fn screen_pieces(&mut self, table: &DeTable) -> [Option<Vec<Piece>>; 3] {
+        let mut sides = [None, None, None];
+        for (key, value) in table.iter() {
+            let side = match key.get_ref().as_ref() {
+                "left" => 0,
+                "center" => 1,
+                "right" => 2,
+                _ => {
+                    self.unknown(key, "option", &["left", "center", "right"]);
+                    continue;
+                }
+            };
+            if let Some(names) = self.strings(key, value) {
+                let line = self.line(value.span());
+                self.placed
+                    .extend(names.iter().map(|name| (name.clone(), line)));
+                sides[side] = Some(names.iter().map(|name| Piece::named(name)).collect());
+            }
+        }
+        sides
     }
 
     fn keyboard(&mut self, table: &DeTable, keyboard: &mut Keyboard) {

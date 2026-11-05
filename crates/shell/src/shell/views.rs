@@ -178,6 +178,11 @@ impl Shell {
 
     // An overlay that opens from the bar keeps a hidden bar out while it's open.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn bar_on(&self, output: Option<&str>) -> bool {
+        self.config.bar.shown_on(output)
+    }
+
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn bar_in_use(&self) -> bool {
         matches!(
             self.overlay,
@@ -212,7 +217,7 @@ impl Shell {
             awake: self.awake,
             now: self.now,
             clock: &self.config.clock,
-            look: &self.config.bar,
+            look: self.config.bar.on(output),
             radius: style::bar_size(&self.config.style).1,
             panel_open: self.overlay == Some(Overlay::Panel),
             apps: &self.apps,

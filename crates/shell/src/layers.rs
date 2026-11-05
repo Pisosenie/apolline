@@ -57,7 +57,8 @@ type Output = Option<String>;
 
 struct Screen {
     wallpaper: window::Id,
-    bar: window::Id,
+    // None on a screen [bar] screens leaves out.
+    bar: Option<window::Id>,
 }
 
 struct Layers {
@@ -164,7 +165,7 @@ impl Layers {
     }
 
     fn is_bar(&self, id: window::Id) -> bool {
-        self.screens.values().any(|screen| screen.bar == id)
+        self.screens.values().any(|screen| screen.bar == Some(id))
     }
 
     // A hidden bar is a clear surface that feels the pointer only along the screen edge. It
@@ -173,7 +174,7 @@ impl Layers {
     fn fit_bars(&mut self) -> Task<Message> {
         let (edge, floating, size, autohide) = self.look;
         let in_use = self.shell.bar_in_use();
-        let bars: Vec<window::Id> = self.screens.values().map(|s| s.bar).collect();
+        let bars: Vec<window::Id> = self.screens.values().filter_map(|s| s.bar).collect();
         self.over.retain(|id, _| bars.contains(id));
         self.out.retain(|id, _| bars.contains(id));
         let thick = (thickness(edge, size) + gap(floating)) as i32;
@@ -261,34 +262,44 @@ impl Layers {
         Task::batch([close, open])
     }
 
+    // Each screen with its wallpaper, and its bar where it has one; a screen whose bar comes or
+    // goes is opened again.
     fn fit_screens(&mut self) -> Task<Message> {
-        let wanted: Vec<Output> = match self.shell.outputs() {
+        let names: Vec<Output> = match self.shell.outputs() {
             None => vec![None],
             Some(names) => names.iter().cloned().map(Some).collect(),
         };
-        let mut have: Vec<Output> = self.screens.keys().cloned().collect();
+        let wanted: Vec<(Output, bool)> = names
+            .into_iter()
+            .map(|output| {
+                let bar = self.shell.bar_on(output.as_deref());
+                (output, bar)
+            })
+            .collect();
+        let mut have: Vec<(Output, bool)> = self
+            .screens
+            .iter()
+            .map(|(output, screen)| (output.clone(), screen.bar.is_some()))
+            .collect();
         let look = self.shell.bar_look();
         let mut tasks = Vec::new();
         if look != self.look {
             self.look = look;
             for (_, screen) in std::mem::take(&mut self.screens) {
-                tasks.push(window::close(screen.wallpaper));
-                tasks.push(window::close(screen.bar));
+                tasks.extend(close_screen(screen));
             }
             have.clear();
         }
         let (added, removed) = diff(&have, &wanted);
 
-        for output in removed {
+        for (output, _) in removed {
             if let Some(screen) = self.screens.remove(&output) {
-                tasks.push(window::close(screen.wallpaper));
-                tasks.push(window::close(screen.bar));
+                tasks.extend(close_screen(screen));
             }
         }
-        for output in added {
-            let (screen, open_screen) = open_screen(&output, look);
-            if look.3 {
-                let bar = screen.bar;
+        for (output, with_bar) in added {
+            let (screen, open_screen) = open_screen(&output, look, with_bar);
+            if let Some(bar) = screen.bar.filter(|_| look.3) {
                 tasks.push(Task::perform(
                     tokio::time::sleep(std::time::Duration::from_millis(300)),
                     move |()| Message::HideBar(bar, SETTLED),
@@ -420,7 +431,7 @@ impl Layers {
             if id == screen.wallpaper {
                 return self.shell.wallpaper(output.as_deref());
             }
-            if id == screen.bar {
+            if Some(id) == screen.bar {
                 if self.out.get(&id) == Some(&false) {
                     return space().into();
                 }
@@ -447,9 +458,7 @@ impl Layers {
     fn scale(&self, id: window::Id) -> f32 {
         match self.overlay {
             Some((overlay, kind)) if overlay == id => self.shell.size_of(kind),
-            _ if self.screens.values().any(|screen| screen.bar == id) => {
-                f32::from(self.look.2) / 100.0
-            }
+            _ if self.is_bar(id) => f32::from(self.look.2) / 100.0,
             _ if self.popups.is_some_and(|(popups, _)| popups == id) => self.popups_place.1,
             _ if self.osd == Some(id) => self.shell.osd_size(),
             _ => 1.0,
@@ -525,9 +534,14 @@ fn bar_margin(edge: Edge, floating: bool) -> (i32, i32, i32, i32) {
 }
 
 // A hidden bar opens as its strip and takes no room from the windows.
+fn close_screen(screen: Screen) -> impl Iterator<Item = Task<Message>> {
+    std::iter::once(window::close(screen.wallpaper)).chain(screen.bar.map(window::close))
+}
+
 fn open_screen(
     output: &Output,
     (edge, floating, size, autohide): (Edge, bool, u16, bool),
+    with_bar: bool,
 ) -> (Screen, Task<Message>) {
     let (extent, margin, zone) = if autohide {
         (
@@ -555,6 +569,13 @@ fn open_screen(
         namespace: Some("apolline-wallpaper".into()),
         ..Default::default()
     });
+    if !with_bar {
+        let screen = Screen {
+            wallpaper,
+            bar: None,
+        };
+        return (screen, open_wallpaper);
+    }
     let (bar, open_bar) = open(NewLayerShellSettings {
         layer: Layer::Top,
         anchor: match edge {
@@ -572,7 +593,10 @@ fn open_screen(
         ..Default::default()
     });
     (
-        Screen { wallpaper, bar },
+        Screen {
+            wallpaper,
+            bar: Some(bar),
+        },
         Task::batch([open_wallpaper, open_bar]),
     )
 }
