@@ -1,72 +1,11 @@
-// Who's listening: the apps recording from a microphone, heard from the sound server as streams
-// come and go rather than asked on a timer.
+// Who's listening: the apps recording from a microphone, read again when the sound server says a
+// recording stream came or went, rather than asked on a timer.
 
-use iced::Subscription;
-use iced::futures::{SinkExt, Stream};
-use tokio::io::{AsyncBufReadExt, BufReader};
-
-use crate::shell::Message;
-
-pub fn subscription() -> Subscription<Message> {
-    Subscription::run(watch)
-}
-
-fn watch() -> impl Stream<Item = Message> {
-    iced::stream::channel(1, async |mut output| {
-        let mut last: Option<Vec<String>> = None;
-        loop {
-            let mut command = tokio::process::Command::new("pactl");
-            command
-                .arg("subscribe")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true);
-            crate::child::tie(command.as_std_mut(), libc::SIGTERM);
-            let mut child = command.spawn().ok();
-            let mut events = child
-                .as_mut()
-                .and_then(|child| child.stdout.take())
-                .map(|out| BufReader::new(out).lines());
-            loop {
-                let now = crate::controls::run("pactl", &["-f", "json", "list", "source-outputs"])
-                    .await
-                    .map(|json| listening(&json))
-                    .unwrap_or_default();
-                if last.as_ref() != Some(&now) {
-                    last = Some(now.clone());
-                    if output.send(Message::Listening(now)).await.is_err() {
-                        return;
-                    }
-                }
-                let changed = match &mut events {
-                    Some(lines) => recording_changed(lines).await,
-                    None => false,
-                };
-                if !changed {
-                    // No pactl or no sound server: look again in a while.
-                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                    break;
-                }
-            }
-        }
-    })
-}
-
-// Waits for a recording stream to come, go or pause, then lets its burst pass.
-async fn recording_changed(
-    lines: &mut tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-) -> bool {
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) if line.contains(" on source-output #") => break,
-            Ok(Some(_)) => {}
-            _ => return false,
-        }
-    }
-    let settle = std::time::Duration::from_millis(150);
-    while let Ok(Ok(Some(_))) = tokio::time::timeout(settle, lines.next_line()).await {}
-    true
+pub async fn read() -> Vec<String> {
+    crate::controls::run("pactl", &["-f", "json", "list", "source-outputs"])
+        .await
+        .map(|json| listening(&json))
+        .unwrap_or_default()
 }
 
 // The apps with a running recording stream, once each. A paused stream isn't listening, and a

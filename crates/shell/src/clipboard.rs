@@ -15,10 +15,20 @@ pub enum Content {
 #[derive(Clone, Debug)]
 pub struct Clip {
     pub content: Content,
+    // An image made small enough for the preview, decoded once.
     pub picture: Option<iced::widget::image::Handle>,
+    // What a search looks through, lowercased once rather than on every frame.
+    pub words: String,
     pub when: Instant,
     pub pinned: bool,
 }
+
+// The preview is about half this wide; this is for a screen at twice the scale.
+const PREVIEW: u32 = 800;
+// The history keeps the newest hundred, and no more than this between them: a few screenshots of
+// a big screen are a lot of memory.
+const KEPT: usize = 100;
+const KEPT_BYTES: usize = 64 << 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -30,18 +40,38 @@ pub enum Kind {
 
 impl Clip {
     pub fn new(content: Content) -> Self {
-        let picture = match &content {
-            Content::Png(bytes) => Some(iced::widget::image::Handle::from_bytes(
-                bytes.as_ref().clone(),
-            )),
-            Content::Text(_) => None,
+        let (picture, words) = match &content {
+            Content::Png(bytes) => (preview(bytes), "image".to_owned()),
+            Content::Text(text) => (None, text.to_lowercase()),
         };
         Self {
             content,
             picture,
+            words,
             when: Instant::now(),
             pinned: false,
         }
+    }
+
+    // The same clip copied again, without decoding it again.
+    pub fn again(&self) -> Self {
+        Self {
+            when: Instant::now(),
+            ..self.clone()
+        }
+    }
+
+    // Roughly what it holds in memory.
+    fn bytes(&self) -> usize {
+        let content = match &self.content {
+            Content::Text(text) => text.len(),
+            Content::Png(bytes) => bytes.len(),
+        };
+        let picture = match &self.picture {
+            Some(iced::widget::image::Handle::Rgba { pixels, .. }) => pixels.len(),
+            _ => 0,
+        };
+        content + picture + self.words.len()
     }
 
     pub fn kind(&self) -> Kind {
@@ -86,6 +116,21 @@ impl Clip {
     }
 }
 
+fn preview(png: &[u8]) -> Option<iced::widget::image::Handle> {
+    let picture = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?;
+    let picture = if picture.width().max(picture.height()) > PREVIEW {
+        picture.thumbnail(PREVIEW, PREVIEW)
+    } else {
+        picture
+    };
+    let picture = picture.to_rgba8();
+    Some(iced::widget::image::Handle::from_rgba(
+        picture.width(),
+        picture.height(),
+        picture.into_raw(),
+    ))
+}
+
 pub fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
     let header = bytes.get(16..24)?;
     let width = u32::from_be_bytes(header[..4].try_into().ok()?);
@@ -100,10 +145,14 @@ pub fn remember(clips: &mut Vec<Clip>, clip: Clip) {
         .is_some_and(|c| c.pinned);
     clips.retain(|c| c.content != clip.content);
     clips.insert(0, Clip { pinned, ..clip });
-    let mut unpinned = 0;
+    let (mut unpinned, mut bytes) = (0, 0);
     clips.retain(|c| {
-        unpinned += usize::from(!c.pinned);
-        c.pinned || unpinned <= 100
+        if c.pinned {
+            return true;
+        }
+        unpinned += 1;
+        bytes += c.bytes();
+        unpinned == 1 || (unpinned <= KEPT && bytes <= KEPT_BYTES)
     });
 }
 
@@ -211,11 +260,11 @@ pub fn copy(content: &Content) {
 
 #[cfg(target_os = "linux")]
 mod wayland {
-    use std::io::{Read, Write};
-    use std::os::fd::AsFd;
+    use std::io::{ErrorKind, Read, Write};
+    use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use iced::futures::channel::mpsc::UnboundedSender;
     use wayland_client::globals::{GlobalListContents, registry_queue_init};
@@ -321,21 +370,89 @@ mod wayland {
         let _ = handle.connection.flush();
     }
 
+    // An app that's slow to hand over what it copied gets two seconds, then the pipe is closed
+    // on it; nothing is left waiting behind.
     fn read(offer: &ExtDataControlOfferV1, mime: &str, connection: &Connection) -> Option<Vec<u8>> {
         let (mut reader, writer) = std::io::pipe().ok()?;
         offer.receive(mime.to_owned(), writer.as_fd());
         drop(writer);
         connection.flush().ok()?;
-        let (done, wait) = std::sync::mpsc::channel();
+        unblock(reader.as_fd()).ok()?;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut bytes = Vec::new();
+        let mut chunk = [0; 64 << 10];
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) if bytes.len() + read <= LIMIT => bytes.extend_from_slice(&chunk[..read]),
+                Ok(_) => return None,
+                Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                    if !ready(reader.as_fd(), libc::POLLIN, deadline) {
+                        return None;
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+        (!bytes.is_empty()).then_some(bytes)
+    }
+
+    // What you copy from the shell is handed over on a thread of its own, and given up on after a
+    // while: an app that never reads it must not hold up the clipboard.
+    fn send(file: std::fs::File, bytes: Arc<Vec<u8>>) {
         std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let read = (&mut reader).take(LIMIT as u64 + 1).read_to_end(&mut bytes);
-            let _ = done.send(read.ok().map(|_| bytes));
+            let deadline = Instant::now() + Duration::from_secs(10);
+            if unblock(file.as_fd()).is_err() {
+                return;
+            }
+            let mut rest = bytes.as_slice();
+            while !rest.is_empty() {
+                match (&file).write(rest) {
+                    Ok(0) => return,
+                    Ok(written) => rest = &rest[written..],
+                    Err(err) if err.kind() == ErrorKind::Interrupted => {}
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                        if !ready(file.as_fd(), libc::POLLOUT, deadline) {
+                            return;
+                        }
+                    }
+                    Err(_) => return,
+                }
+            }
         });
-        wait.recv_timeout(Duration::from_secs(2))
-            .ok()
-            .flatten()
-            .filter(|bytes| !bytes.is_empty() && bytes.len() <= LIMIT)
+    }
+
+    fn unblock(fd: BorrowedFd<'_>) -> std::io::Result<()> {
+        // SAFETY: F_GETFL and F_SETFL only read and set the flags of a descriptor we hold.
+        let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFL) };
+        if flags < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: as above.
+        if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    // Waits for the pipe to be readable or writable, until the deadline.
+    fn ready(fd: BorrowedFd<'_>, events: libc::c_short, deadline: Instant) -> bool {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return false;
+        }
+        let mut poll = libc::pollfd {
+            fd: fd.as_raw_fd(),
+            events,
+            revents: 0,
+        };
+        let millis = left.as_millis().clamp(1, i32::MAX as u128) as i32;
+        // SAFETY: one pollfd that lives through the call.
+        let answered = unsafe { libc::poll(&mut poll, 1, millis) };
+        // A closed pipe counts as ready: the read or write that follows says so.
+        answered > 0
+            || (answered < 0 && std::io::Error::last_os_error().kind() == ErrorKind::Interrupted)
     }
 
     fn take(offer: &ExtDataControlOfferV1, connection: &Connection) -> Option<Content> {
@@ -413,8 +530,7 @@ mod wayland {
         ) {
             match event {
                 ext_data_control_source_v1::Event::Send { fd, .. } => {
-                    let mut file = std::fs::File::from(fd);
-                    let _ = file.write_all(&payload.bytes);
+                    send(std::fs::File::from(fd), payload.bytes.clone());
                 }
                 ext_data_control_source_v1::Event::Cancelled => source.destroy(),
                 _ => {}
@@ -539,5 +655,40 @@ mod tests {
         }
         assert_eq!(clips.iter().filter(|c| !c.pinned).count(), 100);
         assert_eq!(clips.iter().filter(|c| c.pinned).count(), 2);
+    }
+
+    #[test]
+    fn big_clips_crowd_out_old_ones_but_not_pins() {
+        let mut clips = sample();
+        let big = |i: usize| Clip::new(Content::Text(format!("{i}{}", "x".repeat(10 << 20))));
+        for i in 0..8 {
+            remember(&mut clips, big(i));
+        }
+        assert_eq!(clips.iter().filter(|c| c.pinned).count(), 2);
+        let kept: usize = clips.iter().filter(|c| !c.pinned).map(Clip::bytes).sum();
+        assert!(kept <= KEPT_BYTES, "{kept} bytes kept");
+        assert!(
+            clips[0].text().is_some_and(|t| t.starts_with('7')),
+            "the newest stays"
+        );
+    }
+
+    #[test]
+    fn an_image_is_previewed_small_and_found_as_an_image() {
+        let mut png = Vec::new();
+        image::RgbaImage::new(1600, 400)
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let clip = Clip::new(Content::Png(Arc::new(png)));
+        let Some(iced::widget::image::Handle::Rgba { width, height, .. }) = &clip.picture else {
+            panic!("no preview");
+        };
+        assert_eq!((*width, *height), (PREVIEW, 200));
+        assert_eq!(clip.words, "image");
+        assert_eq!(
+            clip.again().picture,
+            clip.picture,
+            "copied again, not decoded again"
+        );
     }
 }

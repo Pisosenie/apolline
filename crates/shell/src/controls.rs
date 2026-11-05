@@ -152,18 +152,64 @@ impl Controls {
     }
 }
 
-// The bar shows only the volume, so with quick settings closed it is read again when the sound
-// server says an output or the default changed; open, they read everything each second. Without
-// a pulse server to listen to, every half minute.
-pub fn volume() -> iced::Subscription<Option<Volume>> {
-    iced::Subscription::run(volumes)
+// What the sound server said changed, a burst at a time.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Heard {
+    // An output or the server's defaults: the volume on the bar.
+    pub output: bool,
+    // A microphone, a sound card or an app's own stream, shown in quick settings.
+    pub other: bool,
+    // An app started or stopped recording.
+    pub recording: bool,
 }
 
-fn volumes() -> impl iced::futures::Stream<Item = Option<Volume>> {
+impl Heard {
+    fn all() -> Self {
+        Self {
+            output: true,
+            other: true,
+            recording: true,
+        }
+    }
+
+    // A line of `pactl subscribe`: "Event 'change' on sink #47".
+    fn with(self, line: &str) -> Self {
+        let on = |what: &str| line.contains(&format!(" on {what}"));
+        Self {
+            output: self.output || on("sink #") || on("server"),
+            other: self.other
+                || on("server")
+                || on("source #")
+                || on("sink-input #")
+                || on("card #"),
+            recording: self.recording || on("source-output #"),
+        }
+    }
+
+    pub fn any(self) -> bool {
+        self != Self::default()
+    }
+
+    pub fn and(self, other: Self) -> Self {
+        Self {
+            output: self.output || other.output,
+            other: self.other || other.other,
+            recording: self.recording || other.recording,
+        }
+    }
+}
+
+// One `pactl subscribe` for the whole shell: the bar's volume, quick settings and who's recording
+// are read again when it says they changed, never on a timer. Without a pulse server to listen
+// to, everything is read every half minute.
+pub fn heard() -> iced::Subscription<Heard> {
+    iced::Subscription::run(listen)
+}
+
+fn listen() -> impl iced::futures::Stream<Item = Heard> {
     use iced::futures::SinkExt;
     use tokio::io::{AsyncBufReadExt, BufReader};
     iced::stream::channel(1, async |mut output| {
-        let mut last = None;
         loop {
             let mut command = Command::new("pactl");
             command
@@ -178,46 +224,44 @@ fn volumes() -> impl iced::futures::Stream<Item = Option<Volume>> {
                 .as_mut()
                 .and_then(|child| child.stdout.take())
                 .map(|out| BufReader::new(out).lines());
-            loop {
-                let now = run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])
-                    .await
-                    .as_deref()
-                    .and_then(parse_volume);
-                if last != Some(now) {
-                    last = Some(now);
-                    if output.send(now).await.is_err() {
-                        return;
-                    }
+            // Everything at first: it may have changed while no one listened.
+            let mut heard = Some(Heard::all());
+            while let Some(now) = heard {
+                if output.send(now).await.is_err() {
+                    return;
                 }
-                let changed = match &mut events {
-                    Some(lines) => sink_changed(lines).await,
-                    None => false,
+                heard = match &mut events {
+                    Some(lines) => burst(lines).await,
+                    None => None,
                 };
-                if !changed {
-                    // No pactl, no pulse server, or it restarted: look again in a while.
-                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                    break;
-                }
             }
+            // No pactl, no pulse server, or it restarted: look again in a while.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         }
     })
 }
 
-// Waits for an event about an output or the server's defaults, then lets its burst pass.
-// False once pactl has nothing more to say.
-async fn sink_changed(
+// Waits for an event worth reading again for, then lets its burst pass. None once pactl has
+// nothing more to say.
+async fn burst(
     lines: &mut tokio::io::Lines<tokio::io::BufReader<tokio::process::ChildStdout>>,
-) -> bool {
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) if line.contains(" on sink #") || line.contains(" on server") => break,
-            Ok(Some(_)) => {}
-            _ => return false,
-        }
+) -> Option<Heard> {
+    let mut heard = Heard::default();
+    while !heard.any() {
+        heard = heard.with(&lines.next_line().await.ok()??);
     }
     let settle = std::time::Duration::from_millis(100);
-    while let Ok(Ok(Some(_))) = tokio::time::timeout(settle, lines.next_line()).await {}
-    true
+    while let Ok(Ok(Some(line))) = tokio::time::timeout(settle, lines.next_line()).await {
+        heard = heard.with(&line);
+    }
+    Some(heard)
+}
+
+pub async fn volume() -> Option<Volume> {
+    run("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"])
+        .await
+        .as_deref()
+        .and_then(parse_volume)
 }
 
 // Wi-Fi and Bluetooth come from their own D-Bus watches, not from here.
@@ -229,13 +273,18 @@ pub async fn read() -> Controls {
         run("wpctl", &["status"]),
     );
     let (outputs, inputs) = status.as_deref().map(parse_devices).unwrap_or_default();
-    let mut streams = Vec::new();
-    for (id, name) in status.as_deref().map(parse_streams).unwrap_or_default() {
-        let volume = run("wpctl", &["get-volume", &id.to_string()]).await;
-        if let Some(volume) = volume.as_deref().and_then(parse_volume) {
-            streams.push(Stream { id, name, volume });
-        }
-    }
+    // Each app's level at once, not one wpctl after another.
+    let streams = status.as_deref().map(parse_streams).unwrap_or_default();
+    let streams =
+        iced::futures::future::join_all(streams.into_iter().map(|(id, name)| async move {
+            let volume = run("wpctl", &["get-volume", &id.to_string()]).await;
+            let volume = volume.as_deref().and_then(parse_volume)?;
+            Some(Stream { id, name, volume })
+        }))
+        .await
+        .into_iter()
+        .flatten()
+        .collect();
     Controls {
         streams,
         mic: mic
@@ -552,6 +601,40 @@ fn parse_brightness(text: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_event_wakes_only_what_shows_it() {
+        let heard = |line: &str| Heard::default().with(line);
+        assert_eq!(
+            heard("Event 'change' on sink #47"),
+            Heard {
+                output: true,
+                ..Heard::default()
+            }
+        );
+        assert_eq!(
+            heard("Event 'new' on sink-input #63"),
+            Heard {
+                other: true,
+                ..Heard::default()
+            }
+        );
+        assert_eq!(
+            heard("Event 'remove' on source-output #12"),
+            Heard {
+                recording: true,
+                ..Heard::default()
+            }
+        );
+        assert!(heard("Event 'change' on server #-1").output);
+        assert!(
+            !heard("Event 'change' on client #88").any(),
+            "an app connecting"
+        );
+        assert!(!heard("Event 'new' on module #31").any());
+        let both = heard("Event 'change' on sink #1").and(heard("Event 'change' on source #2"));
+        assert!(both.output && both.other && !both.recording);
+    }
 
     #[test]
     fn wpctl_status_lists_outputs_and_inputs() {

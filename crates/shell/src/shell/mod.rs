@@ -1,6 +1,7 @@
 use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications, Trigger};
 mod actions;
 mod cards;
+mod config_watch;
 mod desk;
 mod handle;
 mod handle_more;
@@ -118,9 +119,10 @@ pub enum Message {
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
     Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
-    Files(Vec<std::path::PathBuf>),
+    Files(Vec<crate::files::Found>),
     Detail(Option<panel::Detail>),
     Volume(Option<controls::Volume>),
+    Sound(controls::Heard),
     Profiles(Option<crate::profile::Profiles>),
     PickProfile(String),
     ProfileSet(String, Result<(), String>),
@@ -305,6 +307,10 @@ pub struct Shell {
     launcher: Launcher,
     controls: Controls,
     touched: Option<Instant>,
+    // What the sound server said while a slider moved, read once things are quiet.
+    sound_held: Option<controls::Heard>,
+    // The icon theme and the app folders as of the last scan, to scan again only when they change.
+    apps_seen: Option<(Option<String>, Vec<Option<SystemTime>>)>,
     power_menu: bool,
     armed: Option<Power>,
     thumbs: HashMap<String, image::Handle>,
@@ -428,6 +434,8 @@ impl Shell {
                 Controls::default()
             },
             touched: None,
+            sound_held: None,
+            apps_seen: None,
             power_menu: false,
             armed: None,
             thumbs: HashMap::new(),
@@ -483,10 +491,7 @@ impl Shell {
             shell.load_wallpaper(),
             shell.load_thumbs(),
             shell.read_controls(),
-            Task::perform(
-                apps::scan(shell.config.desktop.icons.clone()),
-                Message::Apps,
-            ),
+            shell.scan_apps(),
             welcome,
         ]);
         (shell, load)
@@ -585,6 +590,7 @@ impl Shell {
     fn reload_config(&mut self) -> Task<Message> {
         let (mut config, diagnostics) = Config::load(&self.config_path);
         let key = self.current().map(ModeSettings::key);
+        let icons = self.config.desktop.icons.clone();
         if config.desktop.rotate == 0 || config.desktop.wallpaper != self.picked {
             self.rotated = None;
         }
@@ -595,6 +601,10 @@ impl Shell {
         self.mode = key.and_then(|key| config.find(&key));
         self.plain = config;
         self.dress();
+        if self.config.desktop.icons != icons {
+            let tray = std::mem::take(&mut self.tray);
+            self.tray = crate::tray::draw(tray, &[], self.config.desktop.icons.as_deref());
+        }
         let scheduled = self.night_scheduled();
         if scheduled != self.night.0 {
             self.night = (scheduled, None);
@@ -808,17 +818,11 @@ impl Shell {
             iced::Subscription::none()
         } else {
             iced::Subscription::batch([
-                iced::Subscription::run(watch_config),
+                iced::Subscription::run(config_watch::watch_config),
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
-                // Shown only in the recording piece, so watched only when a bar has it.
-                if self.config.bar.has(&apolline_config::Piece::Recording) {
-                    crate::privacy::subscription()
-                } else {
-                    iced::Subscription::none()
-                },
                 if self.listening_for_words() {
                     iced::time::every(std::time::Duration::from_millis(400))
                         .map(|_| Message::AskPosition)
@@ -826,11 +830,7 @@ impl Shell {
                     iced::Subscription::none()
                 },
                 crate::updates::subscription(self.config.bar.has(&apolline_config::Piece::Updates)),
-                if self.overlay == Some(Overlay::Panel) {
-                    iced::Subscription::none()
-                } else {
-                    controls::volume().map(Message::Volume)
-                },
+                controls::heard().map(Message::Sound),
                 crate::profile::subscription().map(Message::Profiles),
                 crate::wifi::subscription(self.listing(panel::Detail::Wifi)),
                 crate::bluetooth::subscription(self.listing(panel::Detail::Bluetooth)),
@@ -867,24 +867,6 @@ fn ticks(busy: &bool) -> impl iced::futures::Stream<Item = Message> + use<> {
             tokio::time::sleep(Duration::from_millis(wait.max(5))).await;
             if output.send(Message::Tick).await.is_err() {
                 return;
-            }
-        }
-    })
-}
-
-fn watch_config() -> impl iced::futures::Stream<Item = Message> {
-    let path = apolline_config::default_path();
-    iced::stream::channel(1, async move |mut output| {
-        use iced::futures::SinkExt;
-        let mut seen = stamp(&path);
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let now = stamp(&path);
-            if now != seen {
-                seen = now;
-                if output.send(Message::ConfigChanged).await.is_err() {
-                    return;
-                }
             }
         }
     })

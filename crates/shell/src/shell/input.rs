@@ -147,6 +147,9 @@ impl Shell {
         if self.overlay == Some(Overlay::Panel) {
             self.leave_detail();
         }
+        if self.overlay == Some(Overlay::Launcher) {
+            self.launcher.close();
+        }
         self.overlay = overlay;
         self.power_menu = false;
         self.armed = None;
@@ -160,8 +163,7 @@ impl Shell {
                         .set_finds(self.config.launcher.clone(), &self.config.terminal);
                     self.launcher.open()
                 },
-                Task::perform(apps::scan(self.config.desktop.icons.clone()), Message::Apps),
-                Task::perform(crate::files::index(), Message::Files),
+                self.scan_apps(),
             ]),
             Some(Overlay::Panel) => {
                 self.detail = None;
@@ -202,13 +204,31 @@ impl Shell {
         }
     }
 
+    // Apps are read again only when an app folder or the icon theme changed since: a look at a
+    // few folders' times instead of every entry and icon on each launch.
+    pub(super) fn scan_apps(&mut self) -> Task<Message> {
+        let seen = (self.config.desktop.icons.clone(), apps::stamp());
+        if self.apps_seen.as_ref() == Some(&seen) {
+            return Task::none();
+        }
+        let scan = apps::scan(seen.0.clone());
+        self.apps_seen = Some(seen);
+        Task::perform(scan, Message::Apps)
+    }
+
     pub(super) fn search(&mut self, query: String) -> Task<Message> {
         let found = self.launcher.search(query);
-        if self.launcher.wants_rates() {
-            let rates = Task::perform(crate::rates::load(), Message::Rates);
-            return Task::batch([found, rates]);
-        }
-        found
+        let rates = if self.launcher.wants_rates() {
+            Task::perform(crate::rates::load(), Message::Rates)
+        } else {
+            Task::none()
+        };
+        let files = if self.launcher.wants_files() {
+            Task::perform(crate::files::index(), Message::Files)
+        } else {
+            Task::none()
+        };
+        Task::batch([found, rates, files])
     }
 
     pub(super) fn marks_key(

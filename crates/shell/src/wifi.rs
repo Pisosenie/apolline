@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use iced::Subscription;
 use iced::futures::{SinkExt, Stream, StreamExt, future, stream};
 use zbus::fdo::PropertiesProxy;
+use zbus::match_rule::Builder;
 use zbus::names::InterfaceName;
 use zbus::proxy::CacheProperties;
 use zbus::{Connection, ObjectPath, OwnedObjectPath, OwnedVariant, Variant};
@@ -13,6 +14,7 @@ use crate::shell::Message;
 
 const NM: &str = "org.freedesktop.NetworkManager";
 const POINT: &str = "org.freedesktop.NetworkManager.AccessPoint";
+const WIRELESS: &str = "org.freedesktop.NetworkManager.Device.Wireless";
 // NetworkManager turns down scans asked for more often than this.
 const RESCAN: Duration = Duration::from_secs(20);
 
@@ -167,10 +169,10 @@ pub fn subscription(listing: bool) -> Subscription<Message> {
 
 fn watch(listing: bool) -> impl Stream<Item = Message> {
     iced::stream::channel(4, async move |mut output| {
-        let Ok(connection) = Connection::system().await else {
+        let Some(connection) = crate::bus::system().await else {
             return;
         };
-        let Some(mut changes) = crate::bus::changes(&connection, NM).await else {
+        let Some(mut changes) = crate::bus::heard(&connection, rules(listing)).await else {
             return;
         };
         let mut shown = None;
@@ -206,8 +208,23 @@ fn watch(listing: bool) -> impl Stream<Item = Message> {
     })
 }
 
+// The radio, and a device connecting or dropping. Not the Wi-Fi device's own properties, which
+// say its bitrate every few seconds; the network in use only changes with the device's state.
+fn rules(listing: bool) -> Vec<Builder<'static>> {
+    let mut rules = vec![
+        crate::bus::properties(NM, NM),
+        crate::bus::signals(NM, "org.freedesktop.NetworkManager.Device").member("StateChanged"),
+    ];
+    if listing {
+        // Signal strengths and the networks in range, which change all the time.
+        rules.push(crate::bus::properties(NM, POINT));
+        rules.push(crate::bus::properties(NM, WIRELESS));
+    }
+    rules
+}
+
 pub async fn connected() -> Option<String> {
-    let connection = Connection::system().await.ok()?;
+    let connection = crate::bus::system().await?;
     read(&connection, false)
         .await
         .radio
@@ -438,7 +455,7 @@ async fn scan(connection: &Connection) {
 }
 
 pub async fn power(on: bool) -> Result<(), String> {
-    let connection = Connection::system().await.map_err(said)?;
+    let connection = system().await.map_err(said)?;
     ManagerProxy::new(&connection)
         .await
         .map_err(said)?
@@ -458,7 +475,7 @@ pub async fn join(network: Network, password: Option<String>) -> Result<(), Fail
             "This network signs in with a username. Set it up once in nmtui; after that it's here.",
         ));
     }
-    let connection = Connection::system().await.map_err(failed)?;
+    let connection = system().await.map_err(failed)?;
     let (manager, device) = wireless(&connection)
         .await
         .ok_or(Failed::because("There's no Wi-Fi here"))?;
@@ -513,7 +530,7 @@ pub async fn join(network: Network, password: Option<String>) -> Result<(), Fail
 }
 
 pub async fn forget(network: Network) -> Result<(), String> {
-    let connection = Connection::system().await.map_err(said)?;
+    let connection = system().await.map_err(said)?;
     for kept in saved(&connection).await {
         if kept.raw == network.raw {
             delete(&connection, &kept.path).await.map_err(said)?;
@@ -593,6 +610,12 @@ fn why(reason: u32) -> Failed {
         said: said.into(),
         password,
     }
+}
+
+async fn system() -> zbus::Result<Connection> {
+    crate::bus::system()
+        .await
+        .ok_or(zbus::Error::Failure("no system bus".into()))
 }
 
 fn said(err: zbus::Error) -> String {

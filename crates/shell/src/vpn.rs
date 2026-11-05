@@ -70,10 +70,10 @@ pub fn subscription() -> iced::Subscription<Vec<Tunnel>> {
 
 fn watch() -> impl iced::futures::Stream<Item = Vec<Tunnel>> {
     iced::stream::channel(1, async |mut output| {
-        let Ok(connection) = Connection::system().await else {
+        let Some(connection) = crate::bus::system().await else {
             return;
         };
-        let Some(mut changes) = crate::bus::changes(&connection, NM).await else {
+        let Some(mut changes) = crate::bus::heard(&connection, rules()).await else {
             return;
         };
         let mut shown: Option<Vec<Tunnel>> = None;
@@ -90,6 +90,18 @@ fn watch() -> impl iced::futures::Stream<Item = Vec<Tunnel>> {
             }
         }
     })
+}
+
+// Saved connections changing, and connections going up and down: not the stream of strengths
+// and bitrates the rest of NetworkManager sends.
+fn rules() -> [zbus::match_rule::Builder<'static>; 4] {
+    [
+        crate::bus::signals(NM, "org.freedesktop.NetworkManager.Settings"),
+        crate::bus::signals(NM, "org.freedesktop.NetworkManager.Settings.Connection"),
+        crate::bus::properties(NM, NM),
+        crate::bus::signals(NM, "org.freedesktop.NetworkManager.Connection.Active")
+            .member("StateChanged"),
+    ]
 }
 
 async fn read(connection: &Connection) -> Vec<Tunnel> {
@@ -168,7 +180,7 @@ where
 }
 
 pub async fn switch(tunnel: Tunnel, on: bool) -> Result<(), String> {
-    let connection = Connection::system().await.map_err(|e| e.to_string())?;
+    let connection = crate::bus::system().await.ok_or("no system bus")?;
     let manager = ManagerProxy::new(&connection)
         .await
         .map_err(|e| e.to_string())?;

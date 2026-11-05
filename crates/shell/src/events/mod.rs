@@ -154,7 +154,9 @@ fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
         // A source that can't be read keeps what it said last time, and only it is asked
         // again soon, waiting longer after each failure.
         let mut texts: HashMap<Calendar, String> = HashMap::new();
+        let mut tags: HashMap<Calendar, Tag> = HashMap::new();
         let mut heard: HashMap<Calendar, Heard> = HashMap::new();
+        let mut built: Option<NaiveDate> = None;
         let start = Instant::now();
         let mut due: HashMap<Calendar, (Instant, Duration)> = sources
             .iter()
@@ -176,23 +178,30 @@ fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
                 }
                 // All at once, and none longer than a minute: a keyring that asks or a server that
                 // hangs mustn't hold up the rest.
-                let fetched =
-                    iced::futures::future::join_all(ready.into_iter().map(|source| async {
-                        let result =
-                            tokio::time::timeout(Duration::from_secs(60), fetch(source.clone()))
-                                .await
-                                .unwrap_or_else(|_| Err("it didn't answer within a minute".into()));
+                let fetched = iced::futures::future::join_all(ready.into_iter().map(|source| {
+                    let tag = tags.get(&source).cloned().unwrap_or_default();
+                    async {
+                        let fetch = fetch(source.clone(), tag);
+                        let result = tokio::time::timeout(Duration::from_secs(60), fetch)
+                            .await
+                            .unwrap_or_else(|_| Err("it didn't answer within a minute".into()));
                         (source, result)
-                    }))
-                    .await;
+                    }
+                }))
+                .await;
+                let mut changed = false;
                 for (source, result) in fetched {
                     let Some(next) = due.get_mut(&source) else {
                         continue;
                     };
                     let state = heard.entry(source.clone()).or_default();
                     match result {
-                        Ok(text) => {
-                            texts.insert(source, text);
+                        Ok(fetched) => {
+                            if let Fetched::New(text, tag) = fetched {
+                                changed |= texts.get(&source) != Some(&text);
+                                texts.insert(source.clone(), text);
+                                tags.insert(source, tag);
+                            }
                             *next = (Instant::now() + EVERY, RETRY);
                             *state = Heard {
                                 read: Some(Utc::now().timestamp()),
@@ -207,14 +216,21 @@ fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
                     }
                 }
                 tell(&heard);
-                let all: Vec<String> = texts.values().cloned().collect();
-                let built =
-                    tokio::task::spawn_blocking(move || agenda(&all, Local::now().date_naive()))
-                        .await;
-                if let Ok(built) = built
-                    && output.send(Message::Agenda(Arc::new(built))).await.is_err()
-                {
-                    return;
+                // Worked out and sent only when a calendar says something new, or a day passed:
+                // a new agenda redraws every window.
+                let today = Local::now().date_naive();
+                if changed || built != Some(today) {
+                    built = Some(today);
+                    let all: Vec<String> = texts.values().cloned().collect();
+                    let agenda = tokio::task::spawn_blocking(move || agenda(&all, today)).await;
+                    if let Ok(agenda) = agenda
+                        && output
+                            .send(Message::Agenda(Arc::new(agenda)))
+                            .await
+                            .is_err()
+                    {
+                        return;
+                    }
                 }
             }
             let next = due.values().map(|(at, _)| *at).min().unwrap_or(now + EVERY);
@@ -223,12 +239,27 @@ fn watch(sources: &Vec<Calendar>) -> impl Stream<Item = Message> + use<> {
     })
 }
 
-async fn fetch(source: Calendar) -> Result<String, String> {
+// What a server said of the calendar it last sent, to ask next time whether it changed since.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Tag {
+    etag: Option<String>,
+    modified: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+enum Fetched {
+    Same,
+    New(String, Tag),
+}
+
+async fn fetch(source: Calendar, tag: Tag) -> Result<Fetched, String> {
     match source {
-        Calendar::Ics(link) => tokio::task::spawn_blocking(move || read(&link))
+        Calendar::Ics(link) => tokio::task::spawn_blocking(move || read(&link, &tag))
             .await
             .map_err(|err| err.to_string())?,
-        Calendar::CalDav { url, user } => crate::caldav::read(url, user).await,
+        Calendar::CalDav { url, user } => crate::caldav::read(url, user)
+            .await
+            .map(|text| Fetched::New(text, Tag::default())),
     }
 }
 
@@ -369,23 +400,16 @@ pub fn when(summary: &str, wait: Option<i64>) -> String {
 }
 
 // A file, or a subscription link (webcal:// is https://). No accounts, no sign-in.
-fn read(source: &str) -> Result<String, String> {
+fn read(source: &str, tag: &Tag) -> Result<Fetched, String> {
     let link = source
         .strip_prefix("webcal://")
         .map(|rest| format!("https://{rest}"))
         .unwrap_or_else(|| source.to_owned());
-    let bytes = if link.starts_with("https://") {
-        ureq::get(&link)
-            .config()
-            .timeout_global(Some(Duration::from_secs(30)))
-            .build()
-            .call()
-            .map_err(|err| err.to_string())?
-            .body_mut()
-            .with_config()
-            .limit(8 * 1024 * 1024)
-            .read_to_vec()
-            .map_err(|err| err.to_string())?
+    let (bytes, tag) = if link.starts_with("https://") {
+        match download(&link, tag)? {
+            Some(got) => got,
+            None => return Ok(Fetched::Same),
+        }
     } else if link.starts_with("http://") {
         return Err("only https links are read".into());
     } else {
@@ -395,14 +419,55 @@ fn read(source: &str) -> Result<String, String> {
                 .ok_or("no home folder")?,
             None => std::path::PathBuf::from(&link),
         };
-        std::fs::read(&path).map_err(|err| err.to_string())?
+        let bytes = std::fs::read(&path).map_err(|err| err.to_string())?;
+        (bytes, Tag::default())
     };
     let text = unfold_bytes(&bytes);
     // A sign-in page from a café's Wi-Fi is no calendar, and shouldn't replace the last one.
     if !text.contains("BEGIN:VCALENDAR") {
         return Err("this isn't a calendar".into());
     }
-    Ok(text)
+    Ok(Fetched::New(text, tag))
+}
+
+// The calendar, unless the server says it hasn't changed since it was last sent: most feeds
+// change far less often than every ten minutes, and some are megabytes.
+fn download(link: &str, tag: &Tag) -> Result<Option<(Vec<u8>, Tag)>, String> {
+    let mut request = ureq::get(link)
+        .config()
+        .timeout_global(Some(Duration::from_secs(30)))
+        .http_status_as_error(false)
+        .build();
+    if let Some(etag) = &tag.etag {
+        request = request.header("If-None-Match", etag);
+    }
+    if let Some(modified) = &tag.modified {
+        request = request.header("If-Modified-Since", modified);
+    }
+    let mut response = request.call().map_err(|err| err.to_string())?;
+    match response.status().as_u16() {
+        304 => return Ok(None),
+        200 => {}
+        status => return Err(format!("the server said {status}")),
+    }
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
+    let tag = Tag {
+        etag: header("etag"),
+        modified: header("last-modified"),
+    };
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit(8 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|err| err.to_string())?;
+    Ok(Some((bytes, tag)))
 }
 
 // Folds are undone before the bytes become text: a fold may split a letter in two.

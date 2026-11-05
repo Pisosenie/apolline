@@ -11,11 +11,6 @@ impl Shell {
                 }
                 self.ticks += 1;
                 let rung = self.ring_timers();
-                let controls = if self.overlay == Some(Overlay::Panel) {
-                    self.read_controls()
-                } else {
-                    Task::none()
-                };
                 let scheduled = self.night_scheduled();
                 if scheduled != self.night.0 {
                     self.night = (scheduled, None);
@@ -38,7 +33,7 @@ impl Shell {
                 let rotate = self.rotate();
                 let remind = self.remind();
                 self.publish();
-                return Task::batch([self.expire(), controls, triggers, rotate, remind, rung]);
+                return Task::batch([self.expire(), triggers, rotate, remind, rung]);
             }
             Message::CalendarMonth(month) => {
                 self.month = month;
@@ -48,6 +43,7 @@ impl Shell {
             Message::Stats(stats) => self.stats = stats,
             Message::Machine(machine) => self.machine = Some(machine),
             Message::Listening(apps) => self.listening = apps,
+            Message::Sound(heard) => return self.hear_sound(heard),
             Message::CheckUpdates | Message::Control(Command::Updates) => {
                 return Task::perform(crate::updates::check(), Message::Updates);
             }
@@ -317,7 +313,10 @@ impl Shell {
                 }
             }
             Message::OpenPinned(id) => return self.open_pinned(&id),
-            Message::Tray(crate::tray::Event::Items(items)) => self.tray = items,
+            Message::Tray(crate::tray::Event::Items(items)) => {
+                let theme = self.config.desktop.icons.as_deref();
+                self.tray = crate::tray::draw(items, &self.tray, theme);
+            }
             Message::Tunnels(tunnels) => self.tunnels = tunnels,
             Message::Vpn(tunnel, on) => {
                 self.net_note = None;
@@ -396,11 +395,10 @@ impl Shell {
             Message::ClipQuery(query) => return self.picker.search(query),
             Message::ClipCopy(index) => {
                 if let Some(index) = index.or_else(|| self.picker.chosen(&self.clips))
-                    && let Some(clip) = self.clips.get(index)
+                    && let Some(clip) = self.clips.get(index).map(Clip::again)
                 {
-                    let content = clip.content.clone();
-                    clipboard::copy(&content);
-                    clipboard::remember(&mut self.clips, Clip::new(content));
+                    clipboard::copy(&clip.content);
+                    clipboard::remember(&mut self.clips, clip);
                     return self.set_overlay(None);
                 }
             }
@@ -536,7 +534,8 @@ impl Shell {
                 }
             }
             Message::PolkitCancel => return self.set_overlay(None),
-            Message::Thumb(name, Some(thumb)) => {
+            // One that arrives after its wallpaper went out of use isn't kept.
+            Message::Thumb(name, Some(thumb)) if self.wallpapers().contains(&name) => {
                 self.thumbs.insert(name, thumb);
             }
             Message::SettingsPage(page) => {
@@ -554,5 +553,47 @@ impl Shell {
             message => return self.handle_more(message),
         }
         Task::none()
+    }
+
+    // The sound server said something changed: what's shown of it is read again. Open quick
+    // settings show it all; otherwise only the bar's volume is.
+    fn hear_sound(&mut self, heard: controls::Heard) -> Task<Message> {
+        if self.sample() {
+            return Task::none();
+        }
+        let listening = if heard.recording {
+            Task::perform(crate::privacy::read(), Message::Listening)
+        } else {
+            Task::none()
+        };
+        // Nothing heard is the timer below coming due.
+        let timer = !heard.any();
+        let held = self.sound_held.take();
+        let heard = heard.and(held.unwrap_or_default());
+        let quiet = self.touched.map_or(Duration::ZERO, |at| {
+            QUIET_AFTER_TOUCH.saturating_sub(at.elapsed())
+        });
+        // Right after a slider moves, what's read would be thrown away, so it waits; one timer
+        // at a time, however much is said meanwhile.
+        if !quiet.is_zero() && (heard.output || heard.other) {
+            self.sound_held = Some(heard);
+            let later = if held.is_none() || timer {
+                Task::perform(tokio::time::sleep(quiet), |()| {
+                    Message::Sound(controls::Heard::default())
+                })
+            } else {
+                Task::none()
+            };
+            return Task::batch([listening, later]);
+        }
+        let panel = self.overlay == Some(Overlay::Panel);
+        let controls = if panel && (heard.output || heard.other) {
+            self.read_controls()
+        } else if heard.output {
+            Task::perform(controls::volume(), Message::Volume)
+        } else {
+            Task::none()
+        };
+        Task::batch([controls, listening])
     }
 }

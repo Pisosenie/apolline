@@ -65,6 +65,18 @@ pub async fn scan(theme: Option<String>) -> Vec<App> {
     .unwrap_or_default()
 }
 
+// When each app folder last changed: an app installed or removed changes it.
+pub fn stamp() -> Vec<Option<std::time::SystemTime>> {
+    data_dirs()
+        .iter()
+        .map(|dir| {
+            std::fs::metadata(dir.join("applications"))
+                .and_then(|meta| meta.modified())
+                .ok()
+        })
+        .collect()
+}
+
 pub fn sample() -> Vec<App> {
     let app = |name: &str, about: &str, game: bool| App {
         id: name.to_lowercase(),
