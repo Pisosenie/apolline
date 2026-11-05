@@ -105,6 +105,8 @@ pub(crate) fn document(src: &str) -> (Config, Vec<Diagnostic>) {
         start: None,
         placed: Vec::new(),
         widgets_line: 0,
+        style_bar_opacity: None,
+        bar_opacity_set: false,
     };
     for error in &errors {
         let line = error.span().map_or(0, |span| reader.line(span));
@@ -142,6 +144,9 @@ struct Reader<'s> {
     placed: Vec<(String, usize)>,
     // Where [desktop] widgets is, checked the same way.
     widgets_line: usize,
+    // [style.bar] opacity, used when [bar] opacity isn't given.
+    style_bar_opacity: Option<f32>,
+    bar_opacity_set: bool,
 }
 
 impl Reader<'_> {
@@ -225,14 +230,12 @@ impl Reader<'_> {
                             for (key, value) in table.iter() {
                                 match key.get_ref().as_ref() {
                                     "radius" => surface.radius = self.number(key, value, 0..=40),
-                                    // The bar's glass has always been [bar] opacity.
-                                    "opacity" if bar => self.diagnostics.push(
-                                        Diagnostic::new(
-                                            self.line(key.span()),
-                                            "the bar's opacity isn't a [style.bar] option",
-                                        )
-                                        .hint("set it as [bar] opacity"),
-                                    ),
+                                    // The bar's glass is [bar] opacity; this is the same, for
+                                    // themes that wrote it here, and [bar] wins if both are set.
+                                    "opacity" if bar => {
+                                        self.style_bar_opacity =
+                                            self.fraction(key, value, 0.0..=1.0)
+                                    }
                                     "opacity" => {
                                         surface.opacity = self.fraction(key, value, 0.3..=1.0)
                                     }
@@ -250,7 +253,7 @@ impl Reader<'_> {
                                         if launcher {
                                             &["radius", "opacity", "size", "font", "grid"]
                                         } else if bar {
-                                            &["radius", "size", "font"]
+                                            &["radius", "opacity", "size", "font"]
                                         } else {
                                             &["radius", "opacity", "size", "font"]
                                         },
@@ -521,7 +524,8 @@ impl Reader<'_> {
                 }
                 "opacity" => {
                     if let Some(v) = self.fraction(key, value, 0.0..=1.0) {
-                        bar.opacity = v
+                        bar.opacity = v;
+                        self.bar_opacity_set = true;
                     }
                 }
                 "blur" => {
@@ -1791,6 +1795,12 @@ impl Reader<'_> {
 
     // Pieces on the bar that name nothing, or that are there twice, come off it.
     fn settle_bar(&mut self, config: &mut Config) {
+        if let Some(opacity) = self.style_bar_opacity.filter(|_| !self.bar_opacity_set) {
+            config.bar.opacity = opacity;
+            for (_, bar) in &mut config.bar.per_screen {
+                bar.opacity = opacity;
+            }
+        }
         let modules: Vec<String> = config
             .modules
             .iter()
