@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 — 2026-11-05
+
+- **Dock** (`[dock] show = true`, Settings → Bar → Dock): pinned and open apps along any edge, a dot for each window, a count of unread notifications on each app, magnify on hover, a menu with the app's windows, drag to reorder or unpin, hidden until the pointer reaches the edge.
+- **Plugins in any language**: a folder with a `plugin.toml` adds bar pieces, quick-settings tiles, launcher sources, desktop widgets and its own settings (secrets go to the keyring). `apolline plugin install|list|enable|disable|remove`, and Settings → Plugins. An example is in `examples/plugins/ip`.
+- **Motion**: the launcher, quick settings, calendar, clipboard, menus and the OSD fade and slide in and out, cards slide in and close the gap they leave, the workspace pill glides; all of it follows `[windows] animations`, and nothing runs at rest.
+
 ## 0.1.2 — 2026-11-05
 
 - A command too long for the control socket gets its answer instead of a reset, which also makes the test suite pass on Linux.
