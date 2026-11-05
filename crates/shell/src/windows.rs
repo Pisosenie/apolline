@@ -17,10 +17,12 @@ pub fn picture<'a>(
         Some(Picture::Raster(path)) => image(image::Handle::from_path(path))
             .width(size)
             .height(size)
+            .opacity(style::fade())
             .into(),
         Some(Picture::Vector(path)) => svg(svg::Handle::from_path(path))
             .width(size)
             .height(size)
+            .opacity(style::fade())
             .into(),
         None => {
             let letter = app_id

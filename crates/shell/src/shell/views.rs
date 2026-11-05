@@ -26,17 +26,14 @@ impl Shell {
         .unwrap_or(1.0)
     }
 
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn overlay(&self) -> Option<Overlay> {
         self.overlay
     }
 
-    pub fn overlay_view(&self) -> Element<'_, Message> {
-        style::within(self.overlay_font(), || self.built_overlay())
-    }
-
     // Quick settings and what opens from the bar take their font; the rest keep the shell's.
     pub(super) fn overlay_font(&self) -> Option<apolline_config::FontName> {
-        match self.overlay {
+        match self.overlay_drawn() {
             Some(Overlay::Launcher) => self.config.style.launcher.font,
             Some(Overlay::Panel | Overlay::Calendar | Overlay::Machine | Overlay::TrayMenu) => {
                 self.config.style.panel.font
@@ -48,7 +45,7 @@ impl Shell {
 
     pub(super) fn built_overlay(&self) -> Element<'_, Message> {
         let palette = self.config.palette(self.mode);
-        match self.overlay {
+        match self.overlay_drawn() {
             Some(Overlay::Switcher) => switcher::view(self.mode, &self.config, &self.thumbs),
             Some(Overlay::Launcher) => self.launcher.view(
                 palette,

@@ -733,12 +733,16 @@ impl Launcher {
         .style(style::surface_as(self.look));
 
         mouse_area(
-            container(opaque(panel))
-                .width(Fill)
-                .height(Fill)
-                .align_x(Alignment::Center)
-                .padding(iced::Padding::new(0.0).top(160.0))
-                .style(style::scrim),
+            container(crate::posed::enter(
+                opaque(panel),
+                apolline_config::Edge::Top,
+                Alignment::Center,
+            ))
+            .width(Fill)
+            .height(Fill)
+            .align_x(Alignment::Center)
+            .padding(iced::Padding::new(0.0).top(160.0))
+            .style(style::scrim),
         )
         .on_press(Message::Overlay(None::<Overlay>))
         .into()
@@ -750,10 +754,12 @@ impl Launcher {
             Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(44)
                 .height(44)
+                .opacity(style::fade())
                 .into(),
             Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
                 .width(44)
                 .height(44)
+                .opacity(style::fade())
                 .into(),
             Pic::App(None, name) => {
                 container(letter(name.as_ref().unwrap_or(&entry.title), palette))
@@ -792,10 +798,12 @@ impl Launcher {
             Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(32)
                 .height(32)
+                .opacity(style::fade())
                 .into(),
             Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
                 .width(32)
                 .height(32)
+                .opacity(style::fade())
                 .into(),
             Pic::App(None, name) => letter(name.as_ref().unwrap_or(&entry.title), palette),
             Pic::Glyph(glyph) => container(text(*glyph).size(22)).center(32).into(),

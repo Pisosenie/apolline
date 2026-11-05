@@ -381,12 +381,16 @@ pub fn view<'a>(
     )
     .style(style::surface);
     mouse_area(
-        container(opaque(panel))
-            .width(Fill)
-            .height(Fill)
-            .align_x(Alignment::Center)
-            .padding(Padding::new(0.0).top(110.0))
-            .style(style::scrim),
+        container(crate::posed::enter(
+            opaque(panel),
+            apolline_config::Edge::Top,
+            Alignment::Center,
+        ))
+        .width(Fill)
+        .height(Fill)
+        .align_x(Alignment::Center)
+        .padding(Padding::new(0.0).top(110.0))
+        .style(style::scrim),
     )
     .on_press(Message::Overlay(None))
     .into()

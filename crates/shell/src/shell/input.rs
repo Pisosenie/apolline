@@ -141,16 +141,11 @@ impl Shell {
         {
             polkit::finish(&dialog.request.cookie, false);
         }
-        if self.overlay == Some(Overlay::Marks) {
-            self.marks = None;
-        }
         if self.overlay == Some(Overlay::Panel) {
             self.leave_detail();
         }
-        if self.overlay == Some(Overlay::Launcher) {
-            self.launcher.close();
-        }
-        self.overlay = overlay;
+        let was = std::mem::replace(&mut self.overlay, overlay);
+        self.turn_overlay(was);
         self.power_menu = false;
         self.armed = None;
         match overlay {

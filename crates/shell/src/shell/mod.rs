@@ -8,6 +8,7 @@ mod handle;
 mod handle_more;
 mod input;
 mod modes;
+mod moving;
 mod plugged;
 mod views;
 mod widgets;
@@ -112,6 +113,8 @@ pub enum Message {
     StopTimer(u64),
     NightLight(bool),
     Frame,
+    // A frame drawn while something on the surfaces moves.
+    Motion(Instant),
     CalendarMonth(i32),
     CalendarDay(chrono::NaiveDate),
     Stats(crate::stats::Stats),
@@ -354,6 +357,7 @@ pub struct Shell {
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
+    moving: moving::Moving,
 }
 
 impl Shell {
@@ -486,6 +490,7 @@ impl Shell {
             ticks: 0,
             published: None,
             now: Local::now(),
+            moving: moving::Moving::new(Instant::now()),
         };
         shell.report(&diagnostics);
         // What came in before this start is back in quick settings, and written again at the
@@ -657,7 +662,9 @@ impl Shell {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        self.clock(&message);
         let task = self.handle(message);
+        self.settle();
         self.watch_front();
         self.publish();
         self.keep_history();
@@ -835,6 +842,12 @@ impl Shell {
         } else {
             iced::Subscription::none()
         };
+        // Frames only while something on the surfaces moves; nothing at rest.
+        let moving = if self.moving.busy() {
+            iced::window::frames().map(Message::Motion)
+        } else {
+            iced::Subscription::none()
+        };
         // Frames only while the dock's icons grow or shrink; nothing at rest.
         let growing = if self.dock.animating() {
             iced::window::frames().map(|at| Message::Dock(crate::dock::Event::Frame(at)))
@@ -868,6 +881,7 @@ impl Shell {
         iced::Subscription::batch([
             subscription(),
             fading,
+            moving,
             growing,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
             crate::modules::subscription(&self.config.modules, &self.module_runs, &self.plugins),

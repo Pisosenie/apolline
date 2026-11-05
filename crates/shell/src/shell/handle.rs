@@ -433,6 +433,8 @@ impl Shell {
                 }
             }
             Message::Overlay(overlay) => return self.set_overlay(overlay),
+            // The time is taken before every update; a frame brings nothing else.
+            Message::Motion(_) => {}
             Message::Opened if self.overlay == Some(Overlay::Launcher) => {
                 return self.launcher.focus();
             }
