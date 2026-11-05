@@ -479,6 +479,7 @@ impl Shell {
             }
             Message::LockNow => return self.lock(),
             Message::Sleeping if self.config.lock.before_sleep => return self.lock(),
+            Message::Sleeping => crate::logind::may_sleep(),
             _ => {}
         }
         Task::none()

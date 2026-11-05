@@ -1,6 +1,8 @@
+use std::sync::Mutex;
 use std::time::Duration;
 
 use iced::Subscription;
+use iced::futures::channel::oneshot;
 use iced::futures::{SinkExt, Stream, StreamExt};
 use zbus::{Connection, OwnedFd, OwnedObjectPath};
 
@@ -40,6 +42,30 @@ enum Event {
     Sleep(bool),
 }
 
+// The longest a sleep waits for the lock, under logind's own 5 s cap on a delay.
+const LOCK_WAIT: Duration = Duration::from_secs(4);
+
+static SLEEPING: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
+
+// The lock is up, or nothing will lock: the machine may sleep now.
+pub fn may_sleep() {
+    let waiting = SLEEPING
+        .lock()
+        .ok()
+        .and_then(|mut sleeping| sleeping.take());
+    if let Some(waiting) = waiting {
+        let _ = waiting.send(());
+    }
+}
+
+fn wait_for_lock() -> oneshot::Receiver<()> {
+    let (done, wait) = oneshot::channel();
+    if let Ok(mut sleeping) = SLEEPING.lock() {
+        *sleeping = Some(done);
+    }
+    wait
+}
+
 pub fn subscription() -> Subscription<Message> {
     Subscription::run(watch)
 }
@@ -72,8 +98,9 @@ fn watch() -> impl Stream<Item = Message> {
             let sent = match event {
                 Event::Lock => output.send(Message::LockNow).await,
                 Event::Sleep(true) => {
+                    let locked = wait_for_lock();
                     let sent = output.send(Message::Sleeping).await;
-                    tokio::time::sleep(Duration::from_millis(800)).await;
+                    let _ = tokio::time::timeout(LOCK_WAIT, locked).await;
                     delay = None;
                     sent
                 }
@@ -112,4 +139,20 @@ async fn hold(manager: &ManagerProxy<'_>) -> Option<OwnedFd> {
         .inhibit("sleep", "Apolline", "Lock the screen before sleep", "delay")
         .await
         .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lock_coming_up_lets_the_machine_sleep() {
+        let mut locked = wait_for_lock();
+        assert_eq!(locked.try_recv(), Ok(None));
+        may_sleep();
+        assert_eq!(locked.try_recv(), Ok(Some(())));
+        // Nobody waiting, nothing kept for the next sleep.
+        may_sleep();
+        assert!(SLEEPING.lock().unwrap().is_none());
+    }
 }

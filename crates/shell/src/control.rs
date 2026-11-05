@@ -29,6 +29,8 @@ pub enum Command {
     Timer(std::time::Duration, Option<String>),
     StopTimers,
     Nudge(Nudge),
+    // From the lock screen once it's up.
+    Locked,
 }
 
 impl Command {
@@ -44,6 +46,7 @@ impl Command {
             ["terminal"] => Ok(Command::Terminal),
             ["machine"] => Ok(Command::Machine),
             ["updates"] => Ok(Command::Updates),
+            ["locked"] => Ok(Command::Locked),
             ["timer", "stop"] => Ok(Command::StopTimers),
             ["timer", ..] => crate::timers::parse(line)
                 .map(|(length, label)| Command::Timer(length, label))
@@ -218,6 +221,10 @@ fn stream() -> impl Stream<Item = Message> {
                 continue;
             }
             let reply = match Command::parse(&line) {
+                Ok(Command::Locked) => {
+                    crate::logind::may_sleep();
+                    "ok\n".to_owned()
+                }
                 Ok(command) => {
                     if output.send(Message::Control(command)).await.is_err() {
                         return;
@@ -260,6 +267,7 @@ mod tests {
         assert_eq!(Command::parse("  mode   next "), Ok(Command::NextMode));
         assert!(Command::parse("mode").is_err());
         assert_eq!(Command::parse("module"), Ok(Command::Module(None)));
+        assert_eq!(Command::parse("locked\n"), Ok(Command::Locked));
         assert_eq!(
             Command::parse("timer 5m eggs"),
             Ok(Command::Timer(

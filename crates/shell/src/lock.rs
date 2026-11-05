@@ -50,11 +50,20 @@ pub fn run(preview: bool, mode: Option<String>, screenshot: Option<PathBuf>) -> 
 
 #[cfg(target_os = "linux")]
 fn session(mode: Option<String>) -> Result<(), String> {
-    let guard = std::fs::File::create(control::runtime_dir().join("apolline-lock.lock"))
-        .map_err(|err| err.to_string())?;
-    if guard.try_lock().is_err() {
-        return Ok(());
-    }
+    let _guard = match guard(&guard_path()) {
+        Guard::Held(file) => Some(file),
+        Guard::Busy(file) => {
+            // Already locked by us; a sleep waiting on that may go.
+            if is_up(file) {
+                let _ = control::send("locked");
+            }
+            return Ok(());
+        }
+        Guard::Missing(err) => {
+            eprintln!("apolline: no lock guard ({err}), locking anyway");
+            None
+        }
+    };
     let app = iced_sessionlock::application(
         move || Lock::new(false, mode.clone(), None),
         Lock::update,
@@ -73,6 +82,55 @@ fn session(mode: Option<String>) -> Result<(), String> {
 #[cfg(not(target_os = "linux"))]
 fn session(_: Option<String>) -> Result<(), String> {
     Err("locking needs a Wayland session on Linux; try --preview".into())
+}
+
+fn guard_path() -> PathBuf {
+    control::runtime_dir().join("apolline-lock.lock")
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+enum Guard {
+    Held(std::fs::File),
+    // Another lock of ours is running.
+    Busy(std::fs::File),
+    // A guard that can't be had doesn't stop the lock; the compositor refuses a second one anyway.
+    Missing(String),
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn guard(path: &std::path::Path) -> Guard {
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(err) => return Guard::Missing(err.to_string()),
+    };
+    match file.try_lock() {
+        Ok(()) => {
+            // A lock that died leaves its mark behind; this one isn't up yet.
+            let _ = file.set_len(0);
+            Guard::Held(file)
+        }
+        Err(std::fs::TryLockError::WouldBlock) => Guard::Busy(file),
+        Err(std::fs::TryLockError::Error(err)) => Guard::Missing(err.to_string()),
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn is_up(mut file: std::fs::File) -> bool {
+    use std::io::Read;
+    let mut mark = String::new();
+    file.read_to_string(&mut mark).is_ok() && mark == "locked"
+}
+
+// Marks the guard and tells the shell, which keeps the machine awake until the lock is up.
+async fn locked() {
+    let _ = std::fs::write(guard_path(), "locked");
+    let _ = tokio::task::spawn_blocking(|| control::send("locked")).await;
 }
 
 #[cfg_attr(target_os = "linux", iced_sessionlock::to_session_message)]
@@ -129,6 +187,7 @@ struct Lock {
     preview: bool,
     screenshot: Option<PathBuf>,
     shooting: bool,
+    up: bool,
 }
 
 impl Lock {
@@ -186,6 +245,7 @@ impl Lock {
             preview,
             screenshot,
             shooting: false,
+            up: false,
             config,
         };
         let name = lock.config.wallpaper(mode).to_owned();
@@ -227,6 +287,10 @@ impl Lock {
                 if self.ticks.is_multiple_of(15) && !self.preview {
                     return read_network();
                 }
+            }
+            Message::Opened if !self.preview && !self.up => {
+                self.up = true;
+                return Task::batch([focus(FIELD), Task::future(locked()).discard()]);
             }
             Message::Opened => return focus(FIELD),
             Message::Key(keyboard::Event::KeyPressed { key, text, .. }, captured) => {
@@ -889,6 +953,30 @@ mod tests {
         assert_eq!(account(passwd, 1001), Some(("bot".into(), None)));
         assert_eq!(account(passwd, 42), None);
         assert_eq!(initial("danil"), "D");
+    }
+
+    #[test]
+    fn one_lock_at_a_time_and_a_dead_ones_mark_is_cleared() {
+        let dir = std::env::temp_dir().join(format!("apolline-guard-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("apolline-lock.lock");
+        std::fs::write(&path, "locked").unwrap();
+        let Guard::Held(held) = guard(&path) else {
+            panic!("the first lock holds the guard");
+        };
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "");
+        let Guard::Busy(busy) = guard(&path) else {
+            panic!("a second lock finds it busy");
+        };
+        assert!(!is_up(busy));
+        std::fs::write(&path, "locked").unwrap();
+        let Guard::Busy(busy) = guard(&path) else {
+            panic!("still busy");
+        };
+        assert!(is_up(busy));
+        drop(held);
+        assert!(matches!(guard(&dir.join("no/such/dir")), Guard::Missing(_)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
