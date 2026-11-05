@@ -485,10 +485,10 @@ fn quote(text: &str) -> String {
 fn keyboard(keyboard: &Keyboard) -> Option<String> {
     let mut xkb = Vec::new();
     if !keyboard.layouts.is_empty() {
-        xkb.push(format!("layout \"{}\"", keyboard.layouts.join(",")));
+        xkb.push(format!("layout \"{}\"", quote(&keyboard.layouts.join(","))));
     }
     if let Some(switch) = keyboard.switch {
-        xkb.push(format!("options \"{}\"", switch.xkb()));
+        xkb.push(format!("options \"{}\"", quote(switch.xkb())));
     }
     let mut lines = Vec::new();
     if !xkb.is_empty() {
@@ -534,13 +534,13 @@ fn output_lines(display: Option<&apolline_config::Display>) -> Vec<String> {
     let mut lines = Vec::new();
     if let Some(display) = display {
         if let Some(mode) = &display.mode {
-            lines.push(format!("mode \"{mode}\""));
+            lines.push(format!("mode \"{}\"", quote(mode)));
         }
         if let Some(scale) = display.scale {
             lines.push(format!("scale {scale}"));
         }
         if let Some(transform) = &display.transform {
-            lines.push(format!("transform \"{transform}\""));
+            lines.push(format!("transform \"{}\"", quote(transform)));
         }
         if let Some((x, y)) = display.position {
             lines.push(format!("position x={x} y={y}"));
@@ -698,7 +698,7 @@ pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<St
             niri.display()
         ));
     }
-    let include = format!("include \"{}\"", path.display());
+    let include = format!("include \"{}\"", quote(&path.display().to_string()));
     if next.lines().any(|line| line.trim() == include) {
         done.push(format!("{} already includes it", niri.display()));
     } else {
@@ -774,6 +774,27 @@ mod tests {
             mode,
             outputs: &[],
         }
+    }
+
+    #[test]
+    fn every_string_value_is_quoted() {
+        let display = apolline_config::Display {
+            name: "DP-1".into(),
+            mode: Some("1920x1080\" {".into()),
+            scale: None,
+            transform: Some("90\\".into()),
+            position: None,
+            vrr: Some(false),
+        };
+        assert_eq!(
+            output_lines(Some(&display)),
+            ["mode \"1920x1080\\\" {\"", "transform \"90\\\\\""]
+        );
+        let layouts = Keyboard {
+            layouts: vec!["us\"".into()],
+            ..Keyboard::default()
+        };
+        assert!(keyboard(&layouts).unwrap().contains("layout \"us\\\"\""));
     }
 
     #[test]
