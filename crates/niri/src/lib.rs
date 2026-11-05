@@ -375,7 +375,8 @@ impl State {
             .and_then(|w| w.output.as_deref())
     }
 
-    pub fn focused_window(&self) -> Option<&Window> {
+    #[cfg(test)]
+    fn focused_window(&self) -> Option<&Window> {
         self.windows.values().find(|w| w.is_focused)
     }
 
