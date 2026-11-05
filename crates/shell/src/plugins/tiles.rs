@@ -90,13 +90,16 @@ fn watch((key, runs, tile): &(String, Runs, Tile)) -> impl Stream<Item = Message
     })
 }
 
-// Runs the tile's own command to switch it, then reads where it ended up.
+// Runs the tile's own command to switch it, then reads where it ended up; None when the
+// command failed.
 pub async fn switch(runs: Runs, tile: Tile, on: bool) -> Option<State> {
     let command = match on {
         true => tile.on.as_ref().or(tile.toggle.as_ref()),
         false => tile.off.as_ref().or(tile.toggle.as_ref()),
     }?;
-    run(&runs, command, SWITCH_PATIENCE).await;
+    if !switched(&runs, command).await {
+        return None;
+    }
     match &tile.state {
         Some(state) => read(&runs, state).await,
         // With nothing to ask, the tile is what it was last switched to.
@@ -104,24 +107,44 @@ pub async fn switch(runs: Runs, tile: Tile, on: bool) -> Option<State> {
     }
 }
 
-async fn read(runs: &Runs, command: &str) -> Option<State> {
-    state(&run(runs, command, STATE_PATIENCE).await?)
+// Done when the command is: what it prints isn't waited for, so a daemon it starts with `&`
+// doesn't hold the click up, and stays running.
+async fn switched(runs: &Runs, line: &str) -> bool {
+    let Ok(mut child) = runs.command(line).await.spawn() else {
+        eprintln!("apolline: plugin {}: “{line}” didn't start", runs.plugin);
+        return false;
+    };
+    let mut group = crate::child::Group::new(child.id());
+    match tokio::time::timeout(SWITCH_PATIENCE, child.wait()).await {
+        Ok(Ok(status)) => {
+            group.let_go();
+            status.success()
+        }
+        Ok(Err(err)) => {
+            eprintln!("apolline: plugin {}: {err}", runs.plugin);
+            false
+        }
+        Err(_) => {
+            eprintln!("apolline: plugin {}: “{line}” took too long", runs.plugin);
+            false
+        }
+    }
 }
 
-async fn run(runs: &Runs, line: &str, patience: Duration) -> Option<String> {
+// What its state command says, heard out or given up on; then it ends whole, with whatever it
+// started.
+async fn read(runs: &Runs, line: &str) -> Option<State> {
     let mut command = runs.command(line).await;
     command.stdout(Stdio::piped());
     let mut child = command
         .spawn()
         .map_err(|err| eprintln!("apolline: plugin {}: {err}", runs.plugin))
         .ok()?;
-    // Heard out or given up on, it ends whole, with whatever it started.
     let _group = crate::child::Group::new(child.id());
-    let mut out = Vec::new();
     let mut stdout = child.stdout.take()?;
-    let read = stdout.read_to_end(&mut out);
-    match tokio::time::timeout(patience, read).await {
-        Ok(Ok(_)) => Some(String::from_utf8_lossy(&out).into_owned()),
+    let mut out = Vec::new();
+    match tokio::time::timeout(STATE_PATIENCE, stdout.read_to_end(&mut out)).await {
+        Ok(Ok(_)) => state(&String::from_utf8_lossy(&out)),
         Ok(Err(err)) => {
             eprintln!("apolline: plugin {}: {err}", runs.plugin);
             None
@@ -136,6 +159,42 @@ async fn run(runs: &Runs, line: &str, patience: Duration) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_switch_waits_for_its_command_not_for_what_it_left_running() {
+        let runs = Runs {
+            plugin: "t".into(),
+            dir: std::env::temp_dir(),
+            env: Vec::new(),
+            secrets: Vec::new(),
+        };
+        let tile = |toggle: &str| Tile {
+            name: "t".into(),
+            label: "T".into(),
+            icon: None,
+            state: None,
+            on: None,
+            off: None,
+            toggle: Some(toggle.into()),
+            every: None,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let daemon = runtime.block_on(switch(runs.clone(), tile("sleep 3 &"), true));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(
+            daemon,
+            Some(State {
+                on: true,
+                detail: None
+            })
+        );
+        let failed = runtime.block_on(switch(runs, tile("exit 3"), true));
+        assert_eq!(failed, None);
+    }
 
     #[test]
     fn a_tile_reads_words_or_json() {
