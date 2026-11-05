@@ -114,6 +114,30 @@ impl Settings {
                     note("Modes with “keep the screen awake” on skip all of this."),
                 ]
             ),
+            {
+                let battery = self.config.idle.on_battery();
+                group(
+                    "On battery",
+                    vec![
+                        setting(
+                            "Lock after",
+                            "",
+                            minutes(battery.lock_after, Message::BatteryLock, palette),
+                        ),
+                        setting(
+                            "Screen off after",
+                            "",
+                            minutes(battery.screen_off_after, Message::BatteryScreen, palette),
+                        ),
+                        setting(
+                            "Sleep after",
+                            "",
+                            minutes(battery.suspend_after, Message::BatterySuspend, palette),
+                        ),
+                        note("Sooner here saves the battery. Set to the same as above, a time follows it."),
+                    ],
+                )
+            },
             group(
                 "Look",
                 vec![

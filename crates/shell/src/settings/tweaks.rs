@@ -286,6 +286,15 @@ impl Settings {
                 self.stage(|e| e.set("idle", "screen_off_after", i64::from(v)))
             }
             Message::IdleSuspend(v) => self.stage(|e| e.set("idle", "suspend_after", i64::from(v))),
+            Message::BatteryLock(v) => {
+                self.on_battery("lock_after", v, self.config.idle.lock_after)
+            }
+            Message::BatteryScreen(v) => {
+                self.on_battery("screen_off_after", v, self.config.idle.screen_off_after)
+            }
+            Message::BatterySuspend(v) => {
+                self.on_battery("suspend_after", v, self.config.idle.suspend_after)
+            }
             Message::GreetPreview => {
                 self.greet_note = None;
                 match crate::greet_look::stage(&self.config) {
@@ -530,5 +539,16 @@ impl Settings {
             _ => {}
         }
         Task::none()
+    }
+}
+
+impl Settings {
+    // A time for battery alone; the same as plugged in leaves [idle.battery] without it.
+    fn on_battery(&mut self, key: &'static str, minutes: u16, plugged: u16) {
+        if minutes == plugged {
+            self.stage(|e| e.unset_in(&["idle", "battery"], key));
+        } else {
+            self.stage(|e| e.set_in(&["idle", "battery"], key, i64::from(minutes)));
+        }
     }
 }

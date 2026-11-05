@@ -736,7 +736,12 @@ impl Shell {
         let stages = if resting {
             Vec::new()
         } else {
-            idle::stages(&self.config.idle)
+            let on_battery = self.battery().is_some_and(|b| !b.charging);
+            if on_battery {
+                idle::stages(&self.config.idle.on_battery())
+            } else {
+                idle::stages(&self.config.idle)
+            }
         };
         let clipboard = if self.sample() {
             iced::Subscription::none()

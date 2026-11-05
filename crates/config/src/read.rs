@@ -6,9 +6,9 @@ use toml::de::{DeString, DeTable, DeValue};
 
 use crate::{
     Accent, Alerts, Appear, Blur, Calendar, Center, Config, Corner, Desktop, Diagnostic, Display,
-    Edge, Idle, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse, Notifications, Piece,
-    Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem, Trigger, Width, Windows,
-    Workspaces, slug,
+    Edge, Idle, IdleTimes, Keyboard, Layout, Lock, ModeSettings, Module, Motion, Mouse,
+    Notifications, Piece, Rule, Shortcut, Shortcuts, Switch, TRANSFORMS, Touchpad, TrayItem,
+    Trigger, Width, Windows, Workspaces, slug,
 };
 
 type Key<'i> = Spanned<DeString<'i>>;
@@ -733,30 +733,43 @@ impl Reader<'_> {
     }
 
     fn idle(&mut self, table: &DeTable, idle: &mut Idle) {
+        let times = self.idle_times(table, Some(&mut idle.battery));
+        idle.lock_after = times.lock_after.unwrap_or(idle.lock_after);
+        idle.screen_off_after = times.screen_off_after.unwrap_or(idle.screen_off_after);
+        idle.suspend_after = times.suspend_after.unwrap_or(idle.suspend_after);
+    }
+
+    // The minutes in [idle], and in [idle.battery] when there's a place for them.
+    fn idle_times(&mut self, table: &DeTable, battery: Option<&mut IdleTimes>) -> IdleTimes {
+        let mut times = IdleTimes::default();
+        let mut battery = battery;
         for (key, value) in table.iter() {
-            match key.get_ref().as_ref() {
-                "lock_after" => {
-                    if let Some(v) = self.number(key, value, 0..=240) {
-                        idle.lock_after = v
+            let slot = match key.get_ref().as_ref() {
+                "lock_after" => &mut times.lock_after,
+                "screen_off_after" => &mut times.screen_off_after,
+                "suspend_after" => &mut times.suspend_after,
+                "battery" if battery.is_some() => {
+                    if let (Some(t), Some(battery)) = (self.section(key, value), battery.as_mut()) {
+                        **battery = self.idle_times(t, None);
                     }
+                    continue;
                 }
-                "screen_off_after" => {
-                    if let Some(v) = self.number(key, value, 0..=240) {
-                        idle.screen_off_after = v
-                    }
+                _ => {
+                    let known = ["lock_after", "screen_off_after", "suspend_after", "battery"];
+                    let known = if battery.is_some() {
+                        &known[..]
+                    } else {
+                        &known[..3]
+                    };
+                    self.unknown(key, "option", known);
+                    continue;
                 }
-                "suspend_after" => {
-                    if let Some(v) = self.number(key, value, 0..=240) {
-                        idle.suspend_after = v
-                    }
-                }
-                _ => self.unknown(
-                    key,
-                    "option",
-                    &["lock_after", "screen_off_after", "suspend_after"],
-                ),
+            };
+            if let Some(v) = self.number(key, value, 0..=240) {
+                *slot = Some(v)
             }
         }
+        times
     }
 
     fn alerts(&mut self, table: &DeTable, alerts: &mut Alerts) {

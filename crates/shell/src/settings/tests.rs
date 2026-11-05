@@ -454,3 +454,31 @@ fn quiet_hours_are_kept_when_they_read_as_hours() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_battery_time_is_kept_only_while_it_differs() {
+    let dir = std::env::temp_dir().join(format!("apolline-battery-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[idle]\nsuspend_after = 30\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+
+    let _ = settings.update(Message::BatterySuspend(10));
+    let _ = settings.update(Message::Commit);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("[idle.battery]\nsuspend_after = 10"),
+        "{text}"
+    );
+    assert_eq!(settings.config.idle.on_battery().suspend_after, 10);
+    assert_eq!(settings.config.idle.suspend_after, 30);
+
+    let _ = settings.update(Message::BatterySuspend(30));
+    let _ = settings.update(Message::Commit);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !text.contains("battery"),
+        "back to plugged in, nothing left: {text}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

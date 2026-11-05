@@ -175,6 +175,7 @@ mod tests {
             lock_after: 5,
             screen_off_after: 0,
             suspend_after: 30,
+            battery: apolline_config::IdleTimes::default(),
         };
         assert_eq!(
             stages(&config),

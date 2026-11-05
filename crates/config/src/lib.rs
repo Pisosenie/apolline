@@ -742,6 +742,29 @@ pub struct Idle {
     pub lock_after: u16,
     pub screen_off_after: u16,
     pub suspend_after: u16,
+    // What [idle.battery] says instead while on battery.
+    pub battery: IdleTimes,
+}
+
+// Minutes given in a table; what's left out is someone else's to say.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct IdleTimes {
+    pub lock_after: Option<u16>,
+    pub screen_off_after: Option<u16>,
+    pub suspend_after: Option<u16>,
+}
+
+impl Idle {
+    // The times that hold on battery: [idle.battery]'s where it has them, the usual ones else.
+    pub fn on_battery(self) -> Idle {
+        let battery = self.battery;
+        Idle {
+            lock_after: battery.lock_after.unwrap_or(self.lock_after),
+            screen_off_after: battery.screen_off_after.unwrap_or(self.screen_off_after),
+            suspend_after: battery.suspend_after.unwrap_or(self.suspend_after),
+            battery,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1117,6 +1140,7 @@ impl Default for Config {
                 lock_after: 5,
                 screen_off_after: 10,
                 suspend_after: 0,
+                battery: IdleTimes::default(),
             },
             apps: Apps { colors: false },
             terminal: "vif".into(),
@@ -1580,6 +1604,18 @@ mod tests {
             .collect();
         assert_eq!(hints[0], (1, Some("did you mean “layout”?".into())));
         assert_eq!(hints[1], (6, Some("did you mean “wallpaper”?".into())));
+    }
+
+    #[test]
+    fn battery_times_stand_in_only_where_given() {
+        let (config, problems) = Config::parse(
+            "[idle]\nlock_after = 5\nsuspend_after = 30\n\n[idle.battery]\nsuspend_after = 10\nscreen = 1\n",
+        );
+        assert_eq!(problems.len(), 1, "an unknown key is told: {problems:?}");
+        let battery = config.idle.on_battery();
+        assert_eq!((battery.lock_after, battery.suspend_after), (5, 10));
+        assert_eq!(config.idle.suspend_after, 30);
+        assert_eq!(battery.screen_off_after, config.idle.screen_off_after);
     }
 
     #[test]
