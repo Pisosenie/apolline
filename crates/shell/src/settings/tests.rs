@@ -430,3 +430,27 @@ fn a_sound_is_off_the_themes_or_a_file_of_yours() {
     assert!(!std::fs::read_to_string(&path).unwrap().contains("sound"));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn quiet_hours_are_kept_when_they_read_as_hours() {
+    let dir = std::env::temp_dir().join(format!("apolline-quiet-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::QuietDraft("tonight".into()));
+    let _ = settings.update(Message::QuietSet);
+    assert_eq!(settings.config.alerts.quiet_hours, None);
+    let _ = settings.update(Message::QuietDraft("22:30-7:00".into()));
+    let _ = settings.update(Message::QuietSet);
+    assert_eq!(
+        settings.config.alerts.quiet_hours,
+        Some((22 * 60 + 30, 7 * 60))
+    );
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("quiet_hours = \"22:30-07:00\"")
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

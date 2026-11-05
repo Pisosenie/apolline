@@ -792,6 +792,8 @@ pub struct Alerts {
     pub cards: u16,
     pub width: u16,
     pub sound: Sound,
+    // Do not disturb on its own between these minutes of the day, like 23:00-07:00.
+    pub quiet_hours: Option<(u16, u16)>,
 }
 
 // What a card makes heard when it shows.
@@ -1065,6 +1067,7 @@ impl Default for Config {
                 cards: 3,
                 width: 360,
                 sound: Sound::Off,
+                quiet_hours: None,
             },
             shortcuts: Shortcuts::default(),
             lock: Lock {
@@ -1250,6 +1253,16 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quiet_hours_read_as_minutes_of_the_day() {
+        let (config, problems) =
+            super::Config::parse("[notifications]\nquiet_hours = \"23:00-07:30\"\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(config.alerts.quiet_hours, Some((23 * 60, 7 * 60 + 30)));
+        let (_, problems) = super::Config::parse("[notifications]\nquiet_hours = \"late\"\n");
+        assert_eq!(problems.len(), 1);
+    }
+
     #[test]
     fn cards_come_in_your_number_width_and_sound() {
         let (config, problems) = super::Config::parse(

@@ -778,6 +778,15 @@ impl Reader<'_> {
                         alerts.width = v
                     }
                 }
+                "quiet_hours" => match self.string(key, value).map(crate::Trigger::parse) {
+                    Some(Some(crate::Trigger::Hours { from, until })) => {
+                        alerts.quiet_hours = Some((from, until))
+                    }
+                    Some(_) => {
+                        self.wrong::<()>(key, value, r#"hours like "23:00-07:00""#);
+                    }
+                    None => {}
+                },
                 "sound" => match value.get_ref() {
                     DeValue::Boolean(on) => {
                         alerts.sound = if *on {
@@ -805,6 +814,7 @@ impl Reader<'_> {
                         "cards",
                         "width",
                         "sound",
+                        "quiet_hours",
                     ],
                 ),
             }

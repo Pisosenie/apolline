@@ -71,6 +71,7 @@ impl Settings {
                         value_slider(280..=560, alerts.width, Message::CardWidth, "pt", palette),
                     ),
                     self.sound_row(palette),
+                    self.quiet_row(palette),
                     setting(
                         "Try it",
                         "Sends a notification to whatever shows them",
@@ -344,5 +345,55 @@ impl Settings {
         }
         self.sound_draft = None;
         self.edit(|e| e.set("notifications", "sound", draft.as_str()));
+    }
+}
+
+impl Settings {
+    fn quiet_row(&self, palette: Palette) -> Element<'_, Message> {
+        let set = self
+            .config
+            .alerts
+            .quiet_hours
+            .map(|(from, until)| apolline_config::Trigger::Hours { from, until }.text())
+            .unwrap_or_default();
+        let draft = self.quiet_draft.as_deref().unwrap_or(&set);
+        let wrong = !draft.trim().is_empty()
+            && !matches!(
+                apolline_config::Trigger::parse(draft),
+                Some(apolline_config::Trigger::Hours { .. })
+            );
+        setting(
+            "Quiet hours",
+            "Do not disturb on its own, every day; turning it off in quick settings lasts until they end",
+            text_input("23:00-07:00", draft)
+                .on_input(Message::QuietDraft)
+                .on_submit(Message::QuietSet)
+                .padding([6, 10])
+                .size(13)
+                .width(140)
+                .font(style::mono())
+                .style(move |theme, status| {
+                    if wrong {
+                        style::wrong_field(palette)(theme, status)
+                    } else {
+                        style::field(palette)(theme, status)
+                    }
+                }),
+        )
+    }
+
+    pub(super) fn set_quiet(&mut self) {
+        let Some(draft) = self.quiet_draft.as_ref().map(|d| d.trim().to_owned()) else {
+            return;
+        };
+        if draft.is_empty() {
+            self.quiet_draft = None;
+            self.edit(|e| e.unset("notifications", "quiet_hours"));
+        } else if let Some(hours @ apolline_config::Trigger::Hours { .. }) =
+            apolline_config::Trigger::parse(&draft)
+        {
+            self.quiet_draft = None;
+            self.edit(|e| e.set("notifications", "quiet_hours", hours.text()));
+        }
     }
 }

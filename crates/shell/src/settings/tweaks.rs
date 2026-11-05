@@ -182,6 +182,8 @@ impl Settings {
             Message::SoundKind(kind) => self.set_sound_kind(kind),
             Message::SoundDraft(text) => self.sound_draft = Some(text),
             Message::SoundSet => self.set_sound_file(),
+            Message::QuietDraft(text) => self.quiet_draft = Some(text),
+            Message::QuietSet => self.set_quiet(),
             Message::Test => {
                 self.tested = None;
                 return Task::perform(

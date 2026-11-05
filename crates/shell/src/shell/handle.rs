@@ -23,6 +23,12 @@ impl Shell {
                 if self.quiet_until.is_some_and(|until| until <= self.now) {
                     return Task::batch([self.update(Message::DoNotDisturb(false)), self.expire()]);
                 }
+                // And what the quiet hours held comes out when they end.
+                let quiet = self.quiet();
+                if self.was_quiet && !quiet {
+                    self.release_held();
+                }
+                self.was_quiet = quiet;
                 let triggers = self.triggers();
                 let rotate = self.rotate();
                 let remind = self.remind();

@@ -906,3 +906,5 @@
 "Notification sound" = "Звук уведомлений"
 "Sound theme" = "Звуковая тема"
 "no message sound: pacman -S sound-theme-freedesktop" = "нет звука сообщения: pacman -S sound-theme-freedesktop"
+"Quiet hours" = "Тихие часы"
+"Do not disturb on its own, every day; turning it off in quick settings lasts until they end" = "«Не беспокоить» само, каждый день; выключение в быстрых настройках действует до их конца"

@@ -256,6 +256,9 @@ pub struct Shell {
     opened: Vec<String>,
     // When do not disturb, set for a while, turns itself off.
     quiet_until: Option<DateTime<Local>>,
+    // The quiet hours turned off by hand, until they would have ended.
+    quiet_off_until: Option<DateTime<Local>>,
+    was_quiet: bool,
     // Calendar reminders already shown, by when, what and which alarm, so each comes once.
     reminded: Vec<(
         chrono::NaiveDateTime,
@@ -366,6 +369,8 @@ impl Shell {
             reminders: 0,
             opened: Vec::new(),
             quiet_until: None,
+            quiet_off_until: None,
+            was_quiet: false,
             joining: None,
             net_note: None,
             net_busy: false,

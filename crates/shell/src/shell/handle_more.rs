@@ -402,6 +402,7 @@ impl Shell {
             Message::DoNotDisturb(on) => {
                 if !on {
                     self.quiet_until = None;
+                    self.quiet_off_until = self.quiet_hours_end();
                 }
                 self.plain.alerts.do_not_disturb = on;
                 self.config.alerts.do_not_disturb = on;

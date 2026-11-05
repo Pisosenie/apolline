@@ -2,11 +2,26 @@ use super::*;
 
 impl Shell {
     pub(super) fn rule(&self) -> Notifications {
-        if self.config.alerts.do_not_disturb {
+        if self.quiet() {
             Notifications::Hold
         } else {
             self.config.notifications(self.mode)
         }
+    }
+
+    // Do not disturb, turned on by hand or by the quiet hours.
+    pub(super) fn quiet(&self) -> bool {
+        self.config.alerts.do_not_disturb || self.quiet_hours_end().is_some()
+    }
+
+    // When the quiet hours we're in end; none outside them, or once turned off for tonight.
+    pub(super) fn quiet_hours_end(&self) -> Option<chrono::DateTime<chrono::Local>> {
+        use chrono::Timelike;
+        let (from, until) = self.config.alerts.quiet_hours?;
+        let minute = (self.now.hour() * 60 + self.now.minute()) as u16;
+        let end = self.now + chrono::TimeDelta::minutes(minutes_left(from, until, minute)?);
+        let end = end.with_second(0).unwrap_or(end);
+        (self.quiet_off_until.is_none_or(|off| off < end)).then_some(end)
     }
 
     // The window of the app a notification came from, to bring forward on a click.
@@ -110,5 +125,30 @@ impl Shell {
             self.replying.as_ref().map(|(id, _)| *id),
             usize::from(self.config.alerts.cards),
         )
+    }
+}
+
+// Minutes until quiet hours from..until end, when `minute` of the day falls in them.
+fn minutes_left(from: u16, until: u16, minute: u16) -> Option<i64> {
+    apolline_config::Trigger::covers(from, until, minute)
+        .then(|| (i64::from(until) - i64::from(minute)).rem_euclid(24 * 60))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::minutes_left;
+
+    #[test]
+    fn quiet_hours_run_past_midnight_and_end_on_time() {
+        let (eleven, seven) = (23 * 60, 7 * 60);
+        assert_eq!(minutes_left(eleven, seven, 23 * 60 + 30), Some(7 * 60 + 30));
+        assert_eq!(minutes_left(eleven, seven, 6 * 60), Some(60));
+        assert_eq!(
+            minutes_left(eleven, seven, seven),
+            None,
+            "over at seven sharp"
+        );
+        assert_eq!(minutes_left(eleven, seven, 12 * 60), None);
+        assert_eq!(minutes_left(13 * 60, 14 * 60, 13 * 60 + 15), Some(45));
     }
 }
