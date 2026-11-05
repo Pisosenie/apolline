@@ -124,24 +124,8 @@ impl Shell {
         }
     }
 
-    // At the bottom of the screen the newest card is the one nearest the edge.
     pub fn popups(&self) -> Element<'_, Message> {
         style::within(self.config.style.cards.font, || self.built_popups())
-    }
-
-    pub(super) fn built_popups(&self) -> Element<'_, Message> {
-        let mut cards = self.shown_cards();
-        if self.config.alerts.position.bottom() {
-            cards.reverse();
-        }
-        popup::stack(
-            cards,
-            &self.apps,
-            self.config.palette(self.mode),
-            self.replying.as_ref(),
-            self.config.style.cards,
-            self.config.alerts.width,
-        )
     }
 
     #[cfg(target_os = "linux")]

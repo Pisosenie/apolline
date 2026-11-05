@@ -1,4 +1,5 @@
 use super::*;
+use crate::deck::Deck;
 use crate::motion::{self, MOVE, Pose, Reveal, Speed, Tween};
 use crate::posed;
 
@@ -11,6 +12,7 @@ pub(super) struct Moving {
     // The OSD, and where its level bar is.
     osd: Reveal,
     level: Tween,
+    cards: Deck<Notification>,
 }
 
 impl Moving {
@@ -21,12 +23,16 @@ impl Moving {
             leaving: None,
             osd: Reveal::hidden(now),
             level: Tween::still(0.0, now),
+            cards: Deck::new(popup::GAP as f32),
         }
     }
 
     // Frames come only while this is so; at rest there are none.
     pub(super) fn busy(&self) -> bool {
-        self.overlay.moving(self.now) || self.osd.moving(self.now) || self.level.moving(self.now)
+        self.overlay.moving(self.now)
+            || self.osd.moving(self.now)
+            || self.level.moving(self.now)
+            || self.cards.moving(self.now)
     }
 }
 
@@ -63,6 +69,46 @@ impl Shell {
         if self.moving.osd.is_gone(self.moving.now) {
             self.osd = None;
         }
+        self.follow_cards();
+    }
+
+    // The cards drawn follow the ones that should show.
+    fn follow_cards(&mut self) {
+        let speed = self.speed();
+        let answering = self.replying.as_ref().map(|(id, _)| *id);
+        let shown = popup::shown(
+            self.popups.iter().rev().map(|(n, _)| n),
+            answering,
+            usize::from(self.config.alerts.cards),
+        );
+        let wanted: Vec<(u32, f32, &Notification)> = shown
+            .into_iter()
+            .map(|n| (n.id, popup::card_height(n) as f32, n))
+            .collect();
+        self.moving.cards.follow(&wanted, self.moving.now, speed);
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn popup_height(&self) -> u32 {
+        self.moving.cards.height(self.moving.now).ceil() as u32
+    }
+
+    // At the bottom of the screen the newest card is the one nearest the edge.
+    pub(super) fn built_popups(&self) -> Element<'_, Message> {
+        let corner = self.config.alerts.position;
+        let mut cards = self.moving.cards.placed(self.moving.now, corner);
+        if corner.bottom() {
+            cards.reverse();
+        }
+        popup::stack(
+            cards,
+            corner.bottom(),
+            &self.apps,
+            self.config.palette(self.mode),
+            self.replying.as_ref(),
+            self.config.style.cards,
+            self.config.alerts.width,
+        )
     }
 
     // The overlay changed from `was`: one closed fades out first, one opened comes in, and one

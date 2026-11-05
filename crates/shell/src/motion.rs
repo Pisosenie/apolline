@@ -96,6 +96,16 @@ impl Tween {
         }
     }
 
+    // The lowest and highest it passes through on the way, to leave room for both.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn span(&self, now: Instant) -> (f32, f32) {
+        if self.moving(now) {
+            (self.from.min(self.to), self.from.max(self.to))
+        } else {
+            (self.to, self.to)
+        }
+    }
+
     fn done(&self, now: Instant) -> f32 {
         if self.length.is_zero() {
             return 1.0;
@@ -248,6 +258,8 @@ mod tests {
         assert!(half > 5.0 && half < 10.0, "{half}");
         assert_eq!(tween.value(start + ms(100)), 10.0);
         assert!(!tween.moving(start + ms(100)));
+        assert_eq!(tween.span(start + ms(10)), (0.0, 10.0));
+        assert_eq!(tween.span(start + ms(200)), (10.0, 10.0));
     }
 
     #[test]

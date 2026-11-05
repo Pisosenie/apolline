@@ -14,6 +14,7 @@ mod clipboard;
 mod clips;
 mod control;
 mod controls;
+mod deck;
 mod dock;
 mod dock_menu;
 mod dock_shape;
