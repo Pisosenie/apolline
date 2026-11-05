@@ -719,12 +719,7 @@ pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<St
         fs::copy(niri, &backup)?;
         done.push(format!("saved your niri config as {}", backup.display()));
     }
-    // A config that's a dotfiles link is written through, not swapped for a plain file.
-    if niri.is_symlink() {
-        fs::write(niri, &next)?;
-    } else {
-        replace(niri, &next)?;
-    }
+    replace(niri, &next)?;
     Ok(done)
 }
 
@@ -751,10 +746,9 @@ fn quiet_other_bars(config: &str) -> (String, Vec<usize>) {
     (text, quieted)
 }
 
+// A config that's a dotfiles link is written through, not swapped for a plain file.
 fn replace(path: &Path, text: &str) -> io::Result<()> {
-    let staged = path.with_extension("kdl.new");
-    fs::write(&staged, text)?;
-    fs::rename(&staged, path)
+    crate::templates::put(path, text)
 }
 
 #[cfg(test)]

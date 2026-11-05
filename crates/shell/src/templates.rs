@@ -100,18 +100,23 @@ pub fn write(
     (ran, problems)
 }
 
-// Through a file next to it, so an app reading it never sees half.
-fn put(to: &Path, text: &str) -> std::io::Result<()> {
+// Through a file next to it, so an app reading it never sees half. A dotfiles link is written
+// through to what it points at, and the file keeps its permissions.
+pub fn put(to: &Path, text: &str) -> std::io::Result<()> {
     if let Some(dir) = to.parent() {
         std::fs::create_dir_all(dir)?;
     }
+    let to = std::fs::canonicalize(to).unwrap_or_else(|_| to.to_path_buf());
     let name = to
         .file_name()
         .map(|n| n.to_string_lossy())
         .unwrap_or_default();
     let next = to.with_file_name(format!(".{name}.apolline"));
     std::fs::write(&next, text)?;
-    std::fs::rename(&next, to)
+    if let Ok(was) = std::fs::metadata(&to) {
+        std::fs::set_permissions(&next, was.permissions())?;
+    }
+    std::fs::rename(&next, &to)
 }
 
 #[cfg(test)]
@@ -134,6 +139,25 @@ mod tests {
                 palette.accent.r, palette.accent.g, palette.accent.b
             )
         );
+    }
+
+    #[test]
+    fn a_link_is_written_through_and_the_file_keeps_its_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("apolline-put-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let real = dir.join("dotfiles.conf");
+        let link = dir.join("colors.conf");
+        std::fs::write(&real, "old").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        put(&link, "new").unwrap();
+        assert!(link.is_symlink());
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "new");
+        let mode = std::fs::metadata(&real).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
