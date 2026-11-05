@@ -190,7 +190,7 @@ A tile reads its state while quick settings is open: `on` or `off` on the first 
 
 A launcher source gets the search, without its prefix, as its last argument and in `$APOLLINE_QUERY`, a moment after typing stops. It prints one JSON line a result: `{"title": "…", "about": "…", "icon": "…"}` with one of `"run": "a command"`, `"copy": "text"`, `"open": "a file or a link"` or `"terminal": "a command for your terminal"`. A source that takes longer than three seconds is cut off, a newer search ends the one before, and at most twenty results a source are shown.
 
-Settings live in your config under `[plugins."NAME"]`, and Settings → Plugins draws a field for each from its `kind`. A `secret` is kept in the keyring (GNOME Keyring, KeePassXC or another Secret Service), never in the file, and read each time a command starts. Every setting reaches every command of the plugin as `APOLLINE_` and its key in capitals, its default when you haven't set it, and empty when there's neither.
+Settings live in your config under `[plugins."NAME"]`, and Settings → Plugins draws a field for each from its `kind`. A `secret` is kept in the keyring (GNOME Keyring, KeePassXC or another Secret Service), never in the file. It reaches the commands of the plugin's pieces, widgets, tiles and launcher sources; a click's command and a launcher result, which may start an app that runs for hours, go without it. Every other setting reaches every command of the plugin as `APOLLINE_` and its key in capitals, its default when you haven't set it, and empty when there's neither.
 
 ```toml
 [plugins]

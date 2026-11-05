@@ -43,7 +43,7 @@ pub struct Runs {
     pub plugin: String,
     pub dir: PathBuf,
     pub env: Vec<(String, String)>,
-    // Secret settings by key, read from the keyring each time a command starts, never kept.
+    // Secret settings by key, read from the keyring as its own commands start, never kept here.
     pub secrets: Vec<String>,
 }
 
@@ -148,11 +148,16 @@ impl Runs {
         }
     }
 
-    // Sets up a command to run as this plugin's: its folder, its settings, its secrets.
-    pub async fn apply(&self, command: &mut tokio::process::Command) {
+    // Sets up a command to run as this plugin's: in its folder, with its settings.
+    fn apply(&self, command: &mut tokio::process::Command) {
         command
             .current_dir(&self.dir)
             .envs(self.env.iter().cloned());
+    }
+
+    // Its secrets too, only for the commands of its own the shell waits on: what a click or a
+    // launcher result starts may be an app that runs for hours, and it doesn't get them.
+    async fn reveal(&self, command: &mut tokio::process::Command) {
         if self.secrets.is_empty() {
             return;
         }
@@ -171,7 +176,8 @@ impl Runs {
     // whatever it started too, not only sh.
     pub async fn command(&self, line: &str) -> tokio::process::Command {
         let mut command = crate::modules::in_group(line);
-        self.apply(&mut command).await;
+        self.apply(&mut command);
+        self.reveal(&mut command).await;
         command
     }
 
@@ -184,7 +190,7 @@ impl Runs {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .process_group(0);
-        self.apply(&mut command).await;
+        self.apply(&mut command);
         if let Err(err) = command.status().await {
             eprintln!("apolline: plugin {}: {err}", self.plugin);
         }
