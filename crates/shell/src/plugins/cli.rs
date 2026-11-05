@@ -88,6 +88,9 @@ fn enable(name: &str) -> Result<(), String> {
         .ok_or_else(|| format!("no plugin called “{name}” is installed"))?;
     switch(name, true)?;
     println!("{name} is on");
+    if !found.problems.is_empty() {
+        println!("Its plugin.toml has problems; `apolline check` says which");
+    }
     for line in placing(&found.plugin) {
         println!("  {line}");
     }

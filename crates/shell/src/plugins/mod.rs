@@ -184,6 +184,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_example_plugin_reads_cleanly() {
+        let text = include_str!("../../../../examples/plugins/ip/plugin.toml");
+        let (plugin, problems) = Plugin::parse(text);
+        assert_eq!(problems, []);
+        assert_eq!(plugin.pieces(), ["address", "line"]);
+        assert_eq!(plugin.tile_names(), ["dummy"]);
+        assert!(crate::icon::Icon::by_name(plugin.tiles[0].icon.as_deref().unwrap()).is_some());
+    }
+
+    #[test]
     fn enabled_plugins_bring_their_pieces_as_modules() {
         let base = std::env::temp_dir().join(format!("apolline-plugins-{}", std::process::id()));
         let folder = base.join("ip");
