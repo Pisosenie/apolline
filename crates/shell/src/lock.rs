@@ -13,6 +13,7 @@ use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Gradient, Radians,
     Subscription, Task, Theme, window,
 };
+use zeroize::Zeroizing;
 
 use crate::control::{self, Shared};
 use crate::fingerprint::Finger;
@@ -171,7 +172,7 @@ struct Lock {
     config: Config,
     mode: Option<usize>,
     user: User,
-    password: String,
+    password: Zeroizing<String>,
     state: State,
     wallpaper: Option<image::Handle>,
     battery: Option<Battery>,
@@ -217,7 +218,7 @@ impl Lock {
             } else {
                 user()
             },
-            password: String::new(),
+            password: Zeroizing::new(String::new()),
             state: State::Typing,
             wallpaper: None,
             battery: sample.then_some(Battery {
@@ -316,7 +317,7 @@ impl Lock {
                 }
             }
             Message::Password(password) => {
-                self.password = password;
+                self.password = Zeroizing::new(password);
                 self.state = State::Typing;
             }
             Message::Submit => {
@@ -330,7 +331,7 @@ impl Lock {
                 }
                 self.state = State::Checking;
                 let login = self.user.login.clone();
-                let password = std::mem::take(&mut self.password);
+                let password = std::mem::replace(&mut self.password, Zeroizing::new(String::new()));
                 return Task::perform(check(login, password), Message::Checked);
             }
             Message::Checked(Ok(())) => return unlock(),
@@ -865,8 +866,8 @@ fn account(passwd: &str, uid: u32) -> Option<(String, Option<String>)> {
     })
 }
 
-async fn check(login: String, password: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || authenticate(&login, &password))
+async fn check(login: String, password: Zeroizing<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || authenticate(&login, password))
         .await
         .map_err(|err| err.to_string())?
 }
@@ -874,7 +875,7 @@ async fn check(login: String, password: String) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 struct Conversation {
     login: String,
-    password: String,
+    password: Zeroizing<String>,
     notes: Vec<String>,
 }
 
@@ -885,7 +886,7 @@ impl pam::Conversation for Conversation {
     }
 
     fn prompt_blind(&mut self, _: &std::ffi::CStr) -> Result<std::ffi::CString, ()> {
-        std::ffi::CString::new(self.password.clone()).map_err(drop)
+        std::ffi::CString::new(self.password.as_bytes()).map_err(drop)
     }
 
     fn info(&mut self, message: &std::ffi::CStr) {
@@ -898,7 +899,7 @@ impl pam::Conversation for Conversation {
 }
 
 #[cfg(target_os = "linux")]
-fn authenticate(login: &str, password: &str) -> Result<(), String> {
+fn authenticate(login: &str, password: Zeroizing<String>) -> Result<(), String> {
     use pam::PamReturnCode as Code;
 
     let service = std::env::var("APOLLINE_PAM_SERVICE").unwrap_or_else(|_| {
@@ -910,7 +911,7 @@ fn authenticate(login: &str, password: &str) -> Result<(), String> {
     });
     let conversation = Conversation {
         login: login.to_owned(),
-        password: password.to_owned(),
+        password,
         notes: Vec::new(),
     };
     let mut client =
@@ -935,7 +936,7 @@ fn authenticate(login: &str, password: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn authenticate(_: &str, _: &str) -> Result<(), String> {
+fn authenticate(_: &str, _: Zeroizing<String>) -> Result<(), String> {
     Err("Unlocking needs Linux".into())
 }
 

@@ -15,6 +15,7 @@ use iced::{
     Alignment, Background, Border, ContentFit, Element, Fill, Font, Radians, Subscription, Task,
     window,
 };
+use zeroize::Zeroizing;
 
 use crate::greet_look::{self, Look};
 use crate::icon::{Icon, icon};
@@ -70,7 +71,7 @@ struct Greet {
     sessions: Vec<Session>,
     session: Option<Session>,
     login: String,
-    password: String,
+    password: Zeroizing<String>,
     state: State,
     wallpaper: Option<image::Handle>,
     now: DateTime<Local>,
@@ -161,7 +162,7 @@ pub fn main(args: &[String]) -> ExitCode {
         sessions,
         session,
         login,
-        password: String::new(),
+        password: Zeroizing::new(String::new()),
         state: State::Typing,
         wallpaper: None,
         now: Local::now(),
@@ -381,7 +382,7 @@ impl Greet {
             Message::ToPassword => return focus(FIELD),
             Message::Session(session) => self.session = Some(session),
             Message::Password(password) => {
-                self.password = password;
+                self.password = Zeroizing::new(password);
                 if matches!(self.state, State::Wrong(_)) {
                     self.state = State::Typing;
                 }
@@ -404,8 +405,8 @@ impl Greet {
                     return Task::none();
                 };
                 self.state = State::Checking;
-                let (password, command) =
-                    (std::mem::take(&mut self.password), session.command.clone());
+                let password = std::mem::replace(&mut self.password, Zeroizing::new(String::new()));
+                let command = session.command.clone();
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {

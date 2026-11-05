@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
 use serde_json::{Value, json};
+use zeroize::Zeroizing;
 
 pub fn login(socket: &str, user: &str, password: &str, command: &[String]) -> Result<(), String> {
     let mut stream = UnixStream::connect(socket).map_err(|err| format!("greetd: {err}"))?;
@@ -75,7 +76,8 @@ fn said(reply: &Value) -> String {
 }
 
 fn send(stream: &mut UnixStream, message: &Value) -> Result<Value, String> {
-    let body = message.to_string();
+    // It may carry the password; the copy is wiped once it's sent.
+    let body = Zeroizing::new(message.to_string());
     let length = u32::try_from(body.len()).map_err(|_| "message too long")?;
     stream
         .write_all(&length.to_ne_bytes())
