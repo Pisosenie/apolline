@@ -183,7 +183,7 @@ impl Shell {
             mode: self.current(),
             has_modes: !self.config.modes.is_empty(),
             palette: self.config.palette(self.mode),
-            active,
+            active: self.pill(output).unwrap_or(active as f32),
             status,
             battery: self.battery(),
             track: self.track(),

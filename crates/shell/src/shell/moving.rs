@@ -13,6 +13,8 @@ pub(super) struct Moving {
     osd: Reveal,
     level: Tween,
     cards: Deck<Notification>,
+    // Where each screen's active workspace pill is.
+    pills: Vec<(Option<String>, Tween)>,
 }
 
 impl Moving {
@@ -24,6 +26,7 @@ impl Moving {
             osd: Reveal::hidden(now),
             level: Tween::still(0.0, now),
             cards: Deck::new(popup::GAP as f32),
+            pills: Vec::new(),
         }
     }
 
@@ -33,6 +36,7 @@ impl Moving {
             || self.osd.moving(self.now)
             || self.level.moving(self.now)
             || self.cards.moving(self.now)
+            || self.pills.iter().any(|(_, pill)| pill.moving(self.now))
     }
 }
 
@@ -70,6 +74,41 @@ impl Shell {
             self.osd = None;
         }
         self.follow_cards();
+        self.follow_pills();
+    }
+
+    // Each screen's pill heads for its active workspace.
+    fn follow_pills(&mut self) {
+        let now = self.moving.now;
+        let length = self.speed().time(MOVE);
+        let actives: Vec<(Option<&str>, usize)> = match &self.niri {
+            Some(state) => self
+                .outputs
+                .iter()
+                .map(|output| {
+                    let output = Some(output.as_str());
+                    (output, crate::status::active_on(state, output))
+                })
+                .collect(),
+            None => vec![(None, self.workspace)],
+        };
+        let pills = &mut self.moving.pills;
+        pills.retain(|(output, _)| actives.iter().any(|(o, _)| *o == output.as_deref()));
+        for (output, active) in actives {
+            let at = active as f32;
+            match pills.iter_mut().find(|(o, _)| o.as_deref() == output) {
+                Some((_, pill)) => *pill = pill.go(at, now, length),
+                None => pills.push((output.map(str::to_owned), Tween::still(at, now))),
+            }
+        }
+    }
+
+    pub(super) fn pill(&self, output: Option<&str>) -> Option<f32> {
+        self.moving
+            .pills
+            .iter()
+            .find(|(o, _)| o.as_deref() == output)
+            .map(|(_, pill)| pill.value(self.moving.now))
     }
 
     // The cards drawn follow the ones that should show.

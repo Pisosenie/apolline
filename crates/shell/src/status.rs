@@ -43,7 +43,7 @@ impl Status {
         };
         Self {
             workspaces: workspaces.len(),
-            active: workspaces.iter().position(|w| w.is_active).unwrap_or(0),
+            active: active_of(&workspaces),
             busy: (0..workspaces.len())
                 .filter(|&i| state.is_busy(workspaces[i].id))
                 .collect(),
@@ -67,6 +67,18 @@ impl Status {
             media: None,
         }
     }
+}
+
+// Where the active workspace is among the output's, or among the focused one's for none.
+pub fn active_on(state: &apolline_niri::State, output: Option<&str>) -> usize {
+    match output {
+        Some(_) => active_of(&state.workspaces_on(output)),
+        None => active_of(&state.workspaces()),
+    }
+}
+
+fn active_of(workspaces: &[&apolline_niri::Workspace]) -> usize {
+    workspaces.iter().position(|w| w.is_active).unwrap_or(0)
 }
 
 pub fn short_layout(name: &str) -> String {

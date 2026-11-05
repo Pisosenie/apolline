@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use apolline_config::Edge;
+use apolline_theme::Rgba;
 use iced::time::Instant;
 use iced::{Alignment, Vector};
 
@@ -219,6 +220,17 @@ fn down(along: Alignment) -> Alignment {
     }
 }
 
+// How much of a pill that sits `at` (between two places while it slides) is on place `index`.
+pub fn share(at: f32, index: usize) -> f32 {
+    (1.0 - (at - index as f32).abs()).clamp(0.0, 1.0)
+}
+
+// Part of the way from one color to another, alpha too.
+pub fn blend(from: Rgba, to: Rgba, t: f32) -> Rgba {
+    let t = t.clamp(0.0, 1.0);
+    from.mix(to, t).alpha(from.a + (to.a - from.a) * t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +343,27 @@ mod tests {
         assert!(bottom.offset.y > 0.0 && bottom.offset.y < SLIDE);
         assert!(entrance(1.0, Edge::Left, Alignment::Start).is_still());
         assert!(!Pose::faded(0.5).is_still());
+    }
+
+    #[test]
+    fn a_sliding_pill_is_shared_by_its_neighbours() {
+        assert_eq!(share(2.0, 2), 1.0);
+        assert_eq!(share(2.0, 3), 0.0);
+        assert_eq!(share(2.25, 2), 0.75);
+        assert_eq!(share(2.25, 3), 0.25);
+        assert_eq!(share(2.25, 0), 0.0);
+        let total: f32 = (0..5).map(|i| share(1.6, i)).sum();
+        assert!((total - 1.0).abs() < 1e-6, "the row keeps its length");
+    }
+
+    #[test]
+    fn colors_blend_with_their_alpha() {
+        let from = Rgba::hex(0x000000).alpha(0.2);
+        let to = Rgba::hex(0xffffff);
+        assert_eq!(blend(from, to, 0.0), from);
+        assert_eq!(blend(from, to, 1.0), to);
+        let half = blend(from, to, 0.5);
+        assert_eq!(half.r, 128);
+        assert!((half.a - 0.6).abs() < 1e-6);
     }
 }
