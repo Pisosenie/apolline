@@ -21,6 +21,7 @@ pub struct Config {
     pub language: Option<String>,
     pub colors: Colors,
     pub panel: Panel,
+    pub clock: Clock,
     pub theme: Option<(String, Option<String>)>,
     pub desktop: Desktop,
     pub layout: Layout,
@@ -450,6 +451,41 @@ impl Edge {
     // Down the side of the screen, so the bar is a column.
     pub fn vertical(self) -> bool {
         matches!(self, Edge::Left | Edge::Right)
+    }
+}
+
+// How times and dates read, as strftime: "%-I:%M %p" for twelve hours, "%A %-d" for a long date.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Clock {
+    pub time: Option<String>,
+    pub date: Option<String>,
+}
+
+impl Clock {
+    pub fn time(&self, seconds: bool) -> &str {
+        self.time
+            .as_deref()
+            .unwrap_or(if seconds { "%H:%M:%S" } else { "%H:%M" })
+    }
+
+    pub fn date(&self) -> &str {
+        self.date.as_deref().unwrap_or("%a %-d %b")
+    }
+
+    // Hours on a twelve-hour dial, for clocks that show hours on their own.
+    pub fn hours(&self) -> &'static str {
+        let twelve = self.time.as_deref().is_some_and(|t| {
+            ["%I", "%-I", "%l", "%p", "%P", "%r"]
+                .iter()
+                .any(|s| t.contains(s))
+        });
+        if twelve { "%-I" } else { "%H" }
+    }
+
+    // Whether chrono can read it; a bad one would fail only when drawn.
+    pub fn readable(format: &str) -> bool {
+        !chrono::format::StrftimeItems::new(format)
+            .any(|item| matches!(item, chrono::format::Item::Error))
     }
 }
 
@@ -920,6 +956,7 @@ impl Default for Config {
             language: None,
             colors: Colors::default(),
             panel: Panel::default(),
+            clock: Clock::default(),
             theme: None,
             desktop: Desktop {
                 clock: None,
@@ -1152,6 +1189,18 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_clock_reads_your_way_and_a_bad_format_is_caught_early() {
+        let (config, problems) =
+            super::Config::parse("[clock]\ntime = \"%-I:%M %p\"\ndate = \"%Q nonsense\"\n");
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert_eq!(config.clock.time(true), "%-I:%M %p");
+        assert_eq!(config.clock.date(), "%a %-d %b", "the bad one is left out");
+        assert_eq!(config.clock.hours(), "%-I");
+        assert_eq!(super::Clock::default().time(true), "%H:%M:%S");
+        assert_eq!(super::Clock::default().hours(), "%H");
+    }
+
     #[test]
     fn quick_settings_shows_what_you_list_in_your_order() {
         let (config, problems) = super::Config::parse(

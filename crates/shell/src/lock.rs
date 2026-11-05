@@ -389,10 +389,17 @@ impl Lock {
             .size(14)
             .font(style::medium())
             .color(style::color(neutral::text().alpha(0.86))),
-            text(self.now.format("%H:%M").to_string())
-                .size(232)
-                .font(style::light())
-                .line_height(0.92),
+            text(
+                self.now
+                    .format(&crate::i18n::names(
+                        self.config.clock.time(false),
+                        &self.now
+                    ))
+                    .to_string(),
+            )
+            .size(232)
+            .font(style::light())
+            .line_height(0.92),
         ]
         .spacing(4);
 

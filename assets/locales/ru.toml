@@ -869,3 +869,7 @@
 "Microphone" = "Микрофон"
 "Speakers and mics" = "Динамики и микрофоны"
 "Drag to reorder, and below a row to take a piece out of quick settings." = "Перетаскивайте, чтобы изменить порядок, а под ряд — чтобы убрать из быстрых настроек."
+"Time" = "Время"
+"Date format" = "Формат даты"
+"Now it reads {sample}; %-I:%M %p for twelve hours" = "Сейчас так: {sample}; %-I:%M %p — 12-часовой формат"
+"Now it reads {sample}; %A, %-d %B for a long one" = "Сейчас так: {sample}; %A, %-d %B — длинная дата"

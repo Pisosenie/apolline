@@ -9,3 +9,4 @@ apolline-theme.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 strsim.workspace = true
+chrono.workspace = true

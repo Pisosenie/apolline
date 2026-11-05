@@ -306,7 +306,7 @@ fn windows<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
 // Hours over minutes; the date is the calendar's.
 fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
     let mut lines = column![
-        text(bar.now.format("%H").to_string())
+        text(bar.now.format(bar.clock.hours()).to_string())
             .size(15)
             .font(style::semibold()),
         text(bar.now.format("%M").to_string())

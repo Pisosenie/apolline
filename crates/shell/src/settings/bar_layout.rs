@@ -223,6 +223,7 @@ impl Settings {
                 apps: &self.apps,
                 now: chrono::Local::now(),
                 look,
+                clock: &self.config.clock,
                 radius: style::bar_size(&self.config.style).1,
                 panel_open: false,
                 pinned: self
@@ -437,6 +438,22 @@ impl Settings {
                         "",
                         switch(look.seconds, Message::Seconds, palette)
                     ),
+                    setting_owned(
+                        "Time",
+                        Some(self.clock_sample(
+                            "Now it reads {sample}; %-I:%M %p for twelve hours",
+                            self.config.clock.time(look.seconds),
+                        )),
+                        self.clock_field("time", self.config.clock.time.as_deref(), palette),
+                    ),
+                    setting_owned(
+                        "Date format",
+                        Some(self.clock_sample(
+                            "Now it reads {sample}; %A, %-d %B for a long one",
+                            self.config.clock.date(),
+                        )),
+                        self.clock_field("date", self.config.clock.date.as_deref(), palette),
+                    ),
                 ]
             ),
             group(
@@ -482,4 +499,56 @@ pub(super) fn tray_label(name: &str) -> String {
         name => return name.to_owned(),
     }
     .to_owned()
+}
+
+impl Settings {
+    fn clock_sample(&self, line: &'static str, format: &str) -> String {
+        let now = chrono::Local::now();
+        let sample = now.format(&crate::i18n::names(format, &now)).to_string();
+        crate::i18n::fill(line, &[("sample", &sample)])
+    }
+
+    // A strftime field that keeps what's typed until Enter, and turns red while chrono can't read it.
+    fn clock_field<'a>(
+        &'a self,
+        key: &'static str,
+        set: Option<&'a str>,
+        palette: Palette,
+    ) -> Element<'a, Message> {
+        let draft = self
+            .clock_drafts
+            .get(key)
+            .map_or(set.unwrap_or_default(), String::as_str);
+        let wrong = !apolline_config::Clock::readable(draft);
+        text_input(if key == "time" { "%H:%M" } else { "%a %-d %b" }, draft)
+            .on_input(move |text| Message::ClockDraft(key, text))
+            .on_submit(Message::ClockSet(key))
+            .padding([6, 10])
+            .size(13)
+            .width(150)
+            .font(style::mono())
+            .style(move |theme, status| {
+                if wrong {
+                    style::wrong_field(palette)(theme, status)
+                } else {
+                    style::field(palette)(theme, status)
+                }
+            })
+            .into()
+    }
+
+    pub(super) fn set_clock(&mut self, key: &'static str) {
+        let Some(draft) = self.clock_drafts.get(key).map(|d| d.trim().to_owned()) else {
+            return;
+        };
+        if !apolline_config::Clock::readable(&draft) {
+            return;
+        }
+        self.clock_drafts.remove(key);
+        if draft.is_empty() {
+            self.edit(|e| e.unset("clock", key));
+        } else {
+            self.edit(|e| e.set("clock", key, draft.as_str()));
+        }
+    }
 }

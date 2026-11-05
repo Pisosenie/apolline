@@ -191,6 +191,7 @@ impl Shell {
             do_not_disturb: self.config.alerts.do_not_disturb,
             awake: self.awake,
             now: self.now,
+            clock: &self.config.clock,
             look: &self.config.bar,
             radius: style::bar_size(&self.config.style).1,
             panel_open: self.overlay == Some(Overlay::Panel),

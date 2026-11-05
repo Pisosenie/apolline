@@ -30,6 +30,7 @@ pub struct Bar<'a> {
     pub awake: bool,
     pub now: DateTime<Local>,
     pub look: &'a apolline_config::Bar,
+    pub clock: &'a apolline_config::Clock,
     // The island's corners, when it floats.
     pub radius: f32,
     pub panel_open: bool,
@@ -240,22 +241,22 @@ fn clock<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
         clock = clock.push(
             text(
                 bar.now
-                    .format(&crate::i18n::names("%a %-d %b", &bar.now))
+                    .format(&crate::i18n::names(bar.clock.date(), &bar.now))
                     .to_string(),
             )
             .size(13)
             .color(style::color(neutral::muted())),
         );
     }
-    let time = if bar.look.seconds {
-        "%H:%M:%S"
-    } else {
-        "%H:%M"
-    };
+    let time = bar.clock.time(bar.look.seconds);
     clock = clock.push(
-        text(bar.now.format(time).to_string())
-            .size(13)
-            .font(style::semibold()),
+        text(
+            bar.now
+                .format(&crate::i18n::names(time, &bar.now))
+                .to_string(),
+        )
+        .size(13)
+        .font(style::semibold()),
     );
     if let Some((what, wait)) = bar.next {
         clock = clock.push(

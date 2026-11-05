@@ -359,3 +359,21 @@ fn a_tile_dropped_off_the_board_leaves_quick_settings() {
     assert!(!settings.config.panel.tiles.iter().any(|t| t == "night"));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_clock_format_is_kept_only_when_chrono_reads_it() {
+    let dir = std::env::temp_dir().join(format!("apolline-clock-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::ClockDraft("time", "%Q:%M".into()));
+    let _ = settings.update(Message::ClockSet("time"));
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("clock"));
+    let _ = settings.update(Message::ClockDraft("time", "%-I:%M %p".into()));
+    let _ = settings.update(Message::ClockSet("time"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[clock]\ntime = \"%-I:%M %p\""), "{text}");
+    assert_eq!(settings.config.clock.hours(), "%-I");
+    std::fs::remove_dir_all(dir).unwrap();
+}

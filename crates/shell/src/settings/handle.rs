@@ -9,6 +9,10 @@ impl Settings {
                 self.color_drafts.insert(role, text);
             }
             Message::ColorSet(role) => self.set_color(role),
+            Message::ClockDraft(key, text) => {
+                self.clock_drafts.insert(key, text);
+            }
+            Message::ClockSet(key) => self.set_clock(key),
             Message::ColorReset(role) => {
                 self.color_drafts.remove(role);
                 self.edit(|e| e.unset("colors", role));

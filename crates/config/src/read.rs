@@ -19,7 +19,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 23] = [
+const SECTIONS: [&str; 24] = [
     "general",
     "theme",
     "desktop",
@@ -43,6 +43,7 @@ const SECTIONS: [&str; 23] = [
     "mode",
     "colors",
     "panel",
+    "clock",
 ];
 
 const MODE_OPTIONS: [&str; 12] = [
@@ -243,6 +244,11 @@ impl Reader<'_> {
                 "panel" => {
                     if let Some(t) = self.section(key, value) {
                         self.panel(t, &mut config.panel)
+                    }
+                }
+                "clock" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.clock(t, &mut config.clock)
                     }
                 }
                 "night" => {
@@ -1266,6 +1272,28 @@ impl Reader<'_> {
                     }
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),
+            }
+        }
+    }
+
+    fn clock(&mut self, table: &DeTable, clock: &mut crate::Clock) {
+        for (key, value) in table.iter() {
+            let slot = match key.get_ref().as_ref() {
+                "time" => &mut clock.time,
+                "date" => &mut clock.date,
+                _ => {
+                    self.unknown(key, "option", &["time", "date"]);
+                    continue;
+                }
+            };
+            match self.string(key, value) {
+                Some(format) if crate::Clock::readable(format) && !format.trim().is_empty() => {
+                    *slot = Some(format.to_owned());
+                }
+                Some(_) => {
+                    self.wrong::<()>(key, value, r#"a strftime format like "%H:%M""#);
+                }
+                None => {}
             }
         }
     }

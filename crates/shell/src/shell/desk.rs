@@ -168,11 +168,18 @@ impl Shell {
             ),
         };
         let clock = column![
-            text(self.now.format("%H:%M").to_string())
-                .size(120)
-                .font(style::light())
-                .line_height(0.95)
-                .color(style::color(ink)),
+            text(
+                self.now
+                    .format(&crate::i18n::names(
+                        self.config.clock.time(false),
+                        &self.now
+                    ))
+                    .to_string(),
+            )
+            .size(120)
+            .font(style::light())
+            .line_height(0.95)
+            .color(style::color(ink)),
             text(
                 self.now
                     .format(&crate::i18n::names("%A, %-d %B", &self.now))
