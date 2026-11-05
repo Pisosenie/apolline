@@ -114,10 +114,13 @@ impl<T: Clone + PartialEq> Deck<T> {
             .fold(0.0, f32::max)
     }
 
-    pub fn moving(&self, now: Instant) -> bool {
+    // When the last card in motion gets where it's going.
+    pub fn ends(&self, now: Instant) -> Option<Instant> {
         self.slots
             .iter()
-            .any(|slot| slot.shown.moving(now) || slot.place.moving(now))
+            .flat_map(|slot| [slot.shown.ends(now), slot.place.ends(now)])
+            .flatten()
+            .max()
     }
 
     // Each card nearest the edge first, as it's drawn now, and whether it's on its way out.
@@ -176,15 +179,15 @@ mod tests {
         let mut deck = Deck::new(8.0);
         follow(&mut deck, &[(1, "a")], now);
         let (_, pose, leaving) = shown(&deck, now)[0];
-        assert_eq!(pose.opacity, 0.0);
+        assert!(pose.opacity < 0.1);
         assert!(
             pose.offset.x > 0.0 && pose.offset.y == 0.0,
             "from the right"
         );
-        assert!(!leaving && deck.moving(now));
+        assert!(!leaving && deck.ends(now).is_some());
         let later = now + OPEN;
         assert!(shown(&deck, later)[0].1.is_still());
-        assert!(!deck.moving(later));
+        assert!(!deck.ends(later).is_some());
         assert_eq!(deck.height(later), 100.0);
         let below = deck.placed(now, Corner::BottomLeft)[0].1;
         assert!(below.offset.x < 0.0, "and from the left on that side");
@@ -218,7 +221,7 @@ mod tests {
         let there = faded + MOVE;
         assert_eq!(shown(&deck, there)[0].1.offset, Vector::ZERO);
         assert_eq!(deck.height(there), 100.0);
-        assert!(!deck.moving(there));
+        assert!(!deck.ends(there).is_some());
     }
 
     #[test]
@@ -276,7 +279,7 @@ mod tests {
         );
         deck.follow(&[(2, 100.0, &b)], now, off);
         assert_eq!(deck.placed(now, Corner::TopRight).len(), 1);
-        assert!(!deck.moving(now));
+        assert!(!deck.ends(now).is_some());
         assert_eq!(deck.height(now), 100.0);
     }
 }

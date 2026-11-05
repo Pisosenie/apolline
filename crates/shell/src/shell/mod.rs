@@ -665,6 +665,7 @@ impl Shell {
         self.clock(&message);
         let task = self.handle(message);
         self.settle();
+        let task = Task::batch([task, self.wake()]);
         self.watch_front();
         self.publish();
         self.keep_history();
@@ -839,19 +840,20 @@ impl Shell {
             clipboard::subscription().map(Message::Clip)
         };
         let fading = if self.shown.iter().any(|s| s.from.is_some()) {
-            iced::window::frames().map(|_| Message::Frame)
+            iced::time::every(crate::motion::FRAME).map(|_| Message::Frame)
         } else {
             iced::Subscription::none()
         };
-        // Frames only while something on the surfaces moves; nothing at rest.
-        let moving = if self.moving.busy() {
-            iced::window::frames().map(Message::Motion)
+        // Updates only while something on the surfaces moves; nothing at rest.
+        let moving = if self.moving.ends().is_some() {
+            iced::time::every(crate::motion::FRAME).map(Message::Motion)
         } else {
             iced::Subscription::none()
         };
         // Frames only while the dock's icons grow or shrink; nothing at rest.
         let growing = if self.dock.animating() {
-            iced::window::frames().map(|at| Message::Dock(crate::dock::Event::Frame(at)))
+            iced::time::every(crate::motion::FRAME)
+                .map(|at| Message::Dock(crate::dock::Event::Frame(at)))
         } else {
             iced::Subscription::none()
         };

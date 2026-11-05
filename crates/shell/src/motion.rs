@@ -9,6 +9,9 @@ use iced::{Alignment, Vector};
 
 pub const OPEN: Duration = Duration::from_millis(180);
 pub const CLOSE: Duration = Duration::from_millis(120);
+// How often what moves is updated: a time, not window frames, so motion goes on whether or
+// not the compositor asks for frames.
+pub const FRAME: Duration = Duration::from_millis(16);
 // Cards closing a gap, the workspace pill, a level bar.
 pub const MOVE: Duration = Duration::from_millis(220);
 // How far an overlay slides in from its edge, and how much smaller it starts.
@@ -84,6 +87,11 @@ impl Tween {
         self.from != self.to && self.done(now) < 1.0
     }
 
+    // When it gets there, while it's still on its way.
+    pub fn ends(&self, now: Instant) -> Option<Instant> {
+        self.moving(now).then(|| self.start + self.length)
+    }
+
     // Off toward `to` from wherever it is now, so a turn midway carries on without a jump.
     pub fn go(self, to: f32, now: Instant, length: Duration) -> Self {
         if to == self.to {
@@ -153,8 +161,8 @@ impl Reveal {
         !self.is_open() && !self.0.moving(now)
     }
 
-    pub fn moving(&self, now: Instant) -> bool {
-        self.0.moving(now)
+    pub fn ends(&self, now: Instant) -> Option<Instant> {
+        self.0.ends(now)
     }
 }
 
@@ -297,7 +305,7 @@ mod tests {
         assert!(!tween.moving(now));
         assert_eq!(tween.value(now), 3.0);
         let open = Reveal::hidden(now).show(now, off);
-        assert!(!open.moving(now));
+        assert_eq!(open.ends(now), None);
         assert_eq!(open.progress(now), 1.0);
         let shut = open.hide(now, off);
         assert!(shut.is_gone(now));
@@ -308,9 +316,10 @@ mod tests {
         let now = Instant::now();
         let speed = Speed::default();
         let open = Reveal::hidden(now).show(now, speed);
-        assert!(open.is_open() && open.moving(now) && !open.is_gone(now));
+        assert!(open.is_open() && open.ends(now).is_some() && !open.is_gone(now));
+        assert_eq!(open.ends(now), Some(now + OPEN));
         assert_eq!(open.progress(now + OPEN), 1.0);
-        assert!(!open.moving(now + OPEN));
+        assert_eq!(open.ends(now + OPEN), None);
 
         let shown = now + OPEN;
         let shut = open.hide(shown, speed);
@@ -323,9 +332,9 @@ mod tests {
         assert_eq!(again.progress(midway), shut.progress(midway));
         assert!(again.is_open() && !again.is_gone(midway));
         let left = 1.0 - shut.progress(midway);
-        assert!(again.moving(midway + OPEN.mul_f32(left * 0.9)));
+        assert!(again.ends(midway + OPEN.mul_f32(left * 0.9)).is_some());
         assert!(
-            !again.moving(midway + OPEN.mul_f32(left)),
+            again.ends(midway + OPEN.mul_f32(left)).is_none(),
             "only the part left"
         );
     }
