@@ -232,11 +232,15 @@ async fn serve(stream: UnixStream, mut output: Sender<Message>) {
     let (read, mut write) = stream.into_split();
     let mut line = String::new();
     let mut read = tokio::io::BufReader::new(read.take(LONGEST));
-    let read = read.read_line(&mut line);
-    if !matches!(tokio::time::timeout(PATIENCE, read).await, Ok(Ok(_))) {
+    let line_read = read.read_line(&mut line);
+    if !matches!(tokio::time::timeout(PATIENCE, line_read).await, Ok(Ok(_))) {
         return;
     }
     let reply = if line.len() as u64 >= LONGEST {
+        // Whatever is left unread would make closing a reset, and the client would miss the answer.
+        let mut rest = read.into_inner().into_inner().take(LONGEST * 16);
+        let mut sink = tokio::io::sink();
+        let _ = tokio::time::timeout(PATIENCE, tokio::io::copy(&mut rest, &mut sink)).await;
         "error: too long\n".to_owned()
     } else {
         match Command::parse(&line) {
@@ -254,6 +258,7 @@ async fn serve(stream: UnixStream, mut output: Sender<Message>) {
         }
     };
     let _ = tokio::time::timeout(PATIENCE, write.write_all(reply.as_bytes())).await;
+    let _ = write.shutdown().await;
 }
 
 #[cfg(test)]
