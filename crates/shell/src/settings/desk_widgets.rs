@@ -14,11 +14,8 @@ fn widget_label(name: &str) -> String {
 }
 
 impl Settings {
-    // The desktop clock's row, with what goes under it once there is a clock.
+    // The desktop clock's row, with what goes under it (or in its place, with no clock).
     pub(super) fn with_widgets<'a>(&'a self, clock: Element<'a, Message>) -> Element<'a, Message> {
-        if self.config.desktop.clock.is_none() {
-            return clock;
-        }
         let shown = &self.config.desktop.widgets;
         let names = Desktop::WIDGETS
             .iter()
@@ -34,7 +31,7 @@ impl Settings {
         }))
         .spacing(6)
         .wrap();
-        column![clock, labelled("Under the clock", chips)]
+        column![clock, labelled("On the desktop, under the clock", chips)]
             .spacing(12)
             .into()
     }

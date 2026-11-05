@@ -44,6 +44,15 @@ pub enum Target {
     Web(String),
 }
 
+// Above anything found by its name, below a sum's answer.
+const LIFTED: u32 = 2000;
+
+// A command's program, without its path or arguments.
+fn program(command: &str) -> &str {
+    let first = command.split_whitespace().next().unwrap_or_default();
+    first.rsplit('/').next().unwrap_or(first)
+}
+
 #[derive(Default)]
 pub struct Launcher {
     pub query: String,
@@ -444,6 +453,13 @@ impl Launcher {
                 weight.min(60)
             }
         };
+        let asks_terminal = {
+            let query = query.trim().to_lowercase();
+            query.chars().count() >= 3
+                && ["terminal", "терминал", "console", "консоль"]
+                    .iter()
+                    .any(|word| word.starts_with(&query))
+        };
         for app in self.apps.iter().filter(|_| finds("apps")) {
             for (name, exec) in &app.actions {
                 if let Some(score) = apps::action_score(query, app, name) {
@@ -459,7 +475,14 @@ impl Launcher {
                     ));
                 }
             }
-            if let Some(score) = apps::score(query, app) {
+            // "term" finds the terminal you picked before any other.
+            let yours = asks_terminal && program(&app.exec) == program(&self.terminal);
+            let score = if yours {
+                Some(LIFTED)
+            } else {
+                apps::score(query, app)
+            };
+            if let Some(score) = score {
                 let bonus = if query.is_empty() && app.game { 1 } else { 0 };
                 ranked.push((
                     score + bonus + used(&app.exec),
@@ -902,6 +925,35 @@ mod tests {
             web_address(Some("https://www.startpage.com/do/search?q={query}"), "a b"),
             "https://www.startpage.com/do/search?q=a+b"
         );
+    }
+
+    #[test]
+    fn the_terminal_you_picked_comes_first_for_term() {
+        let mut launcher = launcher();
+        let terminal = |name: &str, actions: Vec<(String, String)>| apps::App {
+            id: name.to_lowercase(),
+            name: name.to_owned(),
+            about: "Terminal".into(),
+            exec: name.to_lowercase(),
+            icon: None,
+            game: false,
+            keywords: "terminal;shell;".into(),
+            class: None,
+            terminal: false,
+            actions,
+        };
+        let mut found = apps::sample();
+        found.push(terminal(
+            "Alacritty",
+            vec![("New Terminal".into(), "alacritty".into())],
+        ));
+        found.push(terminal("vif", Vec::new()));
+        launcher.set_apps(found);
+        launcher.set_finds(apolline_config::Launcher::default(), "/usr/bin/vif");
+        launcher.query = "term".into();
+        assert_eq!(launcher.entries()[0].title, "vif");
+        launcher.query = "alac".into();
+        assert_eq!(launcher.entries()[0].title, "Alacritty");
     }
 
     #[test]

@@ -14,10 +14,17 @@ impl Shell {
             .iter()
             .flat_map(|name| self.widget(name))
             .collect();
+        // A soft shade behind them, so they read on a light picture too.
         (!lines.is_empty()).then(|| {
-            Column::with_children(lines)
-                .spacing(6)
-                .align_x(align)
+            container(Column::with_children(lines).spacing(6).align_x(align))
+                .padding([10, 14])
+                .style(|_| container::Style {
+                    background: Some(iced::Background::Color(style::color(
+                        apolline_theme::Scheme::DARK.window.alpha(0.32),
+                    ))),
+                    border: iced::Border::default().rounded(14),
+                    ..container::Style::default()
+                })
                 .into()
         })
     }

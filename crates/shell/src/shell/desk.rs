@@ -142,15 +142,22 @@ impl Shell {
 
     pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
         let picture = self.wallpaper_picture(output);
-        match self.config.desktop.clock {
-            Some(spot) => stack![picture, self.desktop_clock(spot)].into(),
+        let shown = self.desktop_clock(self.config.desktop.clock);
+        match shown {
+            Some(shown) => stack![picture, shown].into(),
             None => picture,
         }
     }
 
-    // The time and the date, big and light, on the wallpaper.
-    pub(super) fn desktop_clock(&self, spot: apolline_config::Spot) -> Element<'_, Message> {
+    // The time and the date, big and light, on the wallpaper, with the widgets under them. With
+    // no clock the widgets stand on their own in the bottom left.
+    pub(super) fn desktop_clock(
+        &self,
+        spot: Option<apolline_config::Spot>,
+    ) -> Option<Element<'_, Message>> {
         use apolline_config::{Corner, Spot};
+        let clocked = spot.is_some();
+        let spot = spot.unwrap_or(Spot::Corner(Corner::BottomLeft));
         let ink = apolline_theme::Scheme::DARK.text;
         let (x, y) = match spot {
             Spot::Center => (Alignment::Center, Alignment::Center),
@@ -191,9 +198,12 @@ impl Shell {
         ]
         .spacing(2)
         .align_x(x);
-        let clock = match self.desktop_widgets(x) {
-            Some(widgets) => column![clock, widgets].spacing(18).align_x(x),
-            None => clock,
+        let widgets = self.desktop_widgets(x);
+        let clock: Element<'_, Message> = match (clocked, widgets) {
+            (true, Some(widgets)) => column![clock, widgets].spacing(18).align_x(x).into(),
+            (true, None) => clock.into(),
+            (false, Some(widgets)) => widgets,
+            (false, None) => return None,
         };
         // Clear of the bar on its side, and of the screen's edges.
         let bar = style::under_bar(&self.config.bar, &self.config.style, 1.0) + 32.0;
@@ -203,13 +213,15 @@ impl Shell {
             Edge::Left => Padding::new(56.0).left(bar),
             Edge::Right => Padding::new(56.0).right(bar),
         };
-        container(clock)
-            .width(Fill)
-            .height(Fill)
-            .padding(padding)
-            .align_x(x)
-            .align_y(y)
-            .into()
+        Some(
+            container(clock)
+                .width(Fill)
+                .height(Fill)
+                .padding(padding)
+                .align_x(x)
+                .align_y(y)
+                .into(),
+        )
     }
 
     pub(super) fn wallpaper_picture(&self, output: Option<&str>) -> Element<'_, Message> {
