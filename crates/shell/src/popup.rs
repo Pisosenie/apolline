@@ -3,25 +3,27 @@ use apolline_theme::{Palette, font, metrics, neutral};
 use iced::widget::{
     button, column, container, image, keyed_column, progress_bar, row, space, text_input,
 };
-use iced::{Background, Border, ContentFit, Element, Fill, Theme};
+use iced::{Alignment, Background, Border, ContentFit, Element, Fill, Theme};
 
 use crate::apps::App;
 use crate::icon::{Icon, icon};
 
 use crate::media::shorten;
+use crate::motion::Pose;
 use crate::notify::{Notification, Urgency};
+use crate::posed::posed;
 use crate::shell::Message;
 use crate::style;
 
 pub const REPLY: &str = "notification-reply";
 const HEIGHT: u32 = 84;
 const BUTTONS: u32 = 38;
-const GAP: u32 = 8;
+pub const GAP: u32 = 8;
 const FACE: f32 = 36.0;
 
 const PROGRESS: u32 = 12;
 
-fn card_height(notification: &Notification) -> u32 {
+pub fn card_height(notification: &Notification) -> u32 {
     let buttons = if notification.buttons().next().is_some() || notification.reply.is_some() {
         BUTTONS
     } else {
@@ -53,30 +55,35 @@ pub fn shown<'a>(
     shown
 }
 
-#[cfg(any(target_os = "linux", test))]
-pub fn height(cards: &[&Notification]) -> u32 {
-    let heights: Vec<u32> = cards.iter().map(|n| card_height(n)).collect();
-    heights.iter().sum::<u32>() + (heights.len() as u32).saturating_sub(1) * GAP
-}
-
-// Keyed by id, so a card keeps its field's focus when others come and go around it.
+// Keyed by id, so a card keeps its field's focus when others come and go around it. Each is
+// drawn in its pose, and one on its way out takes no clicks. Against the bottom edge they sit
+// at the bottom of a surface kept taller while they move.
 pub fn stack<'a>(
-    cards: Vec<&'a Notification>,
+    cards: Vec<(&'a Notification, Pose, bool)>,
+    bottom: bool,
     apps: &'a [App],
     palette: Palette,
     replying: Option<&'a (u32, String)>,
     look: apolline_config::Surface,
     width: u16,
 ) -> Element<'a, Message> {
-    keyed_column(cards.into_iter().map(|n| {
+    let column = keyed_column(cards.into_iter().map(|(n, pose, leaving)| {
         let typed = replying
             .filter(|(id, _)| *id == n.id)
             .map(|(_, typed)| typed.as_str());
-        (n.id, card(n, apps, palette, typed, look, width))
+        let card = style::faded(pose.opacity, || card(n, apps, palette, typed, look, width));
+        (n.id, posed(card, pose).passive(leaving).into())
     }))
     .spacing(GAP as f32)
-    .width(f32::from(width))
-    .into()
+    .width(f32::from(width));
+    if bottom {
+        container(column)
+            .height(Fill)
+            .align_y(Alignment::End)
+            .into()
+    } else {
+        column.into()
+    }
 }
 
 // What the app sent along, else the app's own icon.
@@ -100,6 +107,7 @@ pub fn face<'a>(
     }
     match &notification.image {
         Some(picture) => image(picture.clone())
+            .opacity(style::fade())
             .width(size)
             .height(size)
             .content_fit(ContentFit::Cover)
@@ -349,18 +357,17 @@ mod tests {
     }
 
     #[test]
-    fn surface_fits_the_visible_cards_exactly() {
+    fn cards_are_as_tall_as_what_they_hold() {
         let plain = crate::notify::shot_card("/tmp/a.png");
         let mut asking = plain.clone();
         asking.actions = vec![
             ("default".into(), "Open".into()),
             ("reply".into(), "Reply".into()),
         ];
-        assert_eq!(height(&[]), 0);
-        assert_eq!(height(&[&plain]), 84);
-        assert_eq!(height(&[&plain, &asking]), 84 + 8 + 122);
+        assert_eq!(card_height(&plain), 84);
+        assert_eq!(card_height(&asking), 122);
         let many = shown(std::iter::repeat_n(&plain, 7), None, 3);
-        assert_eq!(height(&many), 3 * 84 + 2 * 8);
+        assert_eq!(many.len(), 3);
     }
 
     #[test]

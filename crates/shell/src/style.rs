@@ -70,20 +70,45 @@ pub fn theme() -> Theme {
     let theme = Theme::custom(
         "Apolline",
         iced::theme::Palette {
-            background: color(scheme.window),
-            text: color(scheme.text),
-            primary: color(apolline_theme::ACCENTS[0]),
-            success: color(GOOD),
-            warning: color(WARN),
-            danger: color(DANGER),
+            background: solid(scheme.window),
+            text: solid(scheme.text),
+            primary: solid(apolline_theme::ACCENTS[0]),
+            success: solid(GOOD),
+            warning: solid(WARN),
+            danger: solid(DANGER),
         },
     );
     *made = Some((scheme, theme.clone()));
     theme
 }
 
+// As faded as the surface it's made or drawn for.
 pub fn color(c: Rgba) -> Color {
+    Color::from_rgba8(c.r, c.g, c.b, c.a * FADE.get())
+}
+
+// Never faded, for what outlives a frame.
+fn solid(c: Rgba) -> Color {
     Color::from_rgba8(c.r, c.g, c.b, c.a)
+}
+
+thread_local! {
+    // How faded what's being built or drawn is, while something comes or goes.
+    static FADE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+// Builds or draws with every color faded to `opacity` of itself, inside any fade already on.
+pub fn faded<T>(opacity: f32, build: impl FnOnce() -> T) -> T {
+    let was = FADE.get();
+    FADE.set(was * opacity.clamp(0.0, 1.0));
+    let built = build();
+    FADE.set(was);
+    built
+}
+
+// For pictures, which take no colors.
+pub fn fade() -> f32 {
+    FADE.get()
 }
 
 fn fill(c: Rgba) -> Option<Background> {
@@ -107,7 +132,7 @@ fn outlined(c: Rgba, radius: f32) -> Border {
 
 fn lifted(depth: f32) -> Shadow {
     Shadow {
-        color: Color::from_rgba8(0, 0, 0, 0.42),
+        color: color(Rgba::hex(0x000000).alpha(0.42)),
         offset: Vector::new(0.0, depth * 0.5),
         blur_radius: depth * 1.5,
     }
@@ -235,7 +260,7 @@ pub fn beside_bar<'a, M: 'a>(
         ),
         Edge::Right => (End, along_down(along), iced::Padding::new(inset).right(gap)),
     };
-    container(card)
+    container(crate::posed::enter(card, edge, along))
         .width(iced::Fill)
         .height(iced::Fill)
         .align_x(x)
@@ -325,7 +350,7 @@ pub fn dot(c: Rgba) -> impl Fn(&Theme) -> container::Style {
 }
 
 pub fn scrim(_: &Theme) -> container::Style {
-    container::background(Color::from_rgba8(6, 7, 9, 0.62))
+    container::background(color(Rgba::hex(0x060709).alpha(0.62)))
 }
 
 pub fn ghost(radius: f32) -> impl Fn(&Theme, button::Status) -> button::Style {

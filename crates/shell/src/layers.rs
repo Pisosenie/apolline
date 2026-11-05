@@ -80,6 +80,8 @@ struct Layers {
     overlay: Option<(window::Id, Overlay)>,
     // The screen it was opened on, when it belongs on one.
     overlay_on: Option<String>,
+    // Whether the overlay takes the keyboard and the pointer; one on its way out doesn't.
+    overlay_takes: bool,
     osd: Option<window::Id>,
     docks: dock::Docks,
 }
@@ -100,6 +102,7 @@ impl Layers {
             popups_hold: Hold::default(),
             overlay: None,
             overlay_on: None,
+            overlay_takes: false,
             osd: None,
             docks: dock::Docks::default(),
         };
@@ -240,11 +243,17 @@ impl Layers {
         }
     }
 
+    // An overlay closed stays up while it fades out, then goes.
     fn fit_overlay(&mut self) -> Task<Message> {
-        let wanted = self.shell.overlay();
-        let on = self.shell.overlay_output();
+        let wanted = self.shell.overlay_drawn();
+        // One fading out stays on the screen it was on.
+        let on = if self.shell.overlay().is_some() {
+            self.shell.overlay_output()
+        } else {
+            self.overlay_on.clone()
+        };
         if self.overlay.map(|(_, kind)| kind) == wanted && self.overlay_on == on {
-            return Task::none();
+            return self.overlay_input(self.shell.overlay().is_some());
         }
         let close = match self.overlay.take() {
             Some((id, _)) => window::close(id),
@@ -279,7 +288,39 @@ impl Layers {
         });
         self.overlay = Some((id, kind));
         self.overlay_on = on;
+        self.overlay_takes = true;
         Task::batch([close, open])
+    }
+
+    // One fading out lets the keyboard and the pointer go to what's below at once; opened again
+    // midway, it takes them back.
+    fn overlay_input(&mut self, takes: bool) -> Task<Message> {
+        let Some((id, _)) = self.overlay else {
+            return Task::none();
+        };
+        if self.overlay_takes == takes {
+            return Task::none();
+        }
+        self.overlay_takes = takes;
+        let region = move |region: &WlRegion| {
+            if takes {
+                region.add(0, 0, i32::MAX / 4, i32::MAX / 4);
+            }
+        };
+        Task::batch([
+            Task::done(Message::KeyboardInteractivityChange {
+                id,
+                keyboard_interactivity: if takes {
+                    KeyboardInteractivity::Exclusive
+                } else {
+                    KeyboardInteractivity::None
+                },
+            }),
+            Task::done(Message::SetInputRegion {
+                id,
+                callback: ActionCallback(std::sync::Arc::new(region)),
+            }),
+        ])
     }
 
     // Each screen with its wallpaper, and its bar where it has one; a screen whose bar comes or

@@ -13,25 +13,35 @@ pub const HEIGHT: u32 = 52;
 pub const SURFACE: (u32, u32) = (WIDTH + 48, HEIGHT + 48);
 pub const SHOWN_FOR: std::time::Duration = std::time::Duration::from_millis(1600);
 
-pub fn view(osd: &Osd, palette: Palette, look: apolline_config::Surface) -> Element<'_, Message> {
-    let (glyph, level, label) = match osd {
+// How full the bar is for what's shown, when it has one.
+pub fn level(osd: &Osd) -> Option<f32> {
+    match osd {
+        Osd::Volume(volume) => Some(if volume.muted { 0.0 } else { volume.level }),
+        Osd::Brightness(percent) => Some(f32::from(*percent) / 100.0),
+        _ => None,
+    }
+}
+
+// `drawn` is where the bar is on its way to the level, so a change glides there.
+pub fn view(
+    osd: &Osd,
+    drawn: f32,
+    palette: Palette,
+    look: apolline_config::Surface,
+) -> Element<'_, Message> {
+    let level = level(osd).map(|_| drawn);
+    let (glyph, label) = match osd {
         Osd::Volume(volume) => (
             Icon::volume(volume.level, volume.muted),
-            Some(if volume.muted { 0.0 } else { volume.level }),
             if volume.muted {
                 "muted".to_owned()
             } else {
                 format!("{:.0}", volume.level * 100.0)
             },
         ),
-        Osd::Brightness(percent) => (
-            Icon::Sun,
-            Some(f32::from(*percent) / 100.0),
-            percent.to_string(),
-        ),
+        Osd::Brightness(percent) => (Icon::Sun, percent.to_string()),
         Osd::Mic(muted) => (
             if *muted { Icon::MicOff } else { Icon::Mic },
-            None,
             if *muted {
                 "Microphone off"
             } else {
@@ -39,8 +49,8 @@ pub fn view(osd: &Osd, palette: Palette, look: apolline_config::Surface) -> Elem
             }
             .to_owned(),
         ),
-        Osd::Layout(name) => (Icon::Keyboard, None, name.clone()),
-        Osd::Note(words) => (Icon::Done, None, words.clone()),
+        Osd::Layout(name) => (Icon::Keyboard, name.clone()),
+        Osd::Note(words) => (Icon::Done, words.clone()),
     };
     let body: Element<'_, Message> = match level {
         Some(level) => {

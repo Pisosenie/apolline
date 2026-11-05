@@ -10,6 +10,7 @@ use crate::controls::Controls;
 use crate::drag::drag;
 use crate::icon::{Icon, icon};
 use crate::media::Track;
+use crate::motion;
 use crate::power::Battery;
 use crate::shell::{Message, Overlay};
 use crate::status::Status;
@@ -20,7 +21,8 @@ pub struct Bar<'a> {
     pub mode: Option<&'a ModeSettings>,
     pub has_modes: bool,
     pub palette: Palette,
-    pub active: usize,
+    // Where the active workspace's pill is; between two while it slides from one to the other.
+    pub active: f32,
     pub status: Status,
     pub battery: Option<Battery>,
     pub track: Option<&'a Track>,
@@ -607,58 +609,79 @@ fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     })
 }
 
+// The active one's pill grows on it; while it slides to another it's shared by the two it's
+// between, so the row keeps its length.
 fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
-    let palette = bar.palette;
     Row::with_children((0..bar.status.workspaces).map(|i| {
-        let active = i == bar.active;
-        let busy = bar.status.busy.contains(&i);
-        let mark: Element<'a, Message> = match bar.look.workspaces {
-            Workspaces::Dots => {
-                let (width, fill) = match (active, busy) {
-                    (true, _) => (18.0, palette.accent),
-                    (false, true) => (6.0, neutral::text().alpha(0.72)),
-                    (false, false) => (6.0, neutral::text().alpha(0.26)),
-                };
-                container(space())
-                    .width(width)
-                    .height(6)
-                    .style(style::pill(fill))
-                    .into()
-            }
-            Workspaces::Numbers => {
-                let ink = match (active, busy) {
-                    (true, _) => palette.accent,
-                    (false, true) => neutral::text(),
-                    (false, false) => neutral::text().alpha(0.45),
-                };
-                text((i + 1).to_string())
-                    .size(12)
-                    .font(style::mono())
-                    .color(style::color(ink))
-                    .into()
-            }
+        let lit = motion::share(bar.active, i);
+        let (mark, long) = workspace_mark(bar, i, lit);
+        let mark = match mark {
+            Mark::Dot(fill) => container(space())
+                .width(long)
+                .height(6)
+                .style(style::pill(fill))
+                .into(),
+            Mark::Number(number) => number,
         };
-        let width = match (bar.look.workspaces, active) {
-            (Workspaces::Dots, true) => 30.0,
-            (Workspaces::Dots, false) => 18.0,
-            (Workspaces::Numbers, _) => 24.0,
+        let width = match bar.look.workspaces {
+            Workspaces::Dots => 18.0 + 12.0 * lit,
+            Workspaces::Numbers => 24.0,
         };
-        let highlight = active && bar.look.workspaces == Workspaces::Numbers;
-        button(container(mark).center_x(width).center_y(24))
-            .padding(0)
-            .style(move |theme, status| {
-                let mut style = style::ghost(7.0)(theme, status);
-                if highlight {
-                    style.background = Some(Background::Color(style::color(palette.accent_soft)));
-                }
-                style
-            })
-            .on_press(Message::Workspace(i, bar.status.ids.get(i).copied()))
-            .into()
+        workspace_button(bar, i, lit, container(mark).center_x(width).center_y(24))
     }))
     .spacing(0)
     .align_y(Alignment::Center)
     .into()
+}
+
+pub enum Mark<'a> {
+    Dot(apolline_theme::Rgba),
+    Number(Element<'a, Message>),
+}
+
+// A workspace's mark with `lit` of the active pill on it, and how long a dot is along the bar.
+pub fn workspace_mark<'a>(bar: &Bar<'a>, i: usize, lit: f32) -> (Mark<'a>, f32) {
+    let busy = bar.status.busy.contains(&i);
+    let accent = bar.palette.accent;
+    match bar.look.workspaces {
+        Workspaces::Dots => {
+            let rest = neutral::text().alpha(if busy { 0.72 } else { 0.26 });
+            let fill = motion::blend(rest, accent, lit);
+            (Mark::Dot(fill), 6.0 + 12.0 * lit)
+        }
+        Workspaces::Numbers => {
+            let rest = neutral::text().alpha(if busy { 1.0 } else { 0.45 });
+            let number = text((i + 1).to_string())
+                .size(12)
+                .font(style::mono())
+                .color(style::color(motion::blend(rest, accent, lit)))
+                .into();
+            (Mark::Number(number), 0.0)
+        }
+    }
+}
+
+// Numbers sit on a soft patch of the accent, as much of it as the pill is there.
+pub fn workspace_button<'a>(
+    bar: &Bar<'a>,
+    i: usize,
+    lit: f32,
+    mark: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    let soft = bar.palette.accent_soft;
+    let patch = (bar.look.workspaces == Workspaces::Numbers && lit > 0.0).then_some(lit);
+    button(mark)
+        .padding(0)
+        .style(move |theme, status| {
+            let mut style = style::ghost(7.0)(theme, status);
+            if let Some(lit) = patch {
+                let patch = soft.alpha(soft.a * lit);
+                style.background = Some(Background::Color(style::color(patch)));
+            }
+            style
+        })
+        .on_press(Message::Workspace(i, bar.status.ids.get(i).copied()))
+        .into()
 }
 
 // Pinned apps, then the open windows; any of them can be dragged among the pinned ones to pin it

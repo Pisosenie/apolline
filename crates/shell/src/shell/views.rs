@@ -5,16 +5,6 @@ impl Shell {
         self.config.bar.position
     }
 
-    pub fn osd_view(&self) -> Option<Element<'_, Message>> {
-        style::within(self.config.style.osd.font, || self.built_osd())
-    }
-
-    pub(super) fn built_osd(&self) -> Option<Element<'_, Message>> {
-        self.osd
-            .as_ref()
-            .map(|(osd, _)| osd::view(osd, self.config.palette(self.mode), self.config.style.osd))
-    }
-
     #[cfg(target_os = "linux")]
     pub fn size_of(&self, overlay: Overlay) -> f32 {
         let style = &self.config.style;
@@ -26,17 +16,14 @@ impl Shell {
         .unwrap_or(1.0)
     }
 
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn overlay(&self) -> Option<Overlay> {
         self.overlay
     }
 
-    pub fn overlay_view(&self) -> Element<'_, Message> {
-        style::within(self.overlay_font(), || self.built_overlay())
-    }
-
     // Quick settings and what opens from the bar take their font; the rest keep the shell's.
     pub(super) fn overlay_font(&self) -> Option<apolline_config::FontName> {
-        match self.overlay {
+        match self.overlay_drawn() {
             Some(Overlay::Launcher) => self.config.style.launcher.font,
             Some(Overlay::Panel | Overlay::Calendar | Overlay::Machine | Overlay::TrayMenu) => {
                 self.config.style.panel.font
@@ -48,7 +35,7 @@ impl Shell {
 
     pub(super) fn built_overlay(&self) -> Element<'_, Message> {
         let palette = self.config.palette(self.mode);
-        match self.overlay {
+        match self.overlay_drawn() {
             Some(Overlay::Switcher) => switcher::view(self.mode, &self.config, &self.thumbs),
             Some(Overlay::Launcher) => self.launcher.view(
                 palette,
@@ -137,24 +124,8 @@ impl Shell {
         }
     }
 
-    // At the bottom of the screen the newest card is the one nearest the edge.
     pub fn popups(&self) -> Element<'_, Message> {
         style::within(self.config.style.cards.font, || self.built_popups())
-    }
-
-    pub(super) fn built_popups(&self) -> Element<'_, Message> {
-        let mut cards = self.shown_cards();
-        if self.config.alerts.position.bottom() {
-            cards.reverse();
-        }
-        popup::stack(
-            cards,
-            &self.apps,
-            self.config.palette(self.mode),
-            self.replying.as_ref(),
-            self.config.style.cards,
-            self.config.alerts.width,
-        )
     }
 
     #[cfg(target_os = "linux")]
@@ -212,7 +183,7 @@ impl Shell {
             mode: self.current(),
             has_modes: !self.config.modes.is_empty(),
             palette: self.config.palette(self.mode),
-            active,
+            active: self.pill(output).unwrap_or(active as f32),
             status,
             battery: self.battery(),
             track: self.track(),

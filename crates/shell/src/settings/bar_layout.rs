@@ -288,7 +288,7 @@ impl Settings {
                 mode: None,
                 has_modes: !self.config.modes.is_empty(),
                 palette,
-                active: status.active,
+                active: status.active as f32,
                 status: status.clone(),
                 battery: status.battery,
                 track: None,

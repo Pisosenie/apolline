@@ -4,7 +4,7 @@ use apolline_theme::neutral;
 use iced::widget::{Column, button, column, container, mouse_area, space, tooltip};
 use iced::{Alignment, Background, Element, Fill, Theme};
 
-use crate::bar::{Bar, app_key, module, tray_item};
+use crate::bar::{Bar, Mark, app_key, module, tray_item, workspace_button, workspace_mark};
 use crate::icon::{Icon, icon};
 use crate::power::Battery;
 use crate::shell::{Message, Overlay};
@@ -209,54 +209,24 @@ fn mode<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
     ))
 }
 
+// As on a bar along the top, standing up.
 fn workspaces<'a>(bar: &Bar<'a>) -> Element<'a, Message> {
-    let palette = bar.palette;
     Column::with_children((0..bar.status.workspaces).map(|i| {
-        let active = i == bar.active;
-        let busy = bar.status.busy.contains(&i);
-        let mark: Element<'a, Message> = match bar.look.workspaces {
-            Workspaces::Dots => {
-                let (height, fill) = match (active, busy) {
-                    (true, _) => (18.0, palette.accent),
-                    (false, true) => (6.0, neutral::text().alpha(0.72)),
-                    (false, false) => (6.0, neutral::text().alpha(0.26)),
-                };
-                container(space())
-                    .width(6)
-                    .height(height)
-                    .style(style::pill(fill))
-                    .into()
-            }
-            Workspaces::Numbers => {
-                let ink = match (active, busy) {
-                    (true, _) => palette.accent,
-                    (false, true) => neutral::text(),
-                    (false, false) => neutral::text().alpha(0.45),
-                };
-                text((i + 1).to_string())
-                    .size(12)
-                    .font(style::mono())
-                    .color(style::color(ink))
-                    .into()
-            }
+        let lit = crate::motion::share(bar.active, i);
+        let (mark, long) = workspace_mark(bar, i, lit);
+        let mark = match mark {
+            Mark::Dot(fill) => container(space())
+                .width(6)
+                .height(long)
+                .style(style::pill(fill))
+                .into(),
+            Mark::Number(number) => number,
         };
-        let tall = match (bar.look.workspaces, active) {
-            (Workspaces::Dots, true) => 30.0,
-            (Workspaces::Dots, false) => 18.0,
-            (Workspaces::Numbers, _) => 24.0,
+        let tall = match bar.look.workspaces {
+            Workspaces::Dots => 18.0 + 12.0 * lit,
+            Workspaces::Numbers => 24.0,
         };
-        let highlight = active && bar.look.workspaces == Workspaces::Numbers;
-        button(container(mark).center_x(28).center_y(tall))
-            .padding(0)
-            .style(move |theme, status| {
-                let mut style = style::ghost(7.0)(theme, status);
-                if highlight {
-                    style.background = Some(Background::Color(style::color(palette.accent_soft)));
-                }
-                style
-            })
-            .on_press(Message::Workspace(i, bar.status.ids.get(i).copied()))
-            .into()
+        workspace_button(bar, i, lit, container(mark).center_x(28).center_y(tall))
     }))
     .align_x(Alignment::Center)
     .into()

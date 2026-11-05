@@ -267,11 +267,12 @@ impl Shell {
                 return Task::batch(named);
             }
             Message::Frame => {
+                let length = self.speed().time(FADE);
                 for shown in &mut self.shown {
                     if shown
                         .from
                         .as_ref()
-                        .is_some_and(|(_, at)| at.elapsed() >= FADE)
+                        .is_some_and(|(_, at)| at.elapsed() >= length)
                     {
                         shown.from = None;
                     }
@@ -432,10 +433,12 @@ impl Shell {
             Message::Osd(Some(osd)) => return self.show(osd),
             Message::OsdDone(serial) => {
                 if self.osd.as_ref().is_some_and(|(_, shown)| *shown == serial) {
-                    self.osd = None;
+                    self.fade_osd();
                 }
             }
             Message::Overlay(overlay) => return self.set_overlay(overlay),
+            // The time is taken before every update; a frame brings nothing else.
+            Message::Motion(_) => {}
             Message::Opened if self.overlay == Some(Overlay::Launcher) => {
                 return self.launcher.focus();
             }

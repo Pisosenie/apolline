@@ -98,6 +98,8 @@ impl Shell {
             .chain(self.outputs.iter().cloned().map(Some))
             .collect();
         let mut shown = Vec::with_capacity(screens.len());
+        // Without animations a new picture is just there.
+        let fades = !self.demo && !self.speed().time(FADE).is_zero();
         for output in screens {
             let wanted = self.wallpaper_name(output.as_deref()).to_owned();
             let before = self
@@ -110,7 +112,7 @@ impl Shell {
                 Some(before) if !loaded || before.name == wanted => shown.push(before),
                 before => {
                     let from = before
-                        .filter(|_| !self.demo)
+                        .filter(|_| fades)
                         .and_then(|b| self.picture(&b.name).cloned())
                         .map(|old| (old, Instant::now()));
                     shown.push(Shown {
@@ -258,7 +260,8 @@ impl Shell {
         match shown.and_then(|s| Some((s, self.picture(&s.name)?))) {
             Some((shown, handle)) => match &shown.from {
                 Some((old, at)) => {
-                    let t = (at.elapsed().as_secs_f32() / FADE.as_secs_f32()).min(1.0);
+                    let length = self.speed().time(FADE).max(Duration::from_millis(1));
+                    let t = (at.elapsed().as_secs_f32() / length.as_secs_f32()).min(1.0);
                     let eased = 1.0 - (1.0 - t).powi(3);
                     stack![picture(old, 1.0), picture(handle, eased)].into()
                 }

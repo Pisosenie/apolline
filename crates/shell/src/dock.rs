@@ -7,6 +7,7 @@ use iced::time::Instant;
 use iced::{Animation, Point};
 
 use crate::dock_shape::Shape;
+use crate::motion::Speed;
 
 const GROWS_IN: Duration = Duration::from_millis(120);
 // A pinned app let go this far past the glass, away from the edge, is unpinned.
@@ -196,6 +197,8 @@ pub struct Dock {
     last: HashMap<String, u64>,
     pub pointer: Option<(Option<String>, f32)>,
     grow: Animation<bool>,
+    // How long growing takes at the shell's motion speed; zero is at once.
+    grows_in: Duration,
     pub now: Instant,
     pub dragging: Option<Drag>,
     // Whose menu is open, how far from the dock's middle its icon is, and on which screen.
@@ -214,9 +217,8 @@ impl Default for Dock {
             front: None,
             last: HashMap::new(),
             pointer: None,
-            grow: Animation::new(false)
-                .duration(GROWS_IN)
-                .easing(iced::animation::Easing::EaseOutQuad),
+            grow: growing(false, GROWS_IN),
+            grows_in: GROWS_IN,
             now: Instant::now(),
             dragging: None,
             menu: None,
@@ -275,12 +277,32 @@ impl Dock {
 
     // How far grown the icons are, 0 to 1.
     pub fn strength(&self) -> f32 {
+        if self.grows_in.is_zero() {
+            return if self.grow.value() { 1.0 } else { 0.0 };
+        }
         self.grow.interpolate(0.0, 1.0, self.now)
     }
 
     pub fn animating(&self) -> bool {
-        self.grow.is_animating(self.now)
+        !self.grows_in.is_zero() && self.grow.is_animating(self.now)
     }
+
+    // Growing follows the shell's motion speed; taken up from where the icons are.
+    pub fn pace(&mut self, speed: Speed) {
+        let grows_in = speed.time(GROWS_IN);
+        if grows_in == self.grows_in {
+            return;
+        }
+        self.grows_in = grows_in;
+        self.grow = growing(self.grow.value(), grows_in);
+    }
+}
+
+// lilt divides by the length, so a zero one is never handed to it.
+fn growing(grown: bool, length: Duration) -> Animation<bool> {
+    Animation::new(grown)
+        .duration(length.max(Duration::from_millis(1)))
+        .easing(iced::animation::Easing::EaseOutQuad)
 }
 
 // How many of `sent` came after `read`.
@@ -448,5 +470,18 @@ mod tests {
             pinned,
             "still among the running"
         );
+    }
+
+    #[test]
+    fn without_animations_the_icons_grow_at_once() {
+        let mut dock = Dock::default();
+        dock.pace(Speed::new(Some(0.0), false));
+        let now = Instant::now();
+        dock.point(None, Some(10.0), now);
+        assert!(!dock.animating());
+        assert_eq!(dock.strength(), 1.0);
+        dock.pace(Speed::default());
+        dock.point(None, None, now);
+        assert!(dock.animating(), "back to growing in time");
     }
 }

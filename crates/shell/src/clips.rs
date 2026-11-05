@@ -177,12 +177,16 @@ impl Picker {
         .style(style::surface);
 
         mouse_area(
-            container(opaque(panel))
-                .width(Fill)
-                .height(Fill)
-                .align_x(Alignment::Center)
-                .padding(Padding::new(0.0).top(150.0))
-                .style(style::scrim),
+            container(crate::posed::enter(
+                opaque(panel),
+                apolline_config::Edge::Top,
+                Alignment::Center,
+            ))
+            .width(Fill)
+            .height(Fill)
+            .align_x(Alignment::Center)
+            .padding(Padding::new(0.0).top(150.0))
+            .style(style::scrim),
         )
         .on_press(Message::Overlay(None))
         .into()
@@ -373,6 +377,7 @@ fn preview(index: usize, clip: &Clip, palette: Palette) -> Element<'_, Message> 
                     .width(Fill)
                     .height(Fill)
                     .content_fit(ContentFit::Contain)
+                    .opacity(style::fade())
                     .into(),
                 None => Space::new().into(),
             };

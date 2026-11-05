@@ -8,6 +8,7 @@ mod handle;
 mod handle_more;
 mod input;
 mod modes;
+mod moving;
 mod plugged;
 mod views;
 mod widgets;
@@ -118,6 +119,8 @@ pub enum Message {
     StopTimer(u64),
     NightLight(bool),
     Frame,
+    // A frame drawn while something on the surfaces moves.
+    Motion(Instant),
     CalendarMonth(i32),
     CalendarDay(chrono::NaiveDate),
     Stats(crate::stats::Stats),
@@ -362,6 +365,7 @@ pub struct Shell {
     ticks: u64,
     published: Option<Shared>,
     now: DateTime<Local>,
+    moving: moving::Moving,
 }
 
 impl Shell {
@@ -495,6 +499,7 @@ impl Shell {
             ticks: 0,
             published: None,
             now: Local::now(),
+            moving: moving::Moving::new(Instant::now()),
         };
         shell.report(&diagnostics);
         // What came in before this start is back in quick settings, and written again at the
@@ -666,7 +671,10 @@ impl Shell {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        self.clock(&message);
         let task = self.handle(message);
+        self.settle();
+        let task = Task::batch([task, self.wake()]);
         self.watch_front();
         self.count_unread();
         self.publish();
@@ -709,6 +717,7 @@ impl Shell {
             Osd::Brightness(level) => self.controls.brightness = Some(*level),
             _ => {}
         }
+        self.bring_osd(&osd);
         let serial = self.osd.as_ref().map_or(0, |(_, serial)| serial + 1);
         self.osd = Some((osd, serial));
         Task::perform(tokio::time::sleep(osd::SHOWN_FOR), move |()| {
@@ -841,13 +850,20 @@ impl Shell {
             clipboard::subscription().map(Message::Clip)
         };
         let fading = if self.shown.iter().any(|s| s.from.is_some()) {
-            iced::window::frames().map(|_| Message::Frame)
+            iced::time::every(crate::motion::FRAME).map(|_| Message::Frame)
+        } else {
+            iced::Subscription::none()
+        };
+        // Updates only while something on the surfaces moves; nothing at rest.
+        let moving = if self.moving.ends().is_some() {
+            iced::time::every(crate::motion::FRAME).map(Message::Motion)
         } else {
             iced::Subscription::none()
         };
         // Frames only while the dock's icons grow or shrink; nothing at rest.
         let growing = if self.dock.animating() {
-            iced::window::frames().map(|at| Message::Dock(crate::dock::Event::Frame(at)))
+            iced::time::every(crate::motion::FRAME)
+                .map(|at| Message::Dock(crate::dock::Event::Frame(at)))
         } else {
             iced::Subscription::none()
         };
@@ -878,6 +894,7 @@ impl Shell {
         iced::Subscription::batch([
             subscription(),
             fading,
+            moving,
             growing,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
             crate::modules::subscription(&self.config.modules, &self.module_runs, &self.plugins),

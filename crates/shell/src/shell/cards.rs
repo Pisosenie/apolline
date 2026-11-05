@@ -133,15 +133,11 @@ impl Shell {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn popup_height(&self) -> u32 {
-        popup::height(&self.shown_cards())
-    }
-
-    #[cfg(target_os = "linux")]
     pub fn answerable(&self) -> bool {
         self.shown_cards().iter().any(|n| n.reply.is_some())
     }
 
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(super) fn shown_cards(&self) -> Vec<&notify::Notification> {
         popup::shown(
             self.popups.iter().rev().map(|(n, _)| n),

@@ -119,7 +119,7 @@ impl Preview {
                     .padding(Padding::new(0.0).bottom(56.0)),
             );
         }
-        if self.shell.overlay().is_some() {
+        if self.shell.overlay_drawn().is_some() {
             layers = layers.push(self.shell.overlay_view());
         }
         layers.into()
