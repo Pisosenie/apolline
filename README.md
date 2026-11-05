@@ -161,6 +161,24 @@ sliders = ["volume", "apps", "mic", "devices", "brightness"]
 
 `parts` is what it shows from top to bottom, `tiles` the toggles two to a row, and `sliders` the volume (`apps` is each app playing, `devices` the speaker and mic pickers) and brightness; what a list leaves out isn't shown. Settings → Bar → Quick settings has a board for each to drag on. `lyrics = true` shows the line being sung under what's playing, and the next one after it, while quick settings is open; the words come from [lrclib.net](https://lrclib.net), which is told the title and the artist, so it's off until you turn it on.
 
+## The dock
+
+A dock is there for whoever wants one; the bar already has the open windows and pinned apps, so it's off until you turn it on (Settings → Bar → Dock):
+
+```toml
+[dock]
+show = true
+position = "bottom"   # or "left", "right"
+autohide = true       # out when the pointer reaches the edge, over the windows
+size = 48             # the icons, 32 to 96 px
+magnify = true        # the icon under the pointer and its neighbours grow
+skip = ["HDMI-A-1"]   # screens without one
+```
+
+It shows the pinned apps (the same `[bar] pinned` list), a thin line, then the apps that are open and aren't pinned. Under each icon is a dot for each of its windows, up to three, the first wide in the accent while the app is in front; an app asking for attention gets the accent ring the tray uses, on a niri new enough to tell. A count on the corner says how many of the app's notifications in quick settings came since you last looked at it: going to the app, or clearing them from quick settings, takes it away.
+
+A click goes to the app's window, and clicking again goes round its windows; with none open, it starts the app. A middle click opens another window (the entry's own "New Window" when it has one), the wheel goes round the windows, and a right click lists them with New window, Pin or Unpin and Close all. Drag an icon to move it among the pinned apps, a running one onto them to pin it, or a pinned one off the dock to unpin it. Hidden, the dock waits along the middle of its edge and stays out while its menu is open; shown for good, windows keep clear of it. `[style.dock]` takes `radius`, `opacity` (its glass, `[bar] opacity` unless set) and `font`. Nothing runs while the pointer is away: the icons grow and settle in a tenth of a second and then it's still.
+
 ## Themes
 
 A theme is one small file: wallpaper, accent, palette, gaps, corners, borders, shadows, window opacity, animation speed, the bar's place, shape and look, and the size, corners and glass of the launcher, quick settings and popups. Settings → Themes shows them as a gallery: ten come with Apolline (Fog, Ember, Night; Tonal, with colors from the wallpaper and the bar as islands; Mocha and Latte in Catppuccin; Hardline, square and flat in Gruvbox; Paper, light and plain; Minimal; Glass), *Save my look* turns your current setup into one, and *Add someone's theme* takes a file somebody sent you. They live in `~/.config/apolline/themes`, so sharing a look is sending a file.
