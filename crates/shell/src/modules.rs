@@ -71,18 +71,11 @@ fn run_one((index, module, _, plugin): &Run) -> impl Stream<Item = Message> + us
     let (index, module, plugin) = (*index, module.clone(), plugin.clone());
     iced::stream::channel(4, async move |mut output| {
         loop {
-            let mut command = tokio::process::Command::new("sh");
-            if let Some(plugin) = &plugin {
-                plugin.apply(&mut command).await;
-            }
-            command
-                .args(["-c", &grouped(&module.command)])
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .process_group(0)
-                .kill_on_drop(true);
-            crate::child::tie(command.as_std_mut(), libc::SIGTERM);
+            let mut command = match &plugin {
+                Some(plugin) => plugin.command(&module.command).await,
+                None => in_group(&module.command),
+            };
+            command.stdout(Stdio::piped());
             match command.spawn() {
                 Ok(mut child) => {
                     let mut group = crate::child::Group::new(child.id());
@@ -111,10 +104,25 @@ fn run_one((index, module, _, plugin): &Run) -> impl Stream<Item = Message> + us
     })
 }
 
-// sh passes its own end on to the whole group, pipelines and loops included,
-// since the death signal from the shell reaches only sh itself.
+// sh running `line` in a process group of its own, so the whole of it can be ended: on its way
+// out the shell signals sh, and sh passes it on to the group, pipelines and loops included.
+pub fn in_group(line: &str) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new("sh");
+    command
+        .args(["-c", &grouped(line)])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .kill_on_drop(true);
+    crate::child::tie(command.as_std_mut(), libc::SIGTERM);
+    command
+}
+
+// sh passes its own end on to the whole group, since the death signal from the shell reaches only
+// sh itself. It ends with the command's own status.
 fn grouped(command: &str) -> String {
-    format!("trap 'trap - TERM; kill 0' TERM\n{{ {command}\n}} &\nwait")
+    format!("trap 'trap - TERM; kill 0' TERM\n{{ {command}\n}} &\nwait $!")
 }
 
 pub fn said(line: &str) -> Said {

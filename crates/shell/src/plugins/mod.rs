@@ -165,13 +165,23 @@ impl Runs {
         }
     }
 
-    // A click's command and the like: started and let go, as the shell's own are.
+    // One of its commands the shell waits on, in a process group of its own: ending it ends
+    // whatever it started too, not only sh.
+    pub async fn command(&self, line: &str) -> tokio::process::Command {
+        let mut command = crate::modules::in_group(line);
+        self.apply(&mut command).await;
+        command
+    }
+
+    // A click's command and the like: started and let go, as the shell's own are, in a group
+    // of its own so nothing meant for the shell's reaches it.
     pub async fn spawn(self, line: String) {
         let mut command = tokio::process::Command::new("sh");
         command
             .args(["-c", &format!("{line} &")])
             .stdin(Stdio::null())
-            .stdout(Stdio::null());
+            .stdout(Stdio::null())
+            .process_group(0);
         self.apply(&mut command).await;
         if let Err(err) = command.status().await {
             eprintln!("apolline: plugin {}: {err}", self.plugin);

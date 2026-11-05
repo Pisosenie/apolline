@@ -4,6 +4,7 @@ use std::time::Duration;
 use apolline_config::Tile;
 use iced::Subscription;
 use iced::futures::{SinkExt, Stream};
+use tokio::io::AsyncReadExt;
 
 use super::{Loaded, Runs};
 use crate::shell::Message;
@@ -108,17 +109,19 @@ async fn read(runs: &Runs, command: &str) -> Option<State> {
 }
 
 async fn run(runs: &Runs, line: &str, patience: Duration) -> Option<String> {
-    let mut command = tokio::process::Command::new("sh");
-    command
-        .args(["-c", line])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    runs.apply(&mut command).await;
-    let out = tokio::time::timeout(patience, command.output()).await;
-    match out {
-        Ok(Ok(out)) => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
+    let mut command = runs.command(line).await;
+    command.stdout(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|err| eprintln!("apolline: plugin {}: {err}", runs.plugin))
+        .ok()?;
+    // Heard out or given up on, it ends whole, with whatever it started.
+    let _group = crate::child::Group::new(child.id());
+    let mut out = Vec::new();
+    let mut stdout = child.stdout.take()?;
+    let read = stdout.read_to_end(&mut out);
+    match tokio::time::timeout(patience, read).await {
+        Ok(Ok(_)) => Some(String::from_utf8_lossy(&out).into_owned()),
         Ok(Err(err)) => {
             eprintln!("apolline: plugin {}: {err}", runs.plugin);
             None

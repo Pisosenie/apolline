@@ -109,16 +109,12 @@ pub async fn search(asked: Vec<(Runs, Source, String)>) -> Vec<Found> {
 }
 
 async fn ask(runs: &Runs, source: &Source, query: &str) -> Vec<Found> {
-    let mut command = tokio::process::Command::new("sh");
     // The search is the command's argument as well, never part of the line itself.
+    let mut command = runs.command(&format!("{} \"$@\"", source.command)).await;
     command
-        .args(["-c", &format!("{} \"$@\"", source.command), "sh", query])
+        .args(["sh", query])
         .env("APOLLINE_QUERY", query)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    runs.apply(&mut command).await;
+        .stdout(Stdio::piped());
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(err) => {
@@ -126,6 +122,8 @@ async fn ask(runs: &Runs, source: &Source, query: &str) -> Vec<Found> {
             return Vec::new();
         }
     };
+    // Done or dropped, the search ends with all it started.
+    let _group = crate::child::Group::new(child.id());
     let Some(stdout) = child.stdout.take() else {
         return Vec::new();
     };
@@ -195,6 +193,43 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].title, "hi it's $HOME");
         assert_eq!(found[0].act, Act::Copy("it's $HOME".into()));
+    }
+
+    #[test]
+    fn a_search_ends_what_its_source_left_running() {
+        let file = std::env::temp_dir().join(format!("apolline-search-{}", std::process::id()));
+        let line = format!(
+            r#"sleep 30 > /dev/null & echo $! > '{}'; printf '{{"title": "x", "copy": "y"}}\n'; true"#,
+            file.display()
+        );
+        let runs = Runs {
+            plugin: "sleepy".into(),
+            dir: std::env::temp_dir(),
+            env: Vec::new(),
+            secrets: Vec::new(),
+        };
+        let source = Source {
+            prefix: None,
+            command: line,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let found = runtime.block_on(search(vec![(runs, source, "q".into())]));
+        let pid: i32 = std::fs::read_to_string(&file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(found.len(), 1);
+        // SAFETY: signal 0 only asks whether the process is there.
+        let gone = (0..40).any(|_| {
+            std::thread::sleep(Duration::from_millis(50));
+            unsafe { libc::kill(pid, 0) != 0 }
+        });
+        assert!(gone, "the sleep it started is ended with it");
     }
 
     #[test]
