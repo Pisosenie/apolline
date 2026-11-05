@@ -843,3 +843,6 @@
 "Look again" = "Проверить снова"
 "After installing something; the same as  apolline doctor" = "После установки чего-нибудь; то же, что  apolline doctor"
 "Check" = "Проверить"
+"Search settings" = "Поиск настроек"
+"Settings with “{query}”" = "Настройки со словами «{query}»"
+"Nothing here has those words; try fewer" = "Ничего не нашлось; попробуйте меньше слов"

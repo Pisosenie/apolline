@@ -8,7 +8,8 @@ impl Settings {
             let compact = size.width < NARROW;
             let content = match (&self.editor, self.page) {
                 (Err(err), page) if page != Page::About => broken(err),
-                (_, page) => self.page_view(page, wide),
+                _ if !self.query.trim().is_empty() => self.results(),
+                (_, page) => self.spotlight(|| self.page_view(page, wide)),
             };
             let padding = if wide { [28, 36] } else { [22, 24] };
             container(row![
@@ -23,8 +24,8 @@ impl Settings {
         .into()
     }
 
-    pub(super) fn page_view(&self, page: Page, wide: bool) -> Element<'_, Message> {
-        let form: Element<'_, Message> = match page {
+    pub(super) fn form(&self, page: Page) -> Element<'_, Message> {
+        match page {
             Page::Modes => self.modes(),
             Page::Themes => self.themes(),
             Page::Appearance => self.appearance(),
@@ -38,7 +39,11 @@ impl Settings {
             Page::Shortcuts => self.shortcuts(),
             Page::About => self.about(),
             Page::Welcome => self.welcome(),
-        };
+        }
+    }
+
+    pub(super) fn page_view(&self, page: Page, wide: bool) -> Element<'_, Message> {
+        let form = self.form(page);
         let writes = match (&self.editor, page) {
             (_, Page::About | Page::Welcome) => None,
             (Ok(editor), Page::Modes) if self.selected < self.config.modes.len() => {
@@ -104,6 +109,7 @@ impl Settings {
         let body: Element<'_, Message> = match writes {
             Some(code) if wide => row![
                 scrollable(form)
+                    .id(find::PAGE)
                     .direction(style::thin())
                     .style(style::scroller)
                     .height(Fill)
@@ -114,10 +120,12 @@ impl Settings {
             .into(),
             Some(code) => {
                 scrollable(container(column![form, self.writes(code)].spacing(22)).padding([0, 16]))
+                    .id(find::PAGE)
                     .height(Fill)
                     .into()
             }
             None => scrollable(container(form).padding([0, 16]))
+                .id(find::PAGE)
                 .height(Fill)
                 .into(),
         };
@@ -212,7 +220,18 @@ impl Settings {
             .style(style::ghost(10.0))
             .on_press(Message::Page(Page::About));
 
-        container(column![brand, space().height(18), nav, space::vertical(), footer].spacing(2))
+        let mut top = column![brand, space().height(18)].spacing(2);
+        if !compact {
+            top = top.push(
+                text_input(crate::i18n::t("Search settings"), &self.query)
+                    .on_input(Message::Find)
+                    .padding([8, 12])
+                    .size(13)
+                    .style(style::field(palette)),
+            );
+            top = top.push(space().height(10));
+        }
+        container(column![top, nav, space::vertical(), footer].spacing(2))
             .width(if compact { 68 } else { 240 })
             .height(Fill)
             .padding([20, 14])

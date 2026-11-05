@@ -4,8 +4,12 @@ impl Settings {
     pub(super) fn handle(&mut self, message: Message) -> Task<Message> {
         let index = self.selected;
         match message {
+            Message::Find(query) => self.query = query,
+            Message::FoundSetting(page, title) => return self.go_to(page, title),
             Message::Page(page) => {
                 self.page = page;
+                self.query.clear();
+                self.spot = None;
                 self.recording = None;
                 self.recording_mode_key = false;
                 self.armed = false;

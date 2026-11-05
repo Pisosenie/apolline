@@ -5,6 +5,7 @@ pub(super) fn group<'a>(
     title: impl AsRef<str>,
     rows: Vec<Element<'a, Message>>,
 ) -> Element<'a, Message> {
+    find::note_group(title.as_ref());
     let mut body = Column::new();
     let count = rows.len();
     for (index, row) in rows.into_iter().enumerate() {
@@ -53,14 +54,32 @@ pub(super) fn setting_owned<'a>(
     about: Option<String>,
     control: impl Into<Element<'a, Message>>,
 ) -> Element<'a, Message> {
+    find::note(title, about.as_deref().unwrap_or_default());
+    let lit = find::lit(title);
     let mut words = column![text(title).size(14).font(style::medium())].spacing(3);
     if let Some(about) = about {
         words = words.push(text(about).size(12).color(style::color(style::faint())));
     }
-    row![words.width(Fill), control.into()]
+    let line = row![words.width(Fill), control.into()]
         .spacing(20)
         .align_y(Alignment::Center)
-        .padding([14, 16])
+        .padding([14, 16]);
+    let Some(accent) = lit else {
+        return line.into();
+    };
+    // Where a search led: lit until the next page.
+    container(line)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(style::color(
+                apolline_theme::scheme().text.alpha(0.06),
+            ))),
+            border: Border {
+                color: style::color(accent.alpha(0.7)),
+                width: 1.5,
+                radius: 10.0.into(),
+            },
+            ..container::Style::default()
+        })
         .into()
 }
 

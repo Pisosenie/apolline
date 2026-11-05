@@ -3,6 +3,7 @@ mod bar_layout;
 mod catalog;
 mod displays;
 mod file;
+mod find;
 mod frame;
 mod handle;
 mod input;
@@ -403,6 +404,8 @@ enum Message {
     LockFingerprint(bool),
     LockNow,
     Language(&'static str),
+    Find(String),
+    FoundSetting(Page, String),
     Machine(Vec<crate::doctor::Line>),
     CheckMachine,
     Browse,
@@ -486,6 +489,9 @@ struct Settings {
     catalog: Option<Result<Vec<crate::catalog::Entry>, String>>,
     catalog_pictures: std::collections::HashMap<String, image::Handle>,
     catalog_busy: Option<String>,
+    // The search over every page, and the row it last led to.
+    query: String,
+    spot: Option<(Page, String)>,
     // What `apolline doctor` says, once the About page has asked.
     machine: Option<Vec<crate::doctor::Line>>,
     theme_name: String,
@@ -577,6 +583,8 @@ impl Settings {
             catalog: None,
             catalog_pictures: std::collections::HashMap::new(),
             catalog_busy: None,
+            query: String::new(),
+            spot: None,
             machine: None,
             theme_name: String::new(),
             theme_path: String::new(),

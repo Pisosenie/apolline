@@ -255,3 +255,58 @@ fn comments_inside_strings_are_not_comments() {
     );
     assert_eq!(split_comment(" 10"), (" 10", ""));
 }
+
+#[test]
+fn a_search_finds_a_setting_on_its_page_in_either_language() {
+    let dir = std::env::temp_dir().join(format!("apolline-find-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let found = |settings: &Settings, query: &str| -> Vec<(Page, String)> {
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        settings
+            .index()
+            .into_iter()
+            .flat_map(|(page, rows)| rows.into_iter().map(move |row| (page, row)))
+            .filter(|(page, row)| find::matches(&words, row, *page))
+            .map(|(page, row)| (page, row.title))
+            .collect()
+    };
+    let blur = found(&settings, "blur wallpaper");
+    assert!(
+        blur.contains(&(Page::Lock, "Blur the wallpaper".to_owned())),
+        "{blur:?}"
+    );
+    let index = settings.index();
+    let lock = &index
+        .iter()
+        .find(|(page, _)| *page == Page::Lock)
+        .unwrap()
+        .1;
+    let row = lock
+        .iter()
+        .find(|r| r.title == "Blur the wallpaper")
+        .unwrap();
+    assert_eq!(row.group, "Look", "a row knows its group");
+
+    crate::i18n::choose(Some("ru"));
+    assert!(
+        !found(&settings, "размыть").is_empty() || !found(&settings, "размытие").is_empty(),
+        "Russian words find it too"
+    );
+    crate::i18n::choose(Some("en"));
+
+    let _ = settings.update(Message::FoundSetting(
+        Page::Lock,
+        "Blur the wallpaper".into(),
+    ));
+    assert_eq!(settings.page, Page::Lock);
+    assert_eq!(
+        settings.spot.as_ref().map(|(_, t)| t.as_str()),
+        Some("Blur the wallpaper")
+    );
+    let _ = settings.update(Message::Page(Page::Bar));
+    assert!(settings.spot.is_none());
+    std::fs::remove_dir_all(dir).unwrap();
+}
