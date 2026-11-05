@@ -846,3 +846,16 @@
 "Search settings" = "Поиск настроек"
 "Settings with “{query}”" = "Настройки со словами «{query}»"
 "Nothing here has those words; try fewer" = "Ничего не нашлось; попробуйте меньше слов"
+
+# Your colors
+"Your colors" = "Свои цвета"
+"Bar and dimming" = "Панель и затемнение"
+"The bar's glass and what darkens behind overlays" = "Стекло панели и затемнение за оверлеями"
+"Notification cards" = "Карточки уведомлений"
+"Quick settings and the launcher" = "Быстрые настройки и запуск приложений"
+"And the other overlays" = "И другие оверлеи"
+"Apolline's windows" = "Окна Apolline"
+"This one, the lock screen's fields, dialogs" = "Это окно, поля экрана блокировки, диалоги"
+"Text" = "Текст"
+"Dark text makes the whole palette light" = "Тёмный текст делает всю палитру светлой"
+"Over any palette, a role at a time; Enter keeps it, × gives the palette's back" = "Поверх любой палитры, по одной роли; Enter сохраняет, × возвращает цвет палитры"

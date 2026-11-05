@@ -269,8 +269,18 @@ impl Editor {
     }
 
     pub fn unset(&mut self, section: &str, key: &str) {
-        if let Some(table) = self.doc.get_mut(section).and_then(Item::as_table_mut) {
-            table.remove(key);
+        let Some(table) = self.doc.get_mut(section).and_then(Item::as_table_mut) else {
+            return;
+        };
+        table.remove(key);
+        // A section left with nothing in it goes too, unless you wrote something above it.
+        let commented = table
+            .decor()
+            .prefix()
+            .and_then(|prefix| prefix.as_str())
+            .is_some_and(|prefix| prefix.contains('#'));
+        if table.is_empty() && !commented {
+            self.doc.remove(section);
         }
     }
 

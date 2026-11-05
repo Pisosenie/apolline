@@ -416,6 +416,7 @@ impl Settings {
             self.layers(palette),
             preview,
             desktop,
+            self.own_colors(),
             group(
                 "Windows",
                 vec![

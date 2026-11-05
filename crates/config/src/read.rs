@@ -19,7 +19,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 21] = [
+const SECTIONS: [&str; 22] = [
     "general",
     "theme",
     "desktop",
@@ -41,6 +41,7 @@ const SECTIONS: [&str; 21] = [
     "module",
     "template",
     "mode",
+    "colors",
 ];
 
 const MODE_OPTIONS: [&str; 12] = [
@@ -231,6 +232,11 @@ impl Reader<'_> {
                                 config.style.grid = grid;
                             }
                         }
+                    }
+                }
+                "colors" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.colors(t, &mut config.colors)
                     }
                 }
                 "night" => {
@@ -1254,6 +1260,22 @@ impl Reader<'_> {
                     }
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),
+            }
+        }
+    }
+
+    fn colors(&mut self, table: &DeTable, colors: &mut crate::Colors) {
+        for (key, value) in table.iter() {
+            let Some(slot) = colors.get_mut(key.get_ref().as_ref()) else {
+                self.unknown(key, "color", &crate::Colors::ROLES);
+                continue;
+            };
+            match self.string(key, value).map(|text| Rgba::parse(text.trim())) {
+                Some(Some(color)) => *slot = Some(color),
+                Some(None) => {
+                    self.wrong::<()>(key, value, r##"a color like "#1e1e2e""##);
+                }
+                None => {}
             }
         }
     }

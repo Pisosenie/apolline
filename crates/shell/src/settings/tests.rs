@@ -310,3 +310,27 @@ fn a_search_finds_a_setting_on_its_page_in_either_language() {
     assert!(settings.spot.is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_color_of_your_own_is_kept_on_enter_and_given_back() {
+    let dir = std::env::temp_dir().join(format!("apolline-colors-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[layout]\ngaps = 8\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let _ = settings.update(Message::ColorDraft("window", "zzz".into()));
+    let _ = settings.update(Message::ColorSet("window"));
+    assert!(
+        !std::fs::read_to_string(&path).unwrap().contains("[colors]"),
+        "nonsense isn't kept"
+    );
+    let _ = settings.update(Message::ColorDraft("window", "1E1E2E".into()));
+    let _ = settings.update(Message::ColorSet("window"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[colors]\nwindow = \"#1e1e2e\""), "{text}");
+    assert_eq!(settings.config.scheme(None).window.to_hex(), "#1e1e2e");
+    let _ = settings.update(Message::ColorReset("window"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("colors"), "{text}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

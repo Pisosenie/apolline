@@ -1,6 +1,7 @@
 mod appearance;
 mod bar_layout;
 mod catalog;
+mod colors;
 mod displays;
 mod file;
 mod find;
@@ -244,7 +245,7 @@ impl Page {
         match self {
             Page::Modes | Page::About | Page::Welcome => &[],
             Page::Themes => &["desktop", "layout", "windows", "bar"],
-            Page::Appearance => &["desktop", "layout", "apps", "style"],
+            Page::Appearance => &["desktop", "colors", "layout", "apps", "style"],
             Page::Windows => &["windows"],
             Page::Displays => &["night"],
             Page::Bar => &["bar"],
@@ -405,6 +406,9 @@ enum Message {
     LockNow,
     Language(&'static str),
     Find(String),
+    ColorDraft(&'static str, String),
+    ColorSet(&'static str),
+    ColorReset(&'static str),
     FoundSetting(Page, String),
     Machine(Vec<crate::doctor::Line>),
     CheckMachine,
@@ -492,6 +496,8 @@ struct Settings {
     // The search over every page, and the row it last led to.
     query: String,
     spot: Option<(Page, String)>,
+    // A color being typed, by role, until Enter.
+    color_drafts: std::collections::HashMap<&'static str, String>,
     // What `apolline doctor` says, once the About page has asked.
     machine: Option<Vec<crate::doctor::Line>>,
     theme_name: String,
@@ -585,6 +591,7 @@ impl Settings {
             catalog_busy: None,
             query: String::new(),
             spot: None,
+            color_drafts: std::collections::HashMap::new(),
             machine: None,
             theme_name: String::new(),
             theme_path: String::new(),

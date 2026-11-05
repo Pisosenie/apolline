@@ -8,6 +8,7 @@ pub struct Theme {
     pub wallpaper: String,
     pub accent: Accent,
     pub palette: String,
+    pub colors: crate::Colors,
     pub layout: Layout,
     pub bar: Bar,
     pub opacity: Option<f32>,
@@ -42,6 +43,7 @@ impl Theme {
             wallpaper: config.desktop.wallpaper.clone(),
             accent: config.desktop.accent,
             palette: config.desktop.palette.clone(),
+            colors: config.colors,
             layout: config.layout,
             bar: config.bar.clone(),
             opacity: config.windows.opacity,
@@ -81,7 +83,10 @@ impl Theme {
         differ("wallpaper", self.wallpaper == now.wallpaper);
         differ("desktop clock", self.clock == now.clock);
         differ("accent", self.accent == now.accent);
-        differ("colors", self.palette == now.palette);
+        differ(
+            "colors",
+            self.palette == now.palette && self.colors == now.colors,
+        );
         differ("gaps", self.layout.gaps == now.layout.gaps);
         differ("corners", self.layout.radius == now.layout.radius);
         differ(
@@ -135,6 +140,7 @@ impl Theme {
         config.desktop.wallpaper = self.wallpaper.clone();
         config.desktop.accent = self.accent;
         config.desktop.palette = self.palette.clone();
+        config.colors = self.colors;
         config.layout = self.layout;
         config.bar.position = self.bar.position;
         config.bar.floating = self.bar.floating;
@@ -170,6 +176,13 @@ impl Theme {
             editor.unset("desktop", "palette");
         } else {
             editor.set("desktop", "palette", self.palette.as_str());
+        }
+        // A theme's colors are all of them: its own, or the palette's.
+        for role in crate::Colors::ROLES {
+            match self.colors.get(role) {
+                Some(color) => editor.set("colors", role, color.to_hex()),
+                None => editor.unset("colors", role),
+            }
         }
         editor.set("layout", "gaps", i64::from(self.layout.gaps));
         editor.set("layout", "radius", i64::from(self.layout.radius));
@@ -266,6 +279,30 @@ fn round(value: f32) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_theme_carries_its_colors_and_clears_yours() {
+        let theme =
+            super::Theme::parse("[theme]\nname = \"Ink\"\n[colors]\nwindow = \"#101010\"\n")
+                .unwrap();
+        assert!(theme.text().contains("[colors]\nwindow = \"#101010\""));
+        let mut editor =
+            crate::Editor::parse("[colors]\ntext = \"#eeeeee\"\n[layout]\ngaps = 4\n").unwrap();
+        theme.apply(&mut editor);
+        let (config, _) = crate::Config::parse(&editor.text());
+        assert_eq!(
+            config.colors.text, None,
+            "the theme's colors are all of them"
+        );
+        assert_eq!(
+            config.colors.window.map(|c| c.to_hex()).as_deref(),
+            Some("#101010")
+        );
+        let plain = super::Theme::parse("[theme]\nname = \"Plain\"\n").unwrap();
+        let mut editor = crate::Editor::parse("[colors]\ntext = \"#eeeeee\"\n").unwrap();
+        plain.apply(&mut editor);
+        assert!(!editor.text().contains("[colors]"), "{}", editor.text());
+    }
+
     use super::*;
 
     const GLASS: &str = "[theme]\nname = \"Glass\"\nauthor = \"Apolline\"\n\n[desktop]\nwallpaper = \"night.jpg\"\naccent = \"#c084fc\"\n\n[layout]\ngaps = 16\nradius = 18\n\n[windows]\ninactive_opacity = 0.8\n\n[bar]\nopacity = 0.35\n";

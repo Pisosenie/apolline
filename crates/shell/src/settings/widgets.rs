@@ -69,6 +69,7 @@ pub(super) fn setting_owned<'a>(
     };
     // Where a search led: lit until the next page.
     container(line)
+        .id(find::LIT)
         .style(move |_| container::Style {
             background: Some(Background::Color(style::color(
                 apolline_theme::scheme().text.alpha(0.06),

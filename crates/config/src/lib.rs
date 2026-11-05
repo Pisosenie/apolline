@@ -19,6 +19,7 @@ pub struct Config {
     pub mode: Option<String>,
     // "ru", "en" or none for the system's.
     pub language: Option<String>,
+    pub colors: Colors,
     pub theme: Option<(String, Option<String>)>,
     pub desktop: Desktop,
     pub layout: Layout,
@@ -451,6 +452,64 @@ impl Edge {
     }
 }
 
+// Colors of your own over the palette's, each role on its own; what's left out stays the palette's.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Colors {
+    pub ink: Option<Rgba>,
+    pub panel: Option<Rgba>,
+    pub surface: Option<Rgba>,
+    pub window: Option<Rgba>,
+    pub text: Option<Rgba>,
+}
+
+impl Colors {
+    pub const ROLES: [&str; 5] = ["ink", "panel", "surface", "window", "text"];
+
+    pub fn get(&self, role: &str) -> Option<Rgba> {
+        match role {
+            "ink" => self.ink,
+            "panel" => self.panel,
+            "surface" => self.surface,
+            "window" => self.window,
+            "text" => self.text,
+            _ => None,
+        }
+    }
+
+    pub fn get_mut(&mut self, role: &str) -> Option<&mut Option<Rgba>> {
+        match role {
+            "ink" => Some(&mut self.ink),
+            "panel" => Some(&mut self.panel),
+            "surface" => Some(&mut self.surface),
+            "window" => Some(&mut self.window),
+            "text" => Some(&mut self.text),
+            _ => None,
+        }
+    }
+
+    // The palette with these in it. Glass keeps the palette's see-through, and dark text makes it
+    // a light scheme, with lines and hovers drawn in black.
+    pub fn over(self, palette: Scheme) -> Scheme {
+        let own = |mine: Option<Rgba>, theirs: Rgba| mine.map_or(theirs, |c| c.alpha(theirs.a));
+        let light = self
+            .text
+            .map_or(palette.light, |text| text.luminance() < 0.5);
+        Scheme {
+            light,
+            ink: own(self.ink, palette.ink),
+            panel: own(self.panel, palette.panel),
+            surface: own(self.surface, palette.surface),
+            window: own(self.window, palette.window),
+            text: own(self.text, palette.text),
+            overlay: if light {
+                Rgba::hex(0x000000)
+            } else {
+                Rgba::hex(0xffffff)
+            },
+        }
+    }
+}
+
 // One strip of glass, a pill for each side and the middle with the wallpaper between them, or
 // everything in one pill in the middle.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -770,13 +829,15 @@ impl Config {
         })
     }
 
-    // The colors to draw with: a named palette, or neutrals tinted with the wallpaper's color.
+    // The colors to draw with: a named palette, or neutrals tinted with the wallpaper's color, and
+    // your own [colors] over either.
     pub fn scheme(&self, mode: Option<usize>) -> Scheme {
-        match self.desktop.palette.as_str() {
+        let palette = match self.desktop.palette.as_str() {
             "wallpaper" => palettes::tonal(auto_accent(self.wallpaper(mode)), false),
             "wallpaper-light" => palettes::tonal(auto_accent(self.wallpaper(mode)), true),
             name => palettes::named(name).map_or(Scheme::DARK, |(scheme, _)| scheme),
-        }
+        };
+        self.colors.over(palette)
     }
 
     pub fn notifications(&self, mode: Option<usize>) -> Notifications {
@@ -822,6 +883,7 @@ impl Default for Config {
         Self {
             mode: None,
             language: None,
+            colors: Colors::default(),
             theme: None,
             desktop: Desktop {
                 clock: None,
@@ -1054,6 +1116,38 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn your_colors_go_over_any_palette() {
+        let (config, problems) = super::Config::parse(
+            "[desktop]\npalette = \"nord\"\n[colors]\nwindow = \"#fafafa\"\ntext = \"#202020\"\nsurface = \"nope\"\nglow = \"#ffffff\"\n",
+        );
+        assert_eq!(
+            problems.len(),
+            2,
+            "a bad color and an unknown role: {problems:?}"
+        );
+        let nord = apolline_theme::palettes::named("nord").unwrap().0;
+        let scheme = config.scheme(None);
+        assert_eq!(scheme.window.to_hex(), "#fafafa");
+        assert_eq!(scheme.text.to_hex(), "#202020");
+        assert!(scheme.light, "dark text makes a light scheme");
+        assert_eq!(scheme.overlay.to_hex(), "#000000");
+        assert_eq!(
+            scheme.surface, nord.surface,
+            "what's left out stays the palette's"
+        );
+        assert_eq!(scheme.ink, nord.ink);
+        let glass = super::Colors {
+            panel: Some(apolline_theme::Rgba::hex(0x112233)),
+            ..super::Colors::default()
+        };
+        assert_eq!(
+            glass.over(nord).panel.a,
+            nord.panel.a,
+            "glass stays see-through"
+        );
+    }
+
     use super::*;
 
     #[test]

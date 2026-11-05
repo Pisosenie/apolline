@@ -5,6 +5,14 @@ impl Settings {
         let index = self.selected;
         match message {
             Message::Find(query) => self.query = query,
+            Message::ColorDraft(role, text) => {
+                self.color_drafts.insert(role, text);
+            }
+            Message::ColorSet(role) => self.set_color(role),
+            Message::ColorReset(role) => {
+                self.color_drafts.remove(role);
+                self.edit(|e| e.unset("colors", role));
+            }
             Message::FoundSetting(page, title) => return self.go_to(page, title),
             Message::Page(page) => {
                 self.page = page;

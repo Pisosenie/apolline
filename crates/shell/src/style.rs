@@ -512,6 +512,14 @@ pub fn field(palette: Palette) -> impl Fn(&Theme, text_input::Status) -> text_in
     }
 }
 
+// A field holding something that can't be used yet.
+pub fn wrong_field(palette: Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+    move |theme, status| text_input::Style {
+        border: outlined(DANGER.alpha(0.8), metrics::RADIUS_CONTROL + 2.0),
+        ..field(palette)(theme, status)
+    }
+}
+
 pub fn thin() -> Direction {
     Direction::Vertical(Scrollbar::new().width(4).scroller_width(4).spacing(10))
 }

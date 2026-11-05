@@ -4,6 +4,51 @@ use super::*;
 use iced::widget::column;
 
 pub(super) const PAGE: &str = "settings-page";
+pub(super) const LIT: &str = "settings-spot";
+
+// Where the lit row sits in the page's scrolled content, a little room above it.
+#[derive(Default)]
+struct Locate {
+    content: Option<iced::Rectangle>,
+    row: Option<iced::Rectangle>,
+}
+
+impl iced::advanced::widget::Operation<f32> for Locate {
+    fn traverse(
+        &mut self,
+        operate: &mut dyn FnMut(&mut dyn iced::advanced::widget::Operation<f32>),
+    ) {
+        operate(self);
+    }
+
+    fn container(&mut self, id: Option<&iced::advanced::widget::Id>, bounds: iced::Rectangle) {
+        if id == Some(&iced::advanced::widget::Id::new(LIT)) {
+            self.row = Some(bounds);
+        }
+    }
+
+    fn scrollable(
+        &mut self,
+        id: Option<&iced::advanced::widget::Id>,
+        _bounds: iced::Rectangle,
+        content: iced::Rectangle,
+        _translation: iced::Vector,
+        _state: &mut dyn iced::advanced::widget::operation::Scrollable,
+    ) {
+        if id == Some(&iced::advanced::widget::Id::new(PAGE)) {
+            self.content = Some(content);
+        }
+    }
+
+    fn finish(&self) -> iced::advanced::widget::operation::Outcome<f32> {
+        match (self.content, self.row) {
+            (Some(content), Some(row)) => iced::advanced::widget::operation::Outcome::Some(
+                (row.y - content.y - 24.0).max(0.0),
+            ),
+            _ => iced::advanced::widget::operation::Outcome::None,
+        }
+    }
+}
 
 // One row a page draws, as `setting` and `group` saw it.
 #[derive(Clone, Debug, PartialEq)]
@@ -106,30 +151,20 @@ impl Settings {
         built
     }
 
-    // To the page, scrolled about to the row, the row lit.
+    // To the page, the row lit and scrolled to once the page is drawn.
     pub(super) fn go_to(&mut self, page: Page, title: String) -> Task<Message> {
-        let rows = self
-            .index()
-            .into_iter()
-            .find(|(p, _)| *p == page)
-            .map(|(_, rows)| rows)
-            .unwrap_or_default();
-        let at = rows.iter().position(|row| row.title == title).unwrap_or(0);
-        let share = if rows.len() > 1 {
-            (at.saturating_sub(1) as f32 / (rows.len() - 1) as f32).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
         self.page = page;
         self.query.clear();
         self.spot = Some((page, title));
-        iced::widget::operation::snap_to(
-            PAGE,
-            iced::widget::operation::RelativeOffset {
-                x: None,
-                y: Some(share),
-            },
-        )
+        iced::advanced::widget::operate(Locate::default()).then(|top| {
+            iced::widget::operation::scroll_to(
+                PAGE,
+                iced::widget::operation::AbsoluteOffset {
+                    x: None,
+                    y: Some(top),
+                },
+            )
+        })
     }
 
     pub(super) fn results(&self) -> Element<'_, Message> {
