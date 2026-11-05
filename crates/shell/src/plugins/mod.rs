@@ -3,6 +3,8 @@ use std::process::Stdio;
 
 use apolline_config::{Config, Diagnostic, Module, Plugin};
 
+pub mod cli;
+pub mod install;
 pub mod search;
 pub mod tiles;
 
@@ -67,8 +69,10 @@ fn installed_in(base: &Path) -> Vec<Installed> {
     let Ok(entries) = std::fs::read_dir(base) else {
         return Vec::new();
     };
+    // Dot folders are installs on their way in.
     let mut found: Vec<Installed> = entries
         .flatten()
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
         .filter_map(|entry| read(&entry.path()))
         .collect();
     found.sort_by(|a, b| a.dir.cmp(&b.dir));

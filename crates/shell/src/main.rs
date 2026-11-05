@@ -103,6 +103,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline timer LENGTH [LABEL] | timer stop
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline theme [list|next|NAME] | theme install PATH|LINK
+       apolline plugin list | install PATH|LINK | remove NAME | enable NAME | disable NAME
        apolline pick [--prompt TEXT] < lines
        apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
        apolline setup
@@ -180,6 +181,7 @@ fn main() -> ExitCode {
         }
         Some("theme") => return theme(args.get(1).map(String::as_str)),
         Some("pick") => return pick::main(&args[1..]),
+        Some("plugin") => return plugins::cli::main(&args[1..]),
         // Over a dimmed wallpaper, so always light text, whatever the palette.
         Some("greet") => {
             apolline_theme::set_scheme(apolline_theme::Scheme::DARK);
@@ -441,15 +443,23 @@ fn setup() -> ExitCode {
     }
 }
 
+// The config, with plugin names checked against what's installed, then the enabled plugins' own
+// files.
 fn check(path: Option<PathBuf>) -> ExitCode {
     let path = path.unwrap_or_else(apolline_config::default_path);
-    let (_, diagnostics) = Config::load(&path);
-    if diagnostics.is_empty() {
+    let installed = plugins::installed();
+    let known: Vec<apolline_config::Plugin> = installed.iter().map(|p| p.plugin.clone()).collect();
+    let (config, diagnostics) = Config::load_with(&path, &known);
+    let in_plugins = plugins::cli::problems(&config, &installed);
+    if diagnostics.is_empty() && in_plugins.is_empty() {
         println!("{}: ok", path.display());
         return ExitCode::SUCCESS;
     }
     for diagnostic in &diagnostics {
         eprintln!("{}:{}: {diagnostic}", path.display(), diagnostic.line);
+    }
+    for problem in &in_plugins {
+        eprintln!("{problem}");
     }
     ExitCode::FAILURE
 }
