@@ -324,6 +324,7 @@ impl Settings {
     pub(super) fn app_list_of(&self, key: &str) -> &[String] {
         match key {
             "mute" => &self.config.alerts.mute,
+            "silent" => &self.config.alerts.silent,
             _ => &self.config.alerts.always,
         }
     }

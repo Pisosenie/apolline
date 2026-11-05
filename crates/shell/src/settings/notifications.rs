@@ -100,6 +100,7 @@ impl Settings {
                 vec![
                     self.app_list("Never pop up", "Kept in the history only", "mute", &alerts.mute, "App name", palette),
                     self.app_list("Always show", "Even with do not disturb or a mode that holds them", "always", &alerts.always, "App name", palette),
+                    self.app_list("No sound", "Their cards show, quietly", "silent", &alerts.silent, "App name", palette),
                     note("Use the name an app signs its notifications with, as the history in quick settings shows it."),
                 ]
             ),

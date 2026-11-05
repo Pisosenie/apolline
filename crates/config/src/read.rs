@@ -768,6 +768,11 @@ impl Reader<'_> {
                         alerts.always = v
                     }
                 }
+                "silent" => {
+                    if let Some(v) = self.strings(key, value) {
+                        alerts.silent = v
+                    }
+                }
                 "cards" => {
                     if let Some(v) = self.number(key, value, 1..=8) {
                         alerts.cards = v
@@ -811,6 +816,7 @@ impl Reader<'_> {
                         "seconds",
                         "mute",
                         "always",
+                        "silent",
                         "cards",
                         "width",
                         "sound",

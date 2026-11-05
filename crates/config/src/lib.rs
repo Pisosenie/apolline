@@ -788,6 +788,8 @@ pub struct Alerts {
     pub seconds: u16,
     pub mute: Vec<String>,
     pub always: Vec<String>,
+    // Shown without a sound.
+    pub silent: Vec<String>,
     // How many cards show at once, and how wide they are.
     pub cards: u16,
     pub width: u16,
@@ -809,6 +811,12 @@ pub enum Sound {
 impl Alerts {
     pub fn muted(&self, app: &str) -> bool {
         self.mute.iter().any(|name| name.eq_ignore_ascii_case(app))
+    }
+
+    pub fn silent(&self, app: &str) -> bool {
+        self.silent
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(app))
     }
 
     pub fn always(&self, app: &str) -> bool {
@@ -1064,6 +1072,7 @@ impl Default for Config {
                 seconds: 5,
                 mute: Vec::new(),
                 always: Vec::new(),
+                silent: Vec::new(),
                 cards: 3,
                 width: 360,
                 sound: Sound::Off,
