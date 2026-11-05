@@ -41,6 +41,7 @@ impl Shell {
             Some(Overlay::Panel | Overlay::Calendar | Overlay::Machine | Overlay::TrayMenu) => {
                 self.config.style.panel.font
             }
+            Some(Overlay::DockMenu) => self.config.style.dock.font,
             _ => None,
         }
     }
@@ -89,6 +90,7 @@ impl Shell {
                 edge: self.config.bar.position,
                 gap: style::under_bar(&self.config.bar, &self.config.style, 1.0),
             }),
+            Some(Overlay::DockMenu) => self.dock_menu(),
             Some(Overlay::Polkit) => match &self.polkit {
                 Some(dialog) => polkit::view(dialog, palette),
                 None => space().into(),

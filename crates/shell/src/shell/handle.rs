@@ -357,6 +357,7 @@ impl Shell {
                 }
                 return close;
             }
+            Message::Dock(event) => return self.dock_event(event),
             Message::StripStart(picked, x) => {
                 self.dragging = picked.map(|(app, was_pinned)| (app, was_pinned, x));
             }

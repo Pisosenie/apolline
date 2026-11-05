@@ -3,6 +3,7 @@ mod actions;
 mod cards;
 mod config_watch;
 mod desk;
+mod dock;
 mod handle;
 mod handle_more;
 mod input;
@@ -137,6 +138,7 @@ pub enum Message {
     TrayMenu(usize),
     TrayMenuRead(usize, Vec<crate::tray::MenuEntry>),
     TrayChoose(i32),
+    Dock(crate::dock::Event),
     // A drag on the bar's pinned apps: what was picked up (the app, and whether it's pinned).
     StripStart(Option<(String, bool)>, f32),
     StripMove(f32),
@@ -209,6 +211,8 @@ pub enum Overlay {
     Marks,
     // An app's tray menu.
     TrayMenu,
+    // An app's menu, from its icon on the dock.
+    DockMenu,
 }
 
 struct Shown {
@@ -324,6 +328,7 @@ pub struct Shell {
     tray_menu: Option<(crate::tray::Item, Vec<crate::tray::MenuEntry>)>,
     // An app being dragged on the bar: which, whether it was pinned, and where it is now.
     dragging: Option<(String, bool, f32)>,
+    dock: crate::dock::Dock,
     night: (bool, Option<bool>),
     module_text: Vec<(usize, crate::modules::Said)>,
     module_runs: Vec<u32>,
@@ -453,6 +458,7 @@ impl Shell {
                 crate::usage::Usage::load()
             },
             dragging: None,
+            dock: crate::dock::Dock::default(),
             night: (false, None),
             module_text: Vec::new(),
             module_runs: Vec::new(),
@@ -638,6 +644,7 @@ impl Shell {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = self.handle(message);
+        self.watch_front();
         self.publish();
         self.keep_history();
         let scheme = self.config.scheme(self.mode);
@@ -814,6 +821,12 @@ impl Shell {
         } else {
             iced::Subscription::none()
         };
+        // Frames only while the dock's icons grow or shrink; nothing at rest.
+        let growing = if self.dock.animating() {
+            iced::window::frames().map(|at| Message::Dock(crate::dock::Event::Frame(at)))
+        } else {
+            iced::Subscription::none()
+        };
         let watched = if self.demo {
             iced::Subscription::none()
         } else {
@@ -841,6 +854,7 @@ impl Shell {
         iced::Subscription::batch([
             subscription(),
             fading,
+            growing,
             crate::night::subscription(self.night_light(), &self.outputs).map(|()| Message::Frame),
             crate::modules::subscription(&self.config.modules, &self.module_runs),
             iced::Subscription::run_with(busy, ticks),

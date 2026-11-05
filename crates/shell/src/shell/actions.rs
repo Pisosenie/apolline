@@ -119,7 +119,17 @@ impl Shell {
         if let Some((window, _)) = next {
             return self.update(Message::FocusWindow(*window));
         }
-        match apps::find(&self.apps, id) {
+        self.launch(id, false)
+    }
+
+    // Starts an app by its key; `again` asks for another window of one already open, through
+    // its entry's own "New Window" when it has one.
+    pub(super) fn launch(&self, id: &str, again: bool) -> Task<Message> {
+        let found = apps::find(&self.apps, id);
+        if let Some(command) = found.filter(|_| again).and_then(new_window) {
+            return self.spawn(command);
+        }
+        match found {
             Some(app) => {
                 let exec = if app.terminal {
                     crate::terminal::running(&self.config.terminal, &app.exec)
@@ -305,4 +315,12 @@ impl Shell {
             &[("name", &name)],
         )))
     }
+}
+
+// An entry's own way to open another window, like Firefox's "New Window".
+fn new_window(app: &App) -> Option<&str> {
+    app.actions
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("new window"))
+        .map(|(_, command)| command.as_str())
 }

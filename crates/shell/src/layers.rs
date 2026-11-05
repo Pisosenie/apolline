@@ -1,3 +1,5 @@
+mod dock;
+
 use std::collections::BTreeMap;
 
 use apolline_theme::metrics;
@@ -77,6 +79,7 @@ struct Layers {
     popups_hold: Hold,
     overlay: Option<(window::Id, Overlay)>,
     osd: Option<window::Id>,
+    docks: dock::Docks,
 }
 
 impl Layers {
@@ -95,12 +98,16 @@ impl Layers {
             popups_hold: Hold::default(),
             overlay: None,
             osd: None,
+            docks: dock::Docks::default(),
         };
         let screens = layers.fit_screens();
         (layers, Task::batch([load, screens]))
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        if let Some(felt) = self.dock_felt(&message) {
+            return felt;
+        }
         let message = match message {
             // The keyboard leaving is told to whichever surface was last clicked or opened, so
             // while an answer holds it any window's word counts.
@@ -164,6 +171,7 @@ impl Layers {
             self.fit_popups(),
             self.fit_overlay(),
             self.fit_osd(),
+            self.fit_docks(),
         ])
     }
 
@@ -251,6 +259,7 @@ impl Layers {
             Overlay::Calendar => "apolline-calendar",
             Overlay::Machine => "apolline-machine",
             Overlay::TrayMenu => "apolline-tray-menu",
+            Overlay::DockMenu => "apolline-dock-menu",
             Overlay::Marks => "apolline-marks",
         };
         let (id, open) = open(NewLayerShellSettings {
@@ -267,12 +276,16 @@ impl Layers {
 
     // Each screen with its wallpaper, and its bar where it has one; a screen whose bar comes or
     // goes is opened again.
-    fn fit_screens(&mut self) -> Task<Message> {
-        let names: Vec<Output> = match self.shell.outputs() {
+    fn outputs(&self) -> Vec<Output> {
+        match self.shell.outputs() {
             None => vec![None],
             Some(names) => names.iter().cloned().map(Some).collect(),
-        };
-        let mut wanted: Vec<(Output, bool)> = names
+        }
+    }
+
+    fn fit_screens(&mut self) -> Task<Message> {
+        let mut wanted: Vec<(Output, bool)> = self
+            .outputs()
             .into_iter()
             .map(|output| {
                 let bar = self.shell.bar_on(output.as_deref());
@@ -440,6 +453,12 @@ impl Layers {
         }
         if self.overlay.is_some_and(|(overlay, _)| overlay == id) {
             return self.shell.overlay_view();
+        }
+        if let Some(output) = self.docks.output(id) {
+            if !self.docks.is_out(id) {
+                return space().into();
+            }
+            return self.shell.dock(output.as_deref());
         }
         for (output, screen) in &self.screens {
             if id == screen.wallpaper {

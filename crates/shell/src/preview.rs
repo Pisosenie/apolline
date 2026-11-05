@@ -106,6 +106,9 @@ impl Preview {
                 Alignment::Start
             });
         let mut layers = stack![self.shell.wallpaper(None), bar, popups];
+        if self.shell.dock_on(None) {
+            layers = layers.push(dock(self.shell.dock(None), self.shell.dock_edge()));
+        }
         if let Some(osd) = self.shell.osd_view() {
             layers = layers.push(
                 container(osd)
@@ -125,4 +128,21 @@ impl Preview {
     fn subscription(&self) -> Subscription<Message> {
         self.shell.subscription()
     }
+}
+
+// The dock in the middle of its edge, as niri places its surface.
+fn dock(dock: Element<'_, Message>, edge: apolline_config::Edge) -> Element<'_, Message> {
+    use apolline_config::Edge;
+    let (x, y) = match edge {
+        Edge::Top => (Alignment::Center, Alignment::Start),
+        Edge::Bottom => (Alignment::Center, Alignment::End),
+        Edge::Left => (Alignment::Start, Alignment::Center),
+        Edge::Right => (Alignment::End, Alignment::Center),
+    };
+    container(dock)
+        .width(Fill)
+        .height(Fill)
+        .align_x(x)
+        .align_y(y)
+        .into()
 }

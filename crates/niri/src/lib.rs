@@ -119,7 +119,7 @@ pub struct Window {
     pub is_focused: bool,
     #[serde(default)]
     pub is_floating: bool,
-    // Asking to be looked at; niri before 25.05 doesn't say.
+    // Asking to be looked at; an older niri doesn't say.
     #[serde(default)]
     pub is_urgent: bool,
     #[serde(default)]
