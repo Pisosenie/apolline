@@ -85,7 +85,7 @@ pub fn subscription() -> iced::Subscription<Event> {
 struct Watcher {
     items: Vec<String>,
     hosts: Vec<String>,
-    changed: mpsc::Sender<Heard>,
+    changed: mpsc::UnboundedSender<Heard>,
 }
 
 #[zbus::interface(name = "org.kde.StatusNotifierWatcher")]
@@ -111,7 +111,7 @@ impl Watcher {
             let _ = self
                 .registered_status_notifier_items_changed(&emitter)
                 .await;
-            let _ = self.changed.try_send(Heard::List);
+            let _ = self.changed.unbounded_send(Heard::List);
         }
     }
 
@@ -151,7 +151,8 @@ impl Watcher {
 
 fn host() -> impl iced::futures::Stream<Item = Event> {
     iced::stream::channel(8, async |mut output| {
-        let (tell, mut heard) = mpsc::channel::<Heard>(16);
+        // Unbounded: each item's own news must get through, and a burst is drained at once.
+        let (tell, mut heard) = mpsc::unbounded::<Heard>();
         let watcher = Watcher {
             items: Vec::new(),
             hosts: Vec::new(),
@@ -240,7 +241,7 @@ impl Tray {
         connection: &Connection,
         ours: bool,
         news: &[Heard],
-        tell: &mpsc::Sender<Heard>,
+        tell: &mpsc::UnboundedSender<Heard>,
     ) {
         for news in news {
             if let Heard::Gone(service) = news {
@@ -285,7 +286,7 @@ impl Tray {
 }
 
 impl Kept {
-    async fn read(connection: &Connection, name: &str, tell: mpsc::Sender<Heard>) -> Self {
+    async fn read(connection: &Connection, name: &str, tell: mpsc::UnboundedSender<Heard>) -> Self {
         let (service, path) = split(name);
         let owner = if service.starts_with(':') {
             Some(service.to_owned())
@@ -306,7 +307,7 @@ impl Kept {
 
 // Waits for an item's app to leave the bus. Only its own name is listened for: every other
 // program that comes and goes on the session bus is none of the tray's business.
-async fn gone(connection: Connection, service: String, mut tell: mpsc::Sender<Heard>) {
+async fn gone(connection: Connection, service: String, tell: mpsc::UnboundedSender<Heard>) {
     let rule = MatchRule::builder()
         .msg_type(Type::Signal)
         .sender("org.freedesktop.DBus")
@@ -325,7 +326,7 @@ async fn gone(connection: Connection, service: String, mut tell: mpsc::Sender<He
     if here(&connection, &service).await {
         left.next().await;
     }
-    let _ = tell.send(Heard::Gone(service)).await;
+    let _ = tell.unbounded_send(Heard::Gone(service));
 }
 
 async fn register_host(connection: &Connection, host: &str) -> zbus::Result<()> {
@@ -397,7 +398,7 @@ async fn here(connection: &Connection, service: &str) -> bool {
     }
 }
 
-async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<Heard>) {
+async fn watch_signals(connection: Connection, changed: mpsc::UnboundedSender<Heard>) {
     let rules = [
         MatchRule::builder()
             .msg_type(Type::Signal)
@@ -426,10 +427,7 @@ async fn watch_signals(connection: Connection, mut changed: mpsc::Sender<Heard>)
             }
             _ => Heard::List,
         };
-        if changed
-            .try_send(heard)
-            .is_err_and(|err| err.is_disconnected())
-        {
+        if changed.unbounded_send(heard).is_err() {
             return;
         }
     }
