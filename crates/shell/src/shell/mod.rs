@@ -118,7 +118,7 @@ pub enum Message {
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
     Agenda(std::sync::Arc<crate::events::Agenda>),
     Weather(Option<crate::weather::Weather>),
-    Files(Vec<std::path::PathBuf>),
+    Files(Vec<crate::files::Found>),
     Detail(Option<panel::Detail>),
     Volume(Option<controls::Volume>),
     Sound(controls::Heard),
@@ -308,6 +308,8 @@ pub struct Shell {
     touched: Option<Instant>,
     // What the sound server said while a slider moved, read once things are quiet.
     sound_held: Option<controls::Heard>,
+    // The icon theme and the app folders as of the last scan, to scan again only when they change.
+    apps_seen: Option<(Option<String>, Vec<Option<SystemTime>>)>,
     power_menu: bool,
     armed: Option<Power>,
     thumbs: HashMap<String, image::Handle>,
@@ -432,6 +434,7 @@ impl Shell {
             },
             touched: None,
             sound_held: None,
+            apps_seen: None,
             power_menu: false,
             armed: None,
             thumbs: HashMap::new(),
@@ -487,10 +490,7 @@ impl Shell {
             shell.load_wallpaper(),
             shell.load_thumbs(),
             shell.read_controls(),
-            Task::perform(
-                apps::scan(shell.config.desktop.icons.clone()),
-                Message::Apps,
-            ),
+            shell.scan_apps(),
             welcome,
         ]);
         (shell, load)

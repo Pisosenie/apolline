@@ -60,7 +60,12 @@ pub struct Launcher {
     apps: Vec<App>,
     modes: Vec<(String, String)>,
     windows: Vec<OpenWindow>,
-    files: Vec<std::path::PathBuf>,
+    // Your files, walked on the first search for one and let go when the launcher closes.
+    files: Option<Vec<crate::files::Found>>,
+    walking: bool,
+    open: bool,
+    // What the search found, worked out when something changes rather than on every frame.
+    shown: Vec<Entry>,
     look: apolline_config::Surface,
     grid: bool,
     rates: Option<(std::sync::Arc<crate::rates::Rates>, std::time::Instant)>,
@@ -77,19 +82,19 @@ pub struct OpenWindow {
     pub app: String,
 }
 
-struct Entry<'a> {
+struct Entry {
     title: String,
     about: String,
-    picture: Pic<'a>,
+    picture: Pic,
     target: Target,
     game: bool,
 }
 
-enum Pic<'a> {
+enum Pic {
     // The app's icon, else the first letter of its name.
-    App(Option<&'a Picture>, Option<&'a str>),
+    App(Option<Picture>, Option<String>),
     Icon(Icon),
-    Glyph(&'a str),
+    Glyph(&'static str),
 }
 
 const EMOJI: &str = include_str!("../../../assets/emoji.txt");
@@ -175,14 +180,40 @@ impl Launcher {
         self.query.clear();
         self.selected = 0;
         self.asked = false;
+        self.open = true;
+        self.refresh();
         Task::batch([
             focus(SEARCH),
             scroll_to(LIST, AbsoluteOffset { x: 0.0, y: 0.0 }),
         ])
     }
 
+    pub fn close(&mut self) {
+        self.open = false;
+        self.files = None;
+        self.walking = false;
+        self.shown.clear();
+    }
+
     pub fn focus(&self) -> Task<Message> {
         focus(SEARCH)
+    }
+
+    // True once a search for a file is typed and they haven't been walked yet.
+    pub fn wants_files(&mut self) -> bool {
+        let wanted = self.files.is_none()
+            && !self.walking
+            && self.query.trim().starts_with('/')
+            && self.finds.finds("files");
+        self.walking |= wanted;
+        wanted
+    }
+
+    // Only while it's open: what changes while it's closed is worked out when it opens.
+    fn refresh(&mut self) {
+        if self.open {
+            self.shown = self.entries();
+        }
     }
 
     // True once a sum of money is typed and there are no rates yet; asked once a launch.
@@ -199,31 +230,42 @@ impl Launcher {
 
     pub fn set_rates(&mut self, rates: std::sync::Arc<crate::rates::Rates>) {
         self.rates = Some((rates, std::time::Instant::now()));
+        self.refresh();
     }
 
     pub fn set_modes(&mut self, modes: Vec<(String, String)>) {
         self.modes = modes;
+        self.refresh();
     }
 
     pub fn set_apps(&mut self, apps: Vec<App>) {
         self.apps = apps;
+        self.refresh();
     }
 
     pub fn set_windows(&mut self, windows: Vec<OpenWindow>) {
         self.windows = windows;
+        self.refresh();
     }
 
     pub fn set_usage(&mut self, usage: crate::usage::Usage) {
         self.usage = usage;
+        self.refresh();
     }
 
-    pub fn set_files(&mut self, files: Vec<std::path::PathBuf>) {
-        self.files = files;
+    // A walk that ends after the launcher closed isn't kept.
+    pub fn set_files(&mut self, files: Vec<crate::files::Found>) {
+        if self.walking {
+            self.walking = false;
+            self.files = Some(files);
+            self.refresh();
+        }
     }
 
     pub fn set_finds(&mut self, finds: apolline_config::Launcher, terminal: &str) {
         self.finds = finds;
         self.terminal = terminal.to_owned();
+        self.refresh();
     }
 
     // How an app's command is run: console apps open in the terminal.
@@ -247,11 +289,12 @@ impl Launcher {
     pub fn search(&mut self, query: String) -> Task<Message> {
         self.query = query;
         self.selected = 0;
+        self.refresh();
         scroll_to(LIST, AbsoluteOffset { x: 0.0, y: 0.0 })
     }
 
     pub fn step(&mut self, by: isize) -> Task<Message> {
-        let count = self.entries().len();
+        let count = self.shown.len();
         if count == 0 {
             return Task::none();
         }
@@ -265,35 +308,33 @@ impl Launcher {
     }
 
     pub fn chosen(&self) -> Option<Target> {
-        self.entries()
-            .into_iter()
-            .nth(self.selected)
-            .map(|entry| entry.target)
+        self.shown
+            .get(self.selected)
+            .map(|entry| entry.target.clone())
     }
 
-    fn entries(&self) -> Vec<Entry<'_>> {
+    fn entries(&self) -> Vec<Entry> {
         let query = self.query.trim();
         let mut ranked: Vec<(u32, Entry)> = Vec::new();
         let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
         let finds = |what: &str| self.finds.finds(what);
         if let Some(wanted) = query.strip_prefix('/').filter(|_| finds("files")) {
-            return crate::files::find(&self.files, wanted)
+            let files = self.files.as_deref().unwrap_or_default();
+            return crate::files::find(files, wanted)
                 .into_iter()
-                .map(|path| Entry {
-                    title: path
+                .map(|found| Entry {
+                    title: found
+                        .path
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default(),
-                    about: path
+                    about: found
+                        .path
                         .parent()
                         .map(crate::wallpaper::shorten)
                         .unwrap_or_default(),
-                    picture: Pic::Icon(if path.is_dir() {
-                        Icon::Folder
-                    } else {
-                        Icon::File
-                    }),
-                    target: Target::Open(path.clone()),
+                    picture: Pic::Icon(if found.dir { Icon::Folder } else { Icon::File }),
+                    target: Target::Open(found.path.clone()),
                     game: false,
                 })
                 .collect();
@@ -381,8 +422,8 @@ impl Launcher {
                             title: window.title.clone(),
                             about: crate::i18n::fill("Open window · {name}", &[("name", &name)]),
                             picture: Pic::App(
-                                app.and_then(|app| app.icon.as_ref()),
-                                app.map(|app| app.name.as_str()),
+                                app.and_then(|app| app.icon.clone()),
+                                app.map(|app| app.name.clone()),
                             ),
                             target: Target::Window(window.id),
                             game: false,
@@ -468,7 +509,7 @@ impl Launcher {
                         Entry {
                             title: name.clone(),
                             about: app.name.clone(),
-                            picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
+                            picture: Pic::App(app.icon.clone(), Some(app.name.clone())),
                             target: Target::App(self.command(app, exec)),
                             game: false,
                         },
@@ -489,7 +530,7 @@ impl Launcher {
                     Entry {
                         title: app.name.clone(),
                         about: app.about.clone(),
-                        picture: Pic::App(app.icon.as_ref(), Some(&app.name)),
+                        picture: Pic::App(app.icon.clone(), Some(app.name.clone())),
                         target: Target::App(self.command(app, &app.exec)),
                         game: app.game,
                     },
@@ -506,7 +547,7 @@ impl Launcher {
     }
 
     pub fn view(&self, palette: Palette, mode: Option<(&str, Icon)>) -> Element<'_, Message> {
-        let entries = self.entries();
+        let entries = &self.shown;
         let games = entries.iter().filter(|e| e.game).count();
 
         let search = row![
@@ -643,9 +684,9 @@ impl Launcher {
         .into()
     }
 
-    fn tile<'a>(&self, index: usize, entry: &Entry<'a>, palette: Palette) -> Element<'a, Message> {
+    fn tile<'a>(&self, index: usize, entry: &'a Entry, palette: Palette) -> Element<'a, Message> {
         let selected = index == self.selected;
-        let picture: Element<'a, Message> = match entry.picture {
+        let picture: Element<'a, Message> = match &entry.picture {
             Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(44)
                 .height(44)
@@ -654,11 +695,13 @@ impl Launcher {
                 .width(44)
                 .height(44)
                 .into(),
-            Pic::App(None, name) => container(letter(name.unwrap_or(&entry.title), palette))
-                .center(44)
-                .into(),
-            Pic::Glyph(glyph) => container(text(glyph).size(30)).center(44).into(),
-            Pic::Icon(glyph) => container(icon(glyph, 22.0, neutral::text()))
+            Pic::App(None, name) => {
+                container(letter(name.as_ref().unwrap_or(&entry.title), palette))
+                    .center(44)
+                    .into()
+            }
+            Pic::Glyph(glyph) => container(text(*glyph).size(30)).center(44).into(),
+            Pic::Icon(glyph) => container(icon(*glyph, 22.0, neutral::text()))
                 .center(44)
                 .into(),
         };
@@ -683,9 +726,9 @@ impl Launcher {
         .into()
     }
 
-    fn row<'a>(&self, index: usize, entry: &Entry<'a>, palette: Palette) -> Element<'a, Message> {
+    fn row<'a>(&self, index: usize, entry: &'a Entry, palette: Palette) -> Element<'a, Message> {
         let selected = index == self.selected;
-        let picture: Element<'a, Message> = match entry.picture {
+        let picture: Element<'a, Message> = match &entry.picture {
             Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
                 .width(32)
                 .height(32)
@@ -694,9 +737,9 @@ impl Launcher {
                 .width(32)
                 .height(32)
                 .into(),
-            Pic::App(None, name) => letter(name.unwrap_or(&entry.title), palette),
-            Pic::Glyph(glyph) => container(text(glyph).size(22)).center(32).into(),
-            Pic::Icon(glyph) => container(icon(glyph, 17.0, neutral::text()))
+            Pic::App(None, name) => letter(name.as_ref().unwrap_or(&entry.title), palette),
+            Pic::Glyph(glyph) => container(text(*glyph).size(22)).center(32).into(),
+            Pic::Icon(glyph) => container(icon(*glyph, 17.0, neutral::text()))
                 .center(32)
                 .style(move |_| {
                     let mut style = style::pill(style::fill_color())(&iced::Theme::Dark);
@@ -744,11 +787,7 @@ impl Launcher {
 }
 
 // Last in any search: run it if it's a command, or look it up on the web.
-fn fallbacks(
-    query: &str,
-    finds: &apolline_config::Launcher,
-    terminal: &str,
-) -> Vec<Entry<'static>> {
+fn fallbacks(query: &str, finds: &apolline_config::Launcher, terminal: &str) -> Vec<Entry> {
     if query.is_empty() {
         return Vec::new();
     }
@@ -887,6 +926,7 @@ mod tests {
 
     fn launcher() -> Launcher {
         let mut launcher = Launcher::default();
+        let _ = launcher.open();
         launcher.set_apps(apps::sample());
         launcher.set_modes(vec![
             ("Work".into(), "briefcase".into()),
@@ -1106,6 +1146,31 @@ mod tests {
                 .all(|e| !matches!(e.target, Target::Web(_))),
             "something found by name, so no fallbacks"
         );
+    }
+
+    #[test]
+    fn files_are_walked_once_asked_for_and_let_go_on_close() {
+        let mut launcher = launcher();
+        let _ = launcher.search("fire".into());
+        assert!(!launcher.wants_files(), "no slash, no walk");
+        let _ = launcher.search("/notes".into());
+        assert!(launcher.wants_files());
+        assert!(!launcher.wants_files(), "one walk at a time");
+        let notes = crate::files::Found {
+            path: "/home/a/notes".into(),
+            dir: true,
+        };
+        launcher.set_files(vec![notes.clone()]);
+        assert_eq!(launcher.chosen(), Some(Target::Open(notes.path.clone())));
+        launcher.close();
+        launcher.set_files(vec![notes]);
+        assert!(
+            launcher.files.is_none(),
+            "a walk that ends after closing isn't kept"
+        );
+        let _ = launcher.open();
+        let _ = launcher.search("/notes".into());
+        assert!(launcher.wants_files(), "walked again next time");
     }
 
     #[test]
