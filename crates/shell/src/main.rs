@@ -51,6 +51,7 @@ mod polkit;
 mod popup;
 mod power;
 mod preview;
+mod privacy;
 mod profile;
 mod rail;
 mod rates;

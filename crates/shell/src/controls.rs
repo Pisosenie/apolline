@@ -433,7 +433,7 @@ pub async fn change(change: Change) {
     }
 }
 
-async fn run(program: &str, args: &[&str]) -> Option<String> {
+pub async fn run(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program)
         .args(args)
         .kill_on_drop(true)

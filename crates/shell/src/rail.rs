@@ -102,21 +102,32 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
             )
         }),
         Piece::Notifications => bell(bar),
-        Piece::Recording => bar.recording.map(|elapsed| {
-            let minutes = elapsed.as_secs() / 60;
-            button(
-                column![
-                    container(space().width(8).height(8)).style(style::pill(style::DANGER)),
-                    text(format!("{minutes}m")).size(10).font(style::mono()),
-                ]
-                .spacing(3)
-                .align_x(Alignment::Center),
-            )
-            .padding(4)
-            .style(style::ghost(8.0))
-            .on_press(Message::StopRecording)
-            .into()
-        }),
+        Piece::Recording => {
+            let recorded = bar.recording.map(|elapsed| {
+                let minutes = elapsed.as_secs() / 60;
+                button(
+                    column![
+                        container(space().width(8).height(8)).style(style::pill(style::DANGER)),
+                        text(format!("{minutes}m")).size(10).font(style::mono()),
+                    ]
+                    .spacing(3)
+                    .align_x(Alignment::Center),
+                )
+                .padding(4)
+                .style(style::ghost(8.0))
+                .on_press(Message::StopRecording)
+                .into()
+            });
+            match (crate::bar::watching(bar, false), recorded) {
+                (Some(watched), Some(recorded)) => Some(
+                    column![watched, recorded]
+                        .spacing(4)
+                        .align_x(Alignment::Center)
+                        .into(),
+                ),
+                (watched, recorded) => watched.or(recorded),
+            }
+        }
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
         Piece::Apps => {

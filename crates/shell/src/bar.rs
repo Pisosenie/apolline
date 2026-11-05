@@ -43,6 +43,9 @@ pub struct Bar<'a> {
     pub icons: Option<&'a str>,
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
+    // The apps recording from a microphone, and whether the screen is being taken.
+    pub listening: &'a [String],
+    pub casting: bool,
     pub stats: crate::stats::Stats,
     // The calendar's next thing, and in how many minutes (None: it's on now).
     pub next: Option<(&'a str, Option<i64>)>,
@@ -171,7 +174,15 @@ fn piece<'a>(bar: &Bar<'a>, piece: &Piece) -> Option<Element<'a, Message>> {
         Piece::Clock => Some(clock(bar)),
         Piece::Media => media(bar),
         Piece::Notifications => bell(bar),
-        Piece::Recording => recording(bar),
+        Piece::Recording => match (watching(bar, true), recording(bar)) {
+            (Some(watched), Some(recorded)) => Some(
+                row![watched, recorded]
+                    .spacing(2)
+                    .align_y(Alignment::Center)
+                    .into(),
+            ),
+            (watched, recorded) => watched.or(recorded),
+        },
         Piece::Stats => stats(bar),
         Piece::Tray => Some(tray(bar)),
         Piece::Apps => apps_tray(bar),
@@ -326,6 +337,54 @@ fn bell<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
             .padding([5, 8])
             .style(style::ghost(style::PILL))
             .on_press(Message::Overlay(Some(Overlay::Panel)))
+            .into(),
+    )
+}
+
+// Who has the microphone or the screen right now, in a warm color so it's noticed; hovering
+// names them.
+pub fn watching<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>> {
+    let mut signs: Vec<(Icon, String)> = Vec::new();
+    if !bar.listening.is_empty() {
+        let apps = bar.listening.join(", ");
+        signs.push((
+            Icon::Mic,
+            crate::i18n::fill("Listening: {apps}", &[("apps", &apps)]),
+        ));
+    }
+    if bar.casting {
+        signs.push((
+            Icon::Monitor,
+            crate::i18n::t("The screen is being shared").to_owned(),
+        ));
+    }
+    let signs = signs.into_iter().map(|(glyph, said)| {
+        iced::widget::tooltip(
+            icon(glyph, 13.0, style::WARN),
+            container(style::verbatim(said).size(12))
+                .padding([4, 8])
+                .style(style::surface),
+            if across {
+                iced::widget::tooltip::Position::Bottom
+            } else {
+                iced::widget::tooltip::Position::Right
+            },
+        )
+        .into()
+    });
+    let signs: Vec<Element<'a, Message>> = signs.collect();
+    if signs.is_empty() {
+        return None;
+    }
+    let group: Element<'a, Message> = if across {
+        Row::with_children(signs).spacing(6).into()
+    } else {
+        iced::widget::Column::with_children(signs).spacing(6).into()
+    };
+    Some(
+        container(group)
+            .padding([4, 7])
+            .style(style::pill(style::WARN.alpha(0.16)))
             .into(),
     )
 }

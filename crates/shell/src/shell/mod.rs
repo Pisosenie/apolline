@@ -100,6 +100,7 @@ pub enum Message {
     CalendarDay(chrono::NaiveDate),
     Stats(crate::stats::Stats),
     Machine(Box<crate::machine::Machine>),
+    Listening(Vec<String>),
     MachineSort(bool),
     EndProcess(u32),
     Rates(Result<std::sync::Arc<crate::rates::Rates>, String>),
@@ -247,6 +248,7 @@ pub struct Shell {
     day: Option<chrono::NaiveDate>,
     stats: crate::stats::Stats,
     machine: Option<Box<crate::machine::Machine>>,
+    listening: Vec<String>,
     by_memory: bool,
     ending: Option<u32>,
     profiles: Option<crate::profile::Profiles>,
@@ -362,6 +364,7 @@ impl Shell {
             day: None,
             stats: crate::stats::Stats::default(),
             machine: None,
+            listening: Vec::new(),
             by_memory: false,
             ending: None,
             profiles: demo.then(|| crate::profile::Profiles {
@@ -746,6 +749,7 @@ impl Shell {
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
+                crate::privacy::subscription(),
                 if self.overlay == Some(Overlay::Panel) {
                     iced::Subscription::none()
                 } else {

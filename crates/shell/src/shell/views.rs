@@ -214,6 +214,11 @@ impl Shell {
                 .as_ref()
                 .map(|(app, was_pinned, x)| (app.as_str(), *was_pinned, *x)),
             recording: self.recording.as_ref().map(|r| r.started.elapsed()),
+            listening: &self.listening,
+            casting: self
+                .niri
+                .as_ref()
+                .is_some_and(apolline_niri::State::casting),
             stats: self.stats,
             next: self
                 .agenda

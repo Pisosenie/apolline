@@ -241,6 +241,8 @@ impl Settings {
                 icons: None,
                 modules: Vec::new(),
                 recording: None,
+                listening: &[],
+                casting: false,
                 next: None,
                 stats: crate::stats::Stats::default(),
             })

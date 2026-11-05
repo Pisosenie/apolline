@@ -96,6 +96,8 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 `[bar] stats = ["cpu", "memory", "temperature"]`, or Settings → Bar, shows the machine on the bar. It is read every five seconds and rounded (CPU in steps of 5%, temperature of 2°), so the bar repaints only when a number really moves. A click on them (or `apolline machine`) opens the machine: load, memory and the network over the last minute and a half, the disk, temperature, and the eight processes doing the most by processor or memory — your own ones end with two clicks on their ×. It's read only while it's open.
 
+The bar says who's watching: a warm microphone sign while an app records from a microphone (hover to see which; a paused stream or a volume meter doesn't count), and a screen sign while anything takes the screen through niri — a portal sharing it, a recorder, a VNC server. Both sit where the recording timer does and need niri 26.04 for the screen. The microphone is heard from the sound server as streams come and go, never polled.
+
 ## Your own bar modules
 
 Any command can put text on the bar: each line it prints replaces the last. One that prints once and exits can rerun on a timer, and a click can run something else.

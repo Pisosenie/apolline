@@ -931,3 +931,5 @@
 "swap {used}" = "подкачка {used}"
 "{used} of {total}" = "{used} из {total}"
 "{n} cores" = ["{n} ядро", "{n} ядра", "{n} ядер"]
+"Listening: {apps}" = "Слушают: {apps}"
+"The screen is being shared" = "Экран транслируется"

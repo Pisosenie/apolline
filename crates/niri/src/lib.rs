@@ -142,6 +142,15 @@ pub struct KeyboardLayouts {
     pub current_idx: u8,
 }
 
+// A screencast: a portal sharing the screen, a recorder, a VNC server.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Cast {
+    pub stream_id: u64,
+    // False while it's paused, as OBS does when switching away from the scene.
+    #[serde(default)]
+    pub is_active: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub enum Event {
     WorkspacesChanged {
@@ -176,6 +185,15 @@ pub enum Event {
     ScreenshotCaptured {
         path: Option<String>,
     },
+    CastsChanged {
+        casts: Vec<Cast>,
+    },
+    CastStartedOrChanged {
+        cast: Cast,
+    },
+    CastStopped {
+        stream_id: u64,
+    },
 }
 
 impl Event {
@@ -190,6 +208,7 @@ pub struct State {
     windows: BTreeMap<u64, Window>,
     last: Option<u64>,
     layouts: Option<KeyboardLayouts>,
+    casts: BTreeMap<u64, Cast>,
 }
 
 impl State {
@@ -257,7 +276,21 @@ impl State {
                 }
             }
             Event::ScreenshotCaptured { .. } => {}
+            Event::CastsChanged { casts } => {
+                self.casts = casts.into_iter().map(|c| (c.stream_id, c)).collect();
+            }
+            Event::CastStartedOrChanged { cast } => {
+                self.casts.insert(cast.stream_id, cast);
+            }
+            Event::CastStopped { stream_id } => {
+                self.casts.remove(&stream_id);
+            }
         }
+    }
+
+    // Whether anything is taking the screen right now.
+    pub fn casting(&self) -> bool {
+        self.casts.values().any(|c| c.is_active)
     }
 
     pub fn workspaces(&self) -> Vec<&Workspace> {
@@ -442,6 +475,23 @@ mod tests {
     }
 
     #[test]
+    fn a_screencast_shows_while_it_streams() {
+        let mut state = State::default();
+        let cast = |id, active| {
+            format!(
+                r#"{{"CastStartedOrChanged":{{"cast":{{"stream_id":{id},"session_id":1,"kind":"PipeWire","target":{{"Output":{{"name":"eDP-1"}}}},"is_dynamic_target":false,"is_active":{active},"pid":null,"pw_node_id":40}}}}}}"#
+            )
+        };
+        let apply = |state: &mut State, line: &str| state.apply(Event::parse(line).unwrap());
+        apply(&mut state, &cast(5, false));
+        assert!(!state.casting(), "paused");
+        apply(&mut state, &cast(5, true));
+        assert!(state.casting());
+        apply(&mut state, r#"{"CastStopped":{"stream_id":5}}"#);
+        assert!(!state.casting());
+    }
+
+    #[test]
     fn replies_are_ok_or_err() {
         assert!(is_ok(r#"{"Ok":"Handled"}"#));
         assert!(!is_ok(r#"{"Err":"error parsing request"}"#));
@@ -450,7 +500,7 @@ mod tests {
 
     #[test]
     fn unknown_events_are_skipped() {
-        assert_eq!(Event::parse(r#"{"CastsChanged":{"casts":[]}}"#), None);
+        assert_eq!(Event::parse(r#"{"SomethingNew":{"x":[]}}"#), None);
         assert_eq!(
             Event::parse(r#"{"WindowClosed":{"id":7}}"#),
             Some(Event::WindowClosed { id: 7 })

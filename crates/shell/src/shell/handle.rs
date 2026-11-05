@@ -42,6 +42,7 @@ impl Shell {
             Message::CalendarDay(day) => self.day = Some(day),
             Message::Stats(stats) => self.stats = stats,
             Message::Machine(machine) => self.machine = Some(machine),
+            Message::Listening(apps) => self.listening = apps,
             Message::MachineSort(by_memory) => {
                 self.by_memory = by_memory;
                 self.ending = None;
