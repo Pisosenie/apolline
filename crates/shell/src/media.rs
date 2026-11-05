@@ -25,6 +25,23 @@ trait Player {
     fn playback_status(&self) -> zbus::Result<String>;
     #[zbus(property)]
     fn metadata(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    // Microseconds into the track; players don't announce it as it moves, so it's asked.
+    #[zbus(property)]
+    fn position(&self) -> zbus::Result<i64>;
+}
+
+pub async fn position(player: String) -> Option<std::time::Duration> {
+    let connection = Connection::session().await.ok()?;
+    let proxy = PlayerProxy::builder(&connection)
+        .destination(player.as_str())
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
+        .ok()?;
+    let micros = proxy.position().await.ok()?;
+    Some(std::time::Duration::from_micros(
+        u64::try_from(micros).ok()?,
+    ))
 }
 
 #[derive(Clone, Debug, PartialEq)]

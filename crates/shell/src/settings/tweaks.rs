@@ -157,6 +157,8 @@ impl Settings {
             }
             Message::BarEdge(edge) => self.edit(|e| e.set("bar", "position", edge.key())),
             Message::BarFloating(on) => self.edit(|e| e.set("bar", "floating", on)),
+            Message::PanelLyrics(true) => self.edit(|e| e.set("panel", "lyrics", true)),
+            Message::PanelLyrics(false) => self.edit(|e| e.unset("panel", "lyrics")),
             Message::BarAutohide(true) => self.edit(|e| e.set("bar", "autohide", true)),
             Message::BarAutohide(false) => self.edit(|e| e.unset("bar", "autohide")),
             Message::BarShape(shape) => self.edit(|e| match shape {

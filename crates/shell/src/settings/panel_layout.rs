@@ -107,6 +107,11 @@ impl Settings {
                     ),
                 ),
                 note("Drag to reorder, and below a row to take a piece out of quick settings."),
+                setting(
+                    "Lyrics",
+                    "The line being sung, under what's playing; asks lrclib.net by title and artist",
+                    switch(self.config.panel.lyrics, Message::PanelLyrics, palette),
+                ),
             ],
         )
     }

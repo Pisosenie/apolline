@@ -142,7 +142,7 @@ tiles = ["wifi", "bluetooth", "quiet", "awake", "night", "power", "vpn"]
 sliders = ["volume", "apps", "mic", "devices", "brightness"]
 ```
 
-`parts` is what it shows from top to bottom, `tiles` the toggles two to a row, and `sliders` the volume (`apps` is each app playing, `devices` the speaker and mic pickers) and brightness; what a list leaves out isn't shown. Settings → Bar → Quick settings has a board for each to drag on.
+`parts` is what it shows from top to bottom, `tiles` the toggles two to a row, and `sliders` the volume (`apps` is each app playing, `devices` the speaker and mic pickers) and brightness; what a list leaves out isn't shown. Settings → Bar → Quick settings has a board for each to drag on. `lyrics = true` shows the line being sung under what's playing, and the next one after it, while quick settings is open; the words come from [lrclib.net](https://lrclib.net), which is told the title and the artist, so it's off until you turn it on.
 
 ## Themes
 

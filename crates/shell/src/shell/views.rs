@@ -106,6 +106,7 @@ impl Shell {
                 controls: &self.controls,
                 battery: self.battery(),
                 track: self.track(),
+                sung: self.sung(),
                 do_not_disturb: self.quiet(),
                 power_menu: self.power_menu,
                 armed: self.armed,

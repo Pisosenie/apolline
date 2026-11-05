@@ -564,6 +564,8 @@ pub struct Panel {
     pub tiles: Vec<String>,
     pub sliders: Vec<String>,
     pub parts: Vec<String>,
+    // The words of what's playing, line by line, looked up on lrclib.net by title and artist.
+    pub lyrics: bool,
 }
 
 impl Panel {
@@ -587,6 +589,7 @@ impl Default for Panel {
             tiles: all(&Self::TILES),
             sliders: all(&Self::SLIDERS),
             parts: all(&Self::PARTS),
+            lyrics: false,
         }
     }
 }

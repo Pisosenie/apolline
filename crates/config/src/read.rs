@@ -1508,8 +1508,14 @@ impl Reader<'_> {
                     "tiles" => (&mut panel.tiles, &crate::Panel::TILES, "tile"),
                     "sliders" => (&mut panel.sliders, &crate::Panel::SLIDERS, "slider"),
                     "parts" => (&mut panel.parts, &crate::Panel::PARTS, "part"),
+                    "lyrics" => {
+                        if let Some(v) = self.boolean(key, value) {
+                            panel.lyrics = v
+                        }
+                        continue;
+                    }
                     _ => {
-                        self.unknown(key, "option", &["tiles", "sliders", "parts"]);
+                        self.unknown(key, "option", &["tiles", "sliders", "parts", "lyrics"]);
                         continue;
                     }
                 };

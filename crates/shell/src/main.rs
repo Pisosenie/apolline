@@ -35,6 +35,7 @@ mod keys;
 mod launcher;
 mod lock;
 mod logind;
+mod lyrics;
 mod machine;
 mod machine_view;
 mod marks;

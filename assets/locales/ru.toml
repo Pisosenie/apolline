@@ -941,3 +941,5 @@
 "Sooner here saves the battery. Set to the same as above, a time follows it." = "Покороче — дольше живёт батарея. Если время совпадает с тем, что выше, оно следует за ним."
 "The bar" = "Бар"
 "Off leaves this screen to its windows and wallpaper" = "Выключенный оставляет экрану только окна и обои"
+"Lyrics" = "Текст песни"
+"The line being sung, under what's playing; asks lrclib.net by title and artist" = "Строка, которая сейчас звучит, под плеером; ищет на lrclib.net по названию и исполнителю"

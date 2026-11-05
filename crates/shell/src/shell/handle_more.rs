@@ -73,7 +73,44 @@ impl Shell {
                 };
                 return Task::batch([warn, self.triggers()]);
             }
-            Message::Media(media) => self.system.get_or_insert_default().media = media,
+            Message::Media(media) => {
+                let wanted = media
+                    .as_ref()
+                    .filter(|_| self.config.panel.lyrics)
+                    .map(|track| {
+                        (
+                            crate::lyrics::key(track),
+                            track.artist.clone(),
+                            track.title.clone(),
+                        )
+                    });
+                self.system.get_or_insert_default().media = media;
+                if let Some((key, artist, title)) = wanted
+                    && self.lyrics.as_ref().is_none_or(|(had, _)| *had != key)
+                {
+                    self.lyrics = Some((key.clone(), None));
+                    self.position = None;
+                    return Task::perform(crate::lyrics::find(artist, title), move |found| {
+                        Message::Lyrics(key.clone(), found)
+                    });
+                }
+            }
+            Message::Lyrics(key, found) => {
+                if let Some((wanted, lyrics)) = &mut self.lyrics
+                    && *wanted == key
+                {
+                    *lyrics = found;
+                }
+            }
+            Message::AskPosition => {
+                if let Some(track) = self.track() {
+                    return Task::perform(
+                        crate::media::position(track.player.clone()),
+                        Message::Position,
+                    );
+                }
+            }
+            Message::Position(position) => self.position = position,
             Message::Boosted(previous) if self.current().is_some_and(|m| m.performance) => {
                 self.boosted = previous
             }

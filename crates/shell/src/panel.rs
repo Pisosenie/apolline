@@ -69,6 +69,8 @@ pub struct Panel<'a> {
     pub controls: &'a Controls,
     pub battery: Option<Battery>,
     pub track: Option<&'a Track>,
+    // The line being sung and the next, when lyrics are on and found.
+    pub sung: Option<(&'a str, Option<&'a str>)>,
     pub do_not_disturb: bool,
     pub power_menu: bool,
     pub armed: Option<Power>,
@@ -311,7 +313,7 @@ pub fn view(panel: Panel<'_>) -> Element<'_, Message> {
             }
             "player" => {
                 if let Some(track) = panel.track {
-                    body = body.push(player(track, palette));
+                    body = body.push(player(track, panel.sung, palette));
                 }
             }
             "notifications" => {
@@ -764,7 +766,11 @@ fn modes<'a>(
     .into()
 }
 
-fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
+fn player<'a>(
+    track: &'a Track,
+    sung: Option<(&'a str, Option<&'a str>)>,
+    palette: Palette,
+) -> Element<'a, Message> {
     let control = |glyph: Icon, action: Action| {
         button(container(icon(glyph, 16.0, neutral::text())).center(32))
             .padding(0)
@@ -804,7 +810,7 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
                 .color(style::color(style::faint())),
         );
     }
-    container(
+    let card = container(
         row![
             container(icon(Icon::Music, 18.0, palette.accent))
                 .center(40)
@@ -828,10 +834,29 @@ fn player<'a>(track: &'a Track, palette: Palette) -> Element<'a, Message> {
         ]
         .spacing(12)
         .align_y(Alignment::Center),
-    )
-    .padding(10)
-    .style(style::card)
-    .into()
+    );
+    let card = match sung {
+        Some((line, next)) => {
+            let mut words = column![
+                crate::style::verbatim(line)
+                    .size(14)
+                    .font(style::semibold())
+                    .color(style::color(palette.accent))
+            ]
+            .spacing(3)
+            .padding([2, 6]);
+            if let Some(next) = next {
+                words = words.push(
+                    crate::style::verbatim(next)
+                        .size(12)
+                        .color(style::color(style::faint())),
+                );
+            }
+            column![card, words].spacing(8)
+        }
+        None => column![card],
+    };
+    container(card).padding(10).style(style::card).into()
 }
 
 fn history<'a>(

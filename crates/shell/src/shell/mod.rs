@@ -61,6 +61,9 @@ pub enum Message {
     Wallpaper(String, Result<image::Handle, String>),
     Battery(Option<Battery>),
     Media(Option<Track>),
+    Lyrics(String, Option<crate::lyrics::Lyrics>),
+    AskPosition,
+    Position(Option<std::time::Duration>),
     Boosted(Option<String>),
     Notify(Notification),
     Unnotify(u32),
@@ -255,6 +258,9 @@ pub struct Shell {
     stats: crate::stats::Stats,
     machine: Option<Box<crate::machine::Machine>>,
     listening: Vec<String>,
+    // The words of what's playing, by the track they're for, and how far into it the player is.
+    lyrics: Option<(String, Option<crate::lyrics::Lyrics>)>,
+    position: Option<std::time::Duration>,
     updates: Option<crate::updates::Updates>,
     by_memory: bool,
     ending: Option<u32>,
@@ -372,6 +378,8 @@ impl Shell {
             stats: crate::stats::Stats::default(),
             machine: None,
             listening: Vec::new(),
+            lyrics: None,
+            position: None,
             updates: None,
             by_memory: false,
             ending: None,
@@ -719,6 +727,22 @@ impl Shell {
             None => self.status.media.as_ref(),
         }
     }
+
+    // The line being sung, with the next, while quick settings can show it.
+    fn sung(&self) -> Option<(&str, Option<&str>)> {
+        let track = self.track()?;
+        let (key, lyrics) = self.lyrics.as_ref()?;
+        if *key != crate::lyrics::key(track) {
+            return None;
+        }
+        lyrics.as_ref()?.at(self.position?)
+    }
+
+    fn listening_for_words(&self) -> bool {
+        self.overlay == Some(Overlay::Panel)
+            && self.track().is_some_and(|t| t.playing)
+            && self.lyrics.as_ref().is_some_and(|(_, l)| l.is_some())
+    }
 }
 
 fn stamp(path: &std::path::Path) -> Option<SystemTime> {
@@ -763,6 +787,12 @@ impl Shell {
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
                 crate::privacy::subscription(),
+                if self.listening_for_words() {
+                    iced::time::every(std::time::Duration::from_millis(400))
+                        .map(|_| Message::AskPosition)
+                } else {
+                    iced::Subscription::none()
+                },
                 crate::updates::subscription(self.config.bar.has(&apolline_config::Piece::Updates)),
                 if self.overlay == Some(Overlay::Panel) {
                     iced::Subscription::none()

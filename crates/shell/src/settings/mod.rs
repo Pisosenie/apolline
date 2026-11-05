@@ -380,6 +380,7 @@ enum Message {
     SlidersDrop(iced::Point, f32),
     PartsHold(Option<board::Held>),
     PartsDrop(iced::Point, f32),
+    PanelLyrics(bool),
     TrayDrop(iced::Point, f32),
     BarFloating(bool),
     BarAutohide(bool),
