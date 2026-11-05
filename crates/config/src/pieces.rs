@@ -158,7 +158,7 @@ screens = ["eDP-1", "DP-1"]
 left = ["workspaces"]
 
 [bar."DP-1"]
-right = ["clock"]
+right = ["stats"]
 wrong = 1
 "#,
         );
@@ -166,8 +166,14 @@ wrong = 1
         let bar = &config.bar;
         assert!(bar.shown_on(Some("eDP-1")) && !bar.shown_on(Some("HDMI-A-1")));
         assert!(bar.shown_on(None), "without niri there's one bar");
+        let (config, problems) = Config::parse(
+            "[bar]\nskip = [\"DP-2\"]\nright = [\"stats\", \"wether\"]\n\n[bar.\"DP-2\"]\nleft = [\"workspaces\"]\n",
+        );
+        assert_eq!(problems.len(), 1, "said once: {problems:?}");
+        assert_eq!(names(&config.bar.on(Some("DP-2")).right), ["stats"]);
+        assert!(!config.bar.shown_on(Some("DP-2")) && config.bar.shown_on(Some("HDMI-A-1")));
         let screen = bar.on(Some("DP-1"));
-        assert_eq!(names(&screen.right), ["clock"]);
+        assert_eq!(names(&screen.right), ["stats"]);
         assert_eq!(
             names(&screen.left),
             ["workspaces"],

@@ -51,7 +51,12 @@ impl Shell {
             Message::CheckUpdates | Message::Control(Command::Updates) => {
                 return Task::perform(crate::updates::check(), Message::Updates);
             }
-            Message::Updates(updates) => self.updates = updates,
+            // A look that failed, offline say, keeps the last count rather than hiding it.
+            Message::Updates(updates) => {
+                if updates.is_some() {
+                    self.updates = updates;
+                }
+            }
             Message::Upgrade => {
                 let line =
                     crate::terminal::running(&self.config.terminal, &crate::updates::command());
@@ -216,14 +221,13 @@ impl Shell {
             Message::ModuleAct(index, act) => return self.module_act(index, act),
             Message::StartTimer(length, label)
             | Message::Control(Command::Timer(length, label)) => {
-                self.timers.push(crate::timers::Timer::start(length, label));
+                self.timers_started += 1;
+                let id = self.timers_started;
+                self.timers
+                    .push(crate::timers::Timer::start(id, length, label));
                 self.timers.sort_by_key(|t| t.ends);
             }
-            Message::StopTimer(index) => {
-                if index < self.timers.len() {
-                    self.timers.remove(index);
-                }
-            }
+            Message::StopTimer(id) => self.timers.retain(|t| t.id != id),
             Message::Control(Command::StopTimers) => self.timers.clear(),
             Message::ModuleScroll(index, y) => {
                 let act = match y {

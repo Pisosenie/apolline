@@ -433,6 +433,11 @@ impl Reader<'_> {
                         bar.screens = Some(v)
                     }
                 }
+                "skip" => {
+                    if let Some(v) = self.strings(key, value) {
+                        bar.skip = v
+                    }
+                }
                 name if matches!(value.get_ref(), DeValue::Table(_)) => {
                     if let Some(t) = self.section(key, value) {
                         let pieces = self.screen_pieces(t);
@@ -583,6 +588,7 @@ impl Reader<'_> {
                         "right",
                         "tray",
                         "screens",
+                        "skip",
                     ],
                 ),
             }
@@ -1781,15 +1787,22 @@ impl Reader<'_> {
 
     // Pieces on the bar that name nothing, or that are there twice, come off it.
     fn settle_bar(&mut self, config: &mut Config) {
-        let modules: Vec<&str> = config
+        let modules: Vec<String> = config
             .modules
             .iter()
-            .filter_map(|m| m.name.as_deref())
+            .filter_map(|m| m.name.clone())
             .collect();
+        self.settle_pieces(&mut config.bar, &modules);
+        for (_, bar) in &mut config.bar.per_screen {
+            self.settle_pieces(bar, &modules);
+        }
+    }
+
+    // One bar's pieces; a screen's own bar gets the same checks, each problem said once.
+    fn settle_pieces(&mut self, bar: &mut crate::Bar, modules: &[String]) {
         let mut known: Vec<&str> = Piece::NAMED.iter().map(|(name, _)| *name).collect();
-        known.extend(modules.iter().copied());
+        known.extend(modules.iter().map(String::as_str));
         let mut seen: Vec<Piece> = Vec::new();
-        let bar = &mut config.bar;
         for zone in [&mut bar.left, &mut bar.center, &mut bar.right] {
             let mut kept = Vec::new();
             for piece in std::mem::take(zone) {
@@ -1798,9 +1811,8 @@ impl Reader<'_> {
                     .iter()
                     .find(|(name, _)| name == piece.name())
                     .map_or(0, |(_, line)| *line);
-                let missing =
-                    matches!(&piece, Piece::Module(name) if !modules.contains(&name.as_str()));
-                if missing {
+                let missing = matches!(&piece, Piece::Module(name) if !modules.contains(name));
+                let problem = if missing {
                     let name = piece.name();
                     let hint = match suggest(name, &known) {
                         Some(close) => format!("did you mean “{close}”?"),
@@ -1809,21 +1821,25 @@ impl Reader<'_> {
                             Piece::NAMED.map(|(name, _)| name).join(", ")
                         ),
                     };
-                    self.diagnostics.push(
+                    Some(
                         Diagnostic::new(line, format!("nothing on the bar is called “{name}”"))
                             .hint(hint),
-                    );
+                    )
                 } else if seen.contains(&piece) {
-                    self.diagnostics.push(Diagnostic::new(
+                    Some(Diagnostic::new(
                         line,
                         format!(
                             "“{}” is on the bar twice; it stays where it's first",
                             piece.name()
                         ),
-                    ));
+                    ))
                 } else {
                     seen.push(piece.clone());
                     kept.push(piece);
+                    None
+                };
+                if let Some(problem) = problem.filter(|p| !self.diagnostics.contains(p)) {
+                    self.diagnostics.push(problem);
                 }
             }
             *zone = kept;

@@ -102,7 +102,7 @@ pub enum Message {
     // Starts a module's command again: the one at that index, or every one.
     ModuleRerun(Option<usize>),
     StartTimer(Duration, Option<String>),
-    StopTimer(usize),
+    StopTimer(u64),
     NightLight(bool),
     Frame,
     CalendarMonth(i32),
@@ -325,6 +325,7 @@ pub struct Shell {
     timers: Vec<crate::timers::Timer>,
     // How many timers have rung, for their cards' ids.
     rung: u32,
+    timers_started: u64,
     recording: Option<crate::capture::Recording>,
     replay: Option<crate::capture::Replay>,
     marks: Option<crate::marks::Marks>,
@@ -450,6 +451,7 @@ impl Shell {
             module_scrolled: None,
             timers: Vec::new(),
             rung: 0,
+            timers_started: 0,
             recording: None,
             replay: None,
             marks: None,
@@ -802,7 +804,12 @@ impl Shell {
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats.any()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
-                crate::privacy::subscription(),
+                // Shown only in the recording piece, so watched only when a bar has it.
+                if self.config.bar.has(&apolline_config::Piece::Recording) {
+                    crate::privacy::subscription()
+                } else {
+                    iced::Subscription::none()
+                },
                 if self.listening_for_words() {
                     iced::time::every(std::time::Duration::from_millis(400))
                         .map(|_| Message::AskPosition)

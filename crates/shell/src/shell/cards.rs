@@ -80,10 +80,9 @@ impl Shell {
 
     // Timers that ran out: a card each, and the alarm sound once.
     pub(super) fn ring_timers(&mut self) -> Task<Message> {
-        let now = Instant::now();
         let (done, left): (Vec<_>, Vec<_>) = std::mem::take(&mut self.timers)
             .into_iter()
-            .partition(|t| t.ends <= now);
+            .partition(crate::timers::Timer::done);
         self.timers = left;
         if done.is_empty() {
             return Task::none();

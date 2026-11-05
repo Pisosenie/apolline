@@ -502,3 +502,38 @@ fn desktop_widgets_come_and_go_in_the_order_picked() {
     assert!(!text.contains("widgets"), "{text}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_bar_turned_off_is_kept_as_the_screen_left_out() {
+    let dir = std::env::temp_dir().join(format!("apolline-skip-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[bar]\nposition = \"top\"\n").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    settings.outputs = apolline_niri::outputs(
+        r#"{"eDP-1": {"name": "eDP-1", "modes": [], "current_mode": null, "logical": null},
+            "DP-2": {"name": "DP-2", "modes": [], "current_mode": null, "logical": null}}"#,
+    );
+    assert_eq!(settings.outputs.len(), 2);
+
+    let _ = settings.update(Message::DisplayBar("DP-2".into(), false));
+    let _ = settings.update(Message::Commit);
+    assert_eq!(settings.config.bar.skip, ["DP-2"]);
+    assert!(
+        settings.config.bar.shown_on(Some("HDMI-A-1")),
+        "one plugged in later"
+    );
+
+    let _ = settings.update(Message::DisplayBar("eDP-1".into(), false));
+    let _ = settings.update(Message::Commit);
+    assert!(
+        settings.config.bar.shown_on(Some("eDP-1")),
+        "the last one keeps it"
+    );
+
+    let _ = settings.update(Message::DisplayBar("DP-2".into(), true));
+    let _ = settings.update(Message::Commit);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("skip"), "{text}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

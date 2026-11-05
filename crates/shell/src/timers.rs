@@ -1,6 +1,6 @@
 // Countdowns started from the launcher or `apolline timer`, on the bar until they ring.
 
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use crate::notify::{Heard, Notification, Urgency};
 
@@ -11,22 +11,32 @@ pub const TIMER_CARD: u32 = crate::notify::REMINDER_CARD + 1000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Timer {
+    // Which one a right click stops, whatever else starts or rings meanwhile.
+    pub id: u64,
     pub label: Option<String>,
     pub length: Duration,
-    pub ends: Instant,
+    // By the wall clock, which goes on while the machine sleeps.
+    pub ends: SystemTime,
 }
 
 impl Timer {
-    pub fn start(length: Duration, label: Option<String>) -> Self {
+    pub fn start(id: u64, length: Duration, label: Option<String>) -> Self {
         Self {
+            id,
             label,
             length,
-            ends: Instant::now() + length,
+            ends: SystemTime::now() + length,
         }
     }
 
     pub fn left(&self) -> Duration {
-        self.ends.saturating_duration_since(Instant::now())
+        self.ends
+            .duration_since(SystemTime::now())
+            .unwrap_or_default()
+    }
+
+    pub fn done(&self) -> bool {
+        self.ends <= SystemTime::now()
     }
 
     pub fn card(&self, count: u32) -> Notification {
@@ -66,9 +76,15 @@ pub fn parse(text: &str) -> Option<(Duration, Option<String>)> {
     let mut used = 0;
     while used < words.len() {
         let next = words.get(used + 1).copied();
+        // A bare number counts as minutes only first: "timer 10m 2 eggs" is ten minutes.
+        let bare = words[used].bytes().all(|b| b.is_ascii_digit())
+            && next.and_then(|n| unit(&n.to_lowercase())).is_none();
+        if bare && used > 0 {
+            break;
+        }
         match part(words[used], next) {
             Some((length, took)) => {
-                total += length;
+                total = total.checked_add(length)?;
                 used += took;
             }
             None => break,
@@ -87,8 +103,8 @@ fn part(word: &str, next: Option<&str>) -> Option<(Duration, usize)> {
     let word = word.to_lowercase();
     if let Ok(number) = word.parse::<u64>() {
         return match next.and_then(|n| unit(&n.to_lowercase())) {
-            Some(unit) => Some((Duration::from_secs(number * unit), 2)),
-            None => Some((Duration::from_secs(number * 60), 1)),
+            Some(unit) => Some((Duration::from_secs(number.checked_mul(unit)?), 2)),
+            None => Some((Duration::from_secs(number.checked_mul(60)?), 1)),
         };
     }
     let mut total = 0;
@@ -102,7 +118,9 @@ fn part(word: &str, next: Option<&str>) -> Option<(Duration, usize)> {
         let ends = after
             .find(|c: char| c.is_ascii_digit())
             .unwrap_or(after.len());
-        total += number * unit(&after[..ends])?;
+        total = number
+            .checked_mul(unit(&after[..ends])?)
+            .and_then(|secs| secs.checked_add(total))?;
         rest = &after[ends..];
     }
     Some((Duration::from_secs(total), 1))
@@ -168,6 +186,12 @@ mod tests {
         assert_eq!(secs("timer 25 hours"), None);
         assert_eq!(secs("timers 5m"), None);
         assert_eq!(secs("timer 10x"), None);
+        assert_eq!(secs("timer 10m 2 eggs"), Some((600, Some("2 eggs".into()))));
+        assert_eq!(
+            secs("timer 10000000000000000000s 10000000000000000000s"),
+            None,
+            "too long, not a panic"
+        );
     }
 
     #[test]

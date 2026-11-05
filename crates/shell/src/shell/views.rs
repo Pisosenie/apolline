@@ -233,7 +233,7 @@ impl Shell {
             timers: self
                 .timers
                 .iter()
-                .map(|t| (t.label.as_deref(), t.left()))
+                .map(|t| (t.id, t.label.as_deref(), t.left()))
                 .collect(),
             listening: &self.listening,
             updates: self.updates,

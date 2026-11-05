@@ -269,13 +269,19 @@ impl Layers {
             None => vec![None],
             Some(names) => names.iter().cloned().map(Some).collect(),
         };
-        let wanted: Vec<(Output, bool)> = names
+        let mut wanted: Vec<(Output, bool)> = names
             .into_iter()
             .map(|output| {
                 let bar = self.shell.bar_on(output.as_deref());
                 (output, bar)
             })
             .collect();
+        // Never no bar at all, say with the lid shut on the one screen that had it.
+        if wanted.iter().all(|(_, bar)| !bar) {
+            for (_, bar) in &mut wanted {
+                *bar = true;
+            }
+        }
         let mut have: Vec<(Output, bool)> = self
             .screens
             .iter()

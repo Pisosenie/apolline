@@ -16,6 +16,42 @@ impl Settings {
         };
     }
 
+    // A screen's bar on or off, kept as the screens left out, so one plugged in later has a bar.
+    // The last screen showing a bar keeps it.
+    pub(super) fn display_bar(&mut self, name: &str, on: bool) {
+        let bar = &self.config.bar;
+        let mut skip: Vec<String> = bar.skip.iter().filter(|s| *s != name).cloned().collect();
+        if !on {
+            let others = self
+                .outputs
+                .iter()
+                .any(|o| o.name != name && bar.shown_on(Some(&o.name)));
+            if !others {
+                return;
+            }
+            skip.push(name.to_owned());
+        }
+        let listed = bar
+            .screens
+            .as_ref()
+            .filter(|screens| on && !screens.iter().any(|s| s == name))
+            .map(|screens| {
+                let mut screens = screens.clone();
+                screens.push(name.to_owned());
+                screens
+            });
+        self.edit(|e| {
+            if skip.is_empty() {
+                e.unset("bar", "skip");
+            } else {
+                e.set_list("bar", "skip", &skip);
+            }
+            if let Some(screens) = &listed {
+                e.set_list("bar", "screens", screens);
+            }
+        });
+    }
+
     pub(super) fn put_displays_back(&mut self) {
         let Some((_, before)) = self.revert.take() else {
             return;

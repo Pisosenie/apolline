@@ -44,7 +44,7 @@ pub struct Bar<'a> {
     pub modules: Vec<Module<'a>>,
     pub recording: Option<std::time::Duration>,
     // Timers running, soonest first: what for and how long is left.
-    pub timers: Vec<(Option<&'a str>, std::time::Duration)>,
+    pub timers: Vec<(u64, Option<&'a str>, std::time::Duration)>,
     // The apps recording from a microphone, and whether the screen is being taken.
     pub listening: &'a [String],
     pub updates: Option<crate::updates::Updates>,
@@ -445,8 +445,7 @@ pub fn timers<'a>(bar: &Bar<'a>, across: bool) -> Vec<Element<'a, Message>> {
     let tint = bar.palette.accent;
     bar.timers
         .iter()
-        .enumerate()
-        .map(|(index, (label, left))| {
+        .map(|(id, label, left)| {
             let shown: Element<'a, Message> = if across {
                 row![
                     icon(Icon::Timer, 13.0, tint),
@@ -474,7 +473,7 @@ pub fn timers<'a>(bar: &Bar<'a>, across: bool) -> Vec<Element<'a, Message>> {
             );
             iced::widget::tooltip(
                 mouse_area(container(shown).padding([4, 8]))
-                    .on_right_press(Message::StopTimer(index)),
+                    .on_right_press(Message::StopTimer(*id)),
                 container(style::verbatim(said).size(12))
                     .padding([4, 8])
                     .style(style::surface),

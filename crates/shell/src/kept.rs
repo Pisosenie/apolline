@@ -18,8 +18,11 @@ pub fn file() -> Option<PathBuf> {
 }
 
 // An app's cards; not Apolline's own, nor what the app said isn't worth keeping.
+// A card with a level (volume, brightness, a download) is a live gauge, not something to read later,
+// and keeping it would write the file on every step.
 fn worth(notification: &Notification) -> bool {
     !notification.transient
+        && notification.progress.is_none()
         && (notification.id < notify::CONFIG_CARD || notify::is_past(notification.id))
 }
 
@@ -134,7 +137,7 @@ mod tests {
             desktop: Some(format!("org.{app}")),
             actions: vec![("default".into(), "Open".into())],
             image: None,
-            progress: Some(40),
+            progress: None,
             transient: false,
             resident: false,
             reply: Some("Reply…".into()),
@@ -157,10 +160,15 @@ mod tests {
             transient: true,
             ..card(3, "volume", 0)
         };
+        let gauge = Notification {
+            progress: Some(40),
+            ..card(4, "brightness", 0)
+        };
         let history = [
             card(7, "telegram", 120),
             shot,
             fleeting,
+            gauge,
             card(2, "mail", 60),
         ];
         let text = to_json(&history).unwrap();

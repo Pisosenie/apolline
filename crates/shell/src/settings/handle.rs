@@ -153,26 +153,7 @@ impl Settings {
                     e.unset_display(&name, "vrr");
                 }
             }),
-            // Every screen with a bar is the same as saying nothing; the last one keeps its bar.
-            Message::DisplayBar(name, on) => {
-                let screens: Vec<String> = self
-                    .outputs
-                    .iter()
-                    .map(|output| output.name.clone())
-                    .filter(|screen| {
-                        if *screen == name {
-                            on
-                        } else {
-                            self.config.bar.shown_on(Some(screen))
-                        }
-                    })
-                    .collect();
-                if screens.len() == self.outputs.len() {
-                    self.edit(|e| e.unset("bar", "screens"));
-                } else if !screens.is_empty() {
-                    self.edit(|e| e.set_list("bar", "screens", &screens));
-                }
-            }
+            Message::DisplayBar(name, on) => self.display_bar(&name, on),
             Message::DisplayX(name, x) => {
                 if self.place.0 != name {
                     self.place = (name, String::new(), String::new());

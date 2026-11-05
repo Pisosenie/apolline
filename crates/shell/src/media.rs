@@ -30,9 +30,15 @@ trait Player {
     fn position(&self) -> zbus::Result<i64>;
 }
 
+// One connection for the asking, made once: it's asked every few hundred milliseconds.
+static ASKING: tokio::sync::OnceCell<Connection> = tokio::sync::OnceCell::const_new();
+
 pub async fn position(player: String) -> Option<std::time::Duration> {
-    let connection = Connection::session().await.ok()?;
-    let proxy = PlayerProxy::builder(&connection)
+    let connection = ASKING
+        .get_or_try_init(|| async { Connection::session().await })
+        .await
+        .ok()?;
+    let proxy = PlayerProxy::builder(connection)
         .destination(player.as_str())
         .cache_properties(CacheProperties::No)
         .build()

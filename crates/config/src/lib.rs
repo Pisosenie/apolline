@@ -416,6 +416,8 @@ pub struct Bar {
     pub tray: Vec<TrayItem>,
     // The screens with a bar, by name; none given is every screen.
     pub screens: Option<Vec<String>>,
+    // Screens without a bar, by name; what Settings writes, so a monitor plugged in later gets one.
+    pub skip: Vec<String>,
     // A screen's own pieces from [bar."DP-1"], everything else as on the others.
     pub per_screen: Vec<(String, Bar)>,
 }
@@ -438,6 +440,7 @@ impl Bar {
 
     pub fn shown_on(&self, output: Option<&str>) -> bool {
         match (&self.screens, output) {
+            (_, Some(name)) if self.skip.iter().any(|screen| screen == name) => false,
             (Some(screens), Some(name)) => screens.iter().any(|screen| screen == name),
             _ => true,
         }
@@ -1143,6 +1146,7 @@ impl Default for Config {
                 right: Piece::right(),
                 tray: TrayItem::all(),
                 screens: None,
+                skip: Vec::new(),
                 per_screen: Vec::new(),
             },
             keyboard: Keyboard::default(),
