@@ -249,9 +249,12 @@ impl Shell {
                     }
                 }
             }
-            Message::PluginTile(key, Some(state)) => self.tile_is(key, state),
-            Message::PluginTile(_, None) => {}
+            Message::PluginTile(key, Some(state)) if !self.switching.contains(&key) => {
+                self.tile_is(key, state);
+            }
+            Message::PluginTile(..) => {}
             Message::PluginSwitch(key) => return self.switch_tile(key),
+            Message::PluginSwitched(key, was, now) => self.tile_switched(key, was, now),
             Message::PluginFound(found) => self.launcher.set_plugin_found(found),
             Message::Control(Command::Module(name)) => {
                 let named = self

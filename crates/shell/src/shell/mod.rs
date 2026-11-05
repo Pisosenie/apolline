@@ -107,6 +107,12 @@ pub enum Message {
     // A plugin's tile, by "plugin.tile": what its state is now, or a click to switch it.
     PluginTile(String, Option<crate::plugins::tiles::State>),
     PluginSwitch(String),
+    // Where a switch ended up, None when it failed, and what the tile was before it.
+    PluginSwitched(
+        String,
+        crate::plugins::tiles::State,
+        Option<crate::plugins::tiles::State>,
+    ),
     PluginFound(Vec<crate::plugins::search::Found>),
     StartTimer(Duration, Option<String>),
     StopTimer(u64),
@@ -250,6 +256,8 @@ pub struct Shell {
     // The enabled plugins, read with the config, and their tiles' states by "plugin.tile".
     plugins: Vec<crate::plugins::Loaded>,
     tiles: Vec<(String, crate::plugins::tiles::State)>,
+    // Tiles whose switch is under way.
+    switching: Vec<String>,
     // The plugin search on its way, ended when dropped.
     searching: Option<iced::task::Handle>,
     handed: Vec<(&'static str, Option<String>)>,
@@ -457,6 +465,7 @@ impl Shell {
             plain: config.clone(),
             plugins: crate::plugins::load(&config),
             tiles: Vec::new(),
+            switching: Vec::new(),
             searching: None,
             handed: Vec::new(),
             config,

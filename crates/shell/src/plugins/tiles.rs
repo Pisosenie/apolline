@@ -91,7 +91,7 @@ fn watch((key, runs, tile): &(String, Runs, Tile)) -> impl Stream<Item = Message
 }
 
 // Runs the tile's own command to switch it, then reads where it ended up; None when the
-// command failed.
+// command failed, and what it was switched to when it can't be read.
 pub async fn switch(runs: Runs, tile: Tile, on: bool) -> Option<State> {
     let command = match on {
         true => tile.on.as_ref().or(tile.toggle.as_ref()),
@@ -100,10 +100,11 @@ pub async fn switch(runs: Runs, tile: Tile, on: bool) -> Option<State> {
     if !switched(&runs, command).await {
         return None;
     }
+    let switched = State { on, detail: None };
     match &tile.state {
-        Some(state) => read(&runs, state).await,
+        Some(state) => Some(read(&runs, state).await.unwrap_or(switched)),
         // With nothing to ask, the tile is what it was last switched to.
-        None => Some(State { on, detail: None }),
+        None => Some(switched),
     }
 }
 
