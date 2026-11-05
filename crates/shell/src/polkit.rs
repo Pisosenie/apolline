@@ -8,6 +8,9 @@ use iced::futures::{SinkExt, Stream, StreamExt};
 use iced::widget::{Row, button, column, container, mouse_area, opaque, row, text_input};
 use iced::{Alignment, Element, Fill, Padding, Subscription};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use zbus::fdo::DBusProxy;
+use zbus::message::Header;
+use zbus::names::WellKnownName;
 use zbus::{Connection, fdo};
 use zbus::{OwnedVariant, Variant};
 
@@ -58,6 +61,9 @@ impl Dialog {
 }
 
 static WAITING: Mutex<Vec<(String, oneshot::Sender<bool>)>> = Mutex::new(Vec::new());
+// polkitd asks one thing at a time, give or take; more than this is someone else.
+const MOST_WAITING: usize = 8;
+const POLKIT: &str = "org.freedesktop.PolicyKit1";
 
 pub fn finish(cookie: &str, granted: bool) {
     let Ok(mut waiting) = WAITING.lock() else {
@@ -73,10 +79,28 @@ struct Agent {
     output: mpsc::Sender<Message>,
 }
 
+// Only polkitd itself may ask; anyone on the bus could otherwise put up a password dialog.
+async fn from_polkit(connection: &Connection, header: &Header<'_>) -> bool {
+    let (Some(sender), Ok(bus)) = (header.sender(), DBusProxy::new(connection).await) else {
+        return false;
+    };
+    let polkit = WellKnownName::from_static_str_unchecked(POLKIT).into();
+    bus.get_name_owner(polkit)
+        .await
+        .is_ok_and(|owner| owner.as_str() == sender.as_str())
+}
+
+fn refused() -> fdo::Error {
+    fdo::Error::AccessDenied("only polkit asks".into())
+}
+
 #[zbus::interface(name = "org.freedesktop.PolicyKit1.AuthenticationAgent")]
 impl Agent {
+    #[allow(clippy::too_many_arguments)]
     async fn begin_authentication(
         &self,
+        #[zbus(connection)] connection: &Connection,
+        #[zbus(header)] header: Header<'_>,
         action_id: String,
         message: String,
         _icon_name: String,
@@ -84,8 +108,18 @@ impl Agent {
         cookie: String,
         identities: Vec<(String, HashMap<String, OwnedVariant>)>,
     ) -> fdo::Result<()> {
+        if !from_polkit(connection, &header).await {
+            return Err(refused());
+        }
         let (done, wait) = oneshot::channel();
-        if let Ok(mut waiting) = WAITING.lock() {
+        {
+            let mut waiting = WAITING
+                .lock()
+                .map_err(|_| fdo::Error::Failed("the agent broke".into()))?;
+            waiting.retain(|(_, done)| !done.is_canceled());
+            if waiting.len() >= MOST_WAITING {
+                return Err(fdo::Error::LimitsExceeded("too many asks at once".into()));
+            }
             waiting.push((cookie.clone(), done));
         }
         let request = Request {
@@ -101,7 +135,15 @@ impl Agent {
         }
     }
 
-    async fn cancel_authentication(&self, cookie: String) -> fdo::Result<()> {
+    async fn cancel_authentication(
+        &self,
+        #[zbus(connection)] connection: &Connection,
+        #[zbus(header)] header: Header<'_>,
+        cookie: String,
+    ) -> fdo::Result<()> {
+        if !from_polkit(connection, &header).await {
+            return Err(refused());
+        }
         finish(&cookie, false);
         let _ = self.output.clone().send(Message::PolkitGone(cookie)).await;
         Ok(())
@@ -135,7 +177,7 @@ async fn register(connection: &Connection) -> Result<(), String> {
     let locale = std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".into());
     connection
         .call_method(
-            Some("org.freedesktop.PolicyKit1"),
+            Some(POLKIT),
             "/org/freedesktop/PolicyKit1/Authority",
             Some("org.freedesktop.PolicyKit1.Authority"),
             "RegisterAuthenticationAgent",
