@@ -2,7 +2,8 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use apolline_config::Source;
-use iced::futures::future::join_all;
+use iced::futures::stream::{self, FuturesUnordered};
+use iced::futures::{Stream, StreamExt, future};
 use tokio::io::{AsyncReadExt, BufReader};
 
 use super::{Loaded, Runs};
@@ -96,24 +97,27 @@ pub fn asked(plugins: &[Loaded], query: &str) -> Vec<(Runs, Source, String)> {
         .collect()
 }
 
-// Every source at once, after the pause; dropped, this ends them all.
-pub async fn search(asked: Vec<(Runs, Source, String)>) -> Vec<Found> {
-    tokio::time::sleep(PAUSE).await;
-    let all = join_all(
-        asked
-            .iter()
-            .map(|(runs, source, query)| ask(runs, source, query)),
-    )
-    .await;
-    all.into_iter().flatten().take(ALL).collect()
+// Every source at once, after the pause, and all found so far each time one answers, so a slow
+// one doesn't hold up the rest; dropped, this ends them all.
+pub fn search(asked: Vec<(Runs, Source, String)>) -> impl Stream<Item = Vec<Found>> + use<> {
+    let answers = stream::once(async move {
+        tokio::time::sleep(PAUSE).await;
+        asked.into_iter().map(ask).collect::<FuturesUnordered<_>>()
+    })
+    .flatten();
+    answers.scan(Vec::new(), |all: &mut Vec<Found>, found| {
+        all.extend(found);
+        all.truncate(ALL);
+        future::ready(Some(all.clone()))
+    })
 }
 
-async fn ask(runs: &Runs, source: &Source, query: &str) -> Vec<Found> {
+async fn ask((runs, source, query): (Runs, Source, String)) -> Vec<Found> {
     // The search is the command's argument as well, never part of the line itself.
     let mut command = runs.command(&format!("{} \"$@\"", source.command)).await;
     command
-        .args(["sh", query])
-        .env("APOLLINE_QUERY", query)
+        .args(["sh", &query])
+        .env("APOLLINE_QUERY", &query)
         .stdout(Stdio::piped());
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -144,6 +148,32 @@ async fn ask(runs: &Runs, source: &Source, query: &str) -> Vec<Found> {
 mod tests {
     use super::*;
     use apolline_config::Plugin;
+
+    // What a search ends with, once every source answered.
+    fn all(asked: Vec<(Runs, Source, String)>) -> Vec<Found> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let said: Vec<Vec<Found>> = runtime.block_on(search(asked).collect());
+        said.into_iter().last().unwrap_or_default()
+    }
+
+    fn runs(plugin: &str) -> Runs {
+        Runs {
+            plugin: plugin.into(),
+            dir: std::env::temp_dir(),
+            env: Vec::new(),
+            secrets: Vec::new(),
+        }
+    }
+
+    fn source(command: &str) -> Source {
+        Source {
+            prefix: None,
+            command: command.into(),
+        }
+    }
 
     #[test]
     fn a_result_is_a_json_line_with_one_thing_to_do() {
@@ -185,11 +215,7 @@ mod tests {
             prefix: None,
             command: line.into(),
         };
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let found = runtime.block_on(search(vec![(runs, source, "it's $HOME".into())]));
+        let found = all(vec![(runs, source, "it's $HOME".into())]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].title, "hi it's $HOME");
         assert_eq!(found[0].act, Act::Copy("it's $HOME".into()));
@@ -202,21 +228,7 @@ mod tests {
             r#"sleep 30 > /dev/null & echo $! > '{}'; printf '{{"title": "x", "copy": "y"}}\n'; true"#,
             file.display()
         );
-        let runs = Runs {
-            plugin: "sleepy".into(),
-            dir: std::env::temp_dir(),
-            env: Vec::new(),
-            secrets: Vec::new(),
-        };
-        let source = Source {
-            prefix: None,
-            command: line,
-        };
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let found = runtime.block_on(search(vec![(runs, source, "q".into())]));
+        let found = all(vec![(runs("sleepy"), source(&line), "q".into())]);
         let pid: i32 = std::fs::read_to_string(&file)
             .unwrap()
             .trim()
@@ -230,6 +242,25 @@ mod tests {
             unsafe { libc::kill(pid, 0) != 0 }
         });
         assert!(gone, "the sleep it started is ended with it");
+    }
+
+    #[test]
+    fn a_quick_source_is_shown_before_a_slow_one_answers() {
+        let quick = r#"printf '{"title": "quick", "copy": "q"}\n'; true"#;
+        let slow = r#"sleep 2; printf '{"title": "slow", "copy": "s"}\n'; true"#;
+        let asked = vec![
+            (runs("slow"), source(slow), "q".into()),
+            (runs("quick"), source(quick), "q".into()),
+        ];
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let first = runtime.block_on(async { Box::pin(search(asked)).next().await });
+        assert!(started.elapsed() < Duration::from_secs(1));
+        let titles: Vec<String> = first.unwrap().into_iter().map(|f| f.title).collect();
+        assert_eq!(titles, ["quick"]);
     }
 
     #[test]

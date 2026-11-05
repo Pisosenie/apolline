@@ -11,6 +11,8 @@ const TILE_OPTIONS: [&str; 8] = [
     "name", "label", "icon", "state", "on", "off", "toggle", "every",
 ];
 const LAUNCHER_OPTIONS: [&str; 2] = ["prefix", "command"];
+// What the launcher answers itself: files after "/", emoji after ":", sums after "=".
+const LAUNCHER_OWN: [char; 3] = ['/', ':', '='];
 const SETTING_OPTIONS: [&str; 5] = ["key", "label", "kind", "choices", "default"];
 const KINDS: [&str; 5] = ["text", "secret", "switch", "number", "choice"];
 
@@ -356,6 +358,19 @@ impl Reader<'_> {
             self.say(line, "a [[launcher]] needs a command", None);
             return None;
         }
+        // A prefix keeps every search that starts with it to its source, so one too short or the
+        // launcher's own would take over the launcher.
+        if let Some(prefix) = &source.prefix
+            && (prefix.chars().count() < 2 || prefix.starts_with(LAUNCHER_OWN))
+        {
+            let line = self.line(item.span());
+            self.say(
+                line,
+                "a [[launcher]] prefix is two characters or more, and not the launcher's own",
+                Some("“/”, “:” and “=” start the launcher's own searches".into()),
+            );
+            return None;
+        }
         Some(source)
     }
 
@@ -699,6 +714,14 @@ kind = "switch"
         assert!(said.contains(&"a tile needs a toggle command, or on and off"));
         assert!(said.contains(&"unknown option “prefx”"));
         assert!(said.contains(&"a [[launcher]] needs a command"));
+        for prefix in ["g", "/f", ":x", "= "] {
+            let src = format!(
+                "[plugin]\nname = \"p\"\n\n[[launcher]]\nprefix = \"{prefix}\"\ncommand = \"x\"\n"
+            );
+            let (plugin, problems) = Plugin::parse(&src);
+            assert!(plugin.launchers.is_empty(), "{prefix}");
+            assert!(problems[0].message.starts_with("a [[launcher]] prefix"));
+        }
         assert!(said.contains(&"a setting needs a key of letters, digits and _"));
         assert!(problems.iter().any(|p| p.to_string()
             == "“choise” is not a valid value for “kind” — did you mean “choice”?"));

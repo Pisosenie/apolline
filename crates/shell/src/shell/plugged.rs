@@ -42,7 +42,7 @@ impl Shell {
             self.launcher.set_plugin_found(Vec::new());
             return Task::none();
         }
-        let (task, handle) = Task::perform(search::search(asked), Message::PluginFound).abortable();
+        let (task, handle) = Task::run(search::search(asked), Message::PluginFound).abortable();
         self.searching = Some(handle.abort_on_drop());
         task
     }
