@@ -15,6 +15,9 @@ Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar
 | ![Settings → Themes](docs/screenshots/themes.jpg) | ![The calendar under the clock: the weather and the day's events](docs/screenshots/calendar.jpg) |
 | ![Notifications with a picture, a progress bar and the app's own buttons](docs/screenshots/notifications.jpg) | ![Bluetooth: your devices with the headphones' battery, and new ones nearby to pair](docs/screenshots/bluetooth.jpg) |
 | ![Quick settings over the Ember look](docs/screenshots/panel.jpg) | ![The login screen in the lock's look: centered, blurred, your accent and font](docs/screenshots/greet.jpg) |
+| ![The system monitor over the Wired rice: processor, memory and network as they go, and what's busiest](docs/screenshots/machine.jpg) | ![Wired, an example rice after Lain: vif through a CRT with fastfetch, a NAVI booting and btop](examples/wired/terminals.jpg) |
+
+A whole rice to start from, wallpaper and terminals included, is in [examples/wired](examples/wired).
 
 ## Install on Arch
 

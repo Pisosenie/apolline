@@ -14,7 +14,7 @@ use iced::{
 };
 
 use crate::icon::{Icon, icon};
-use crate::machine::{self, Machine, Process, bytes};
+use crate::machine::{Machine, Process, bytes};
 use crate::shell::Message;
 use crate::style::{self, text, verbatim};
 
@@ -252,8 +252,12 @@ impl<'a> Line<'a> {
     }
 }
 
-// Newest at the right edge, filling in from there as the readings come.
+// Newest at the right edge. Readings start when the monitor opens, so the first ones are spread
+// over the width rather than left as a sliver at the edge, until there are enough to fill it.
 struct Graph<'a>(Vec<Line<'a>>);
+
+// The fewest readings drawn across the whole width.
+const SPAN: usize = 8;
 
 impl canvas::Program<Message> for Graph<'_> {
     type State = ();
@@ -268,7 +272,6 @@ impl canvas::Program<Message> for Graph<'_> {
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let (width, height) = (bounds.width, bounds.height);
-        let step = width / (machine::KEPT - 1) as f32;
         frame.stroke(
             &Path::line(
                 Point::new(0.0, height - 0.5),
@@ -283,6 +286,7 @@ impl canvas::Program<Message> for Graph<'_> {
             if count < 2 {
                 continue;
             }
+            let step = width / (count.max(SPAN) - 1) as f32;
             let points: Vec<Point> = line
                 .values
                 .iter()
