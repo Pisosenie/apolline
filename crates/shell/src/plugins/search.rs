@@ -236,12 +236,24 @@ mod tests {
             .unwrap();
         std::fs::remove_file(&file).unwrap();
         assert_eq!(found.len(), 1);
-        // SAFETY: signal 0 only asks whether the process is there.
         let gone = (0..40).any(|_| {
             std::thread::sleep(Duration::from_millis(50));
-            unsafe { libc::kill(pid, 0) != 0 }
+            ended(pid)
         });
         assert!(gone, "the sleep it started is ended with it");
+    }
+
+    // Gone, or a zombie nobody reaps: in a container without an init, the ended sleep stays one.
+    fn ended(pid: i32) -> bool {
+        // SAFETY: signal 0 only asks whether the process is there.
+        if unsafe { libc::kill(pid, 0) } != 0 {
+            return true;
+        }
+        std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+            stat.rsplit(')')
+                .next()
+                .is_some_and(|rest| rest.trim_start().starts_with('Z'))
+        })
     }
 
     #[test]
