@@ -1,6 +1,6 @@
 # Maintainer: Danil Zorin <45851636+Pisosenie@users.noreply.github.com>
 pkgname=apolline
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc='A desktop shell for niri: bar, launcher, quick settings, lock and login screens, themes and modes'
 arch=('x86_64' 'aarch64')
