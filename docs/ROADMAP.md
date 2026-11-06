@@ -167,6 +167,7 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
   most of what people write plugins for; when plugins come, each gets a CPU and memory budget.
 - **A dock.** niri's strip plus windows and pinned apps on the bar already do its job.
 - **An AI panel, a process monitor, a notepad.** Other apps do these well.
-- **Later:** live wallpapers (video,
-  shaders) in `apolline-wall`, a program and repository of its own that the shell will drive over JSON
-  lines on stdin and stdout; pictures with crossfades already work there.
+- **Live wallpapers** (videos, shaders, Wallpaper Engine scenes) are drawn by `apolline-wall`, a
+  program and repository of its own that the shell runs as a child and drives over JSON lines on
+  stdin and stdout. Still to come: pausing it when windows cover a whole screen, and the lock telling
+  it it's locked rather than it asking logind.
