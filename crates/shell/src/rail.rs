@@ -375,6 +375,7 @@ fn stats<'a>(bar: &Bar<'a>) -> Option<Element<'a, Message>> {
             Icon::MemoryStick,
             bar.stats.memory.map(|v| format!("{v}")),
         ),
+        (shown.gpu, Icon::Gpu, bar.stats.gpu.map(|v| format!("{v}"))),
         (
             shown.temperature,
             Icon::Thermometer,

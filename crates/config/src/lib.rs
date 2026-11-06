@@ -466,20 +466,21 @@ impl Bar {
 pub struct Stats {
     pub cpu: bool,
     pub memory: bool,
+    pub gpu: bool,
     pub temperature: bool,
 }
 
 impl Stats {
-    pub const ALL: [&'static str; 3] = ["cpu", "memory", "temperature"];
+    pub const ALL: [&'static str; 4] = ["cpu", "memory", "gpu", "temperature"];
 
     pub fn any(self) -> bool {
-        self.cpu || self.memory || self.temperature
+        self.cpu || self.memory || self.gpu || self.temperature
     }
 
     pub fn names(self) -> Vec<String> {
         Self::ALL
             .iter()
-            .zip([self.cpu, self.memory, self.temperature])
+            .zip([self.cpu, self.memory, self.gpu, self.temperature])
             .filter(|(_, on)| *on)
             .map(|(name, _)| (*name).to_owned())
             .collect()

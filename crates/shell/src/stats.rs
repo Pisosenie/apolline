@@ -12,20 +12,21 @@ const EVERY: Duration = Duration::from_secs(5);
 pub struct Stats {
     pub cpu: Option<u8>,
     pub memory: Option<u8>,
+    pub gpu: Option<u8>,
     pub temperature: Option<i16>,
 }
 
-pub fn subscription(on: bool) -> Subscription<Message> {
-    if on {
-        Subscription::run(watch)
-    } else {
-        Subscription::none()
+pub fn subscription(shown: apolline_config::Stats) -> Subscription<Message> {
+    match (shown.any(), shown.gpu) {
+        (false, _) => Subscription::none(),
+        (true, false) => Subscription::run(|| watch(false)),
+        (true, true) => Subscription::run(|| watch(true)),
     }
 }
 
 // Sends only what changed, so a quiet machine doesn't repaint the bar every few seconds.
-fn watch() -> impl Stream<Item = Message> {
-    iced::stream::channel(1, async |mut output| {
+fn watch(with_gpu: bool) -> impl Stream<Item = Message> {
+    iced::stream::channel(1, async move |mut output| {
         let mut before: Option<(u64, u64)> = None;
         let mut shown = Stats::default();
         loop {
@@ -36,10 +37,11 @@ fn watch() -> impl Stream<Item = Message> {
                 let memory = std::fs::read_to_string("/proc/meminfo")
                     .ok()
                     .and_then(|text| memory(&text));
-                (times, memory, temperature())
+                let gpu = if with_gpu { gpu() } else { None };
+                (times, memory, gpu, temperature())
             })
             .await;
-            if let Ok((times, memory, temperature)) = read {
+            if let Ok((times, memory, gpu, temperature)) = read {
                 let cpu = match (before, times) {
                     (Some((busy, total)), Some((busy_now, total_now))) if total_now > total => {
                         let used = busy_now.saturating_sub(busy) as f64;
@@ -52,6 +54,7 @@ fn watch() -> impl Stream<Item = Message> {
                 let stats = Stats {
                     cpu,
                     memory,
+                    gpu,
                     temperature,
                 };
                 if stats != shown && (stats.cpu.is_some() || before.is_none()) {
@@ -95,6 +98,97 @@ fn memory(meminfo: &str) -> Option<u8> {
     let total = kb(meminfo, "MemTotal:")?;
     let available = kb(meminfo, "MemAvailable:")?;
     (total > 0).then(|| ((total.saturating_sub(available)) * 100 / total) as u8)
+}
+
+// The busiest GPU's load, in steps of 5. amdgpu tells it in sysfs, NVIDIA's driver through NVML;
+// a GPU that's asleep is left asleep.
+pub fn gpu() -> Option<u8> {
+    let mut busiest = None;
+    let mut nvidia = false;
+    for entry in std::fs::read_dir("/sys/class/drm").ok()?.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let device = entry.path().join("device");
+        let read = |file: &str| std::fs::read_to_string(device.join(file)).ok();
+        if read("power/runtime_status").is_some_and(|status| status.trim() != "active") {
+            continue;
+        }
+        if read("vendor").is_some_and(|vendor| vendor.trim() == "0x10de") {
+            nvidia = true;
+        } else if let Some(busy) =
+            read("gpu_busy_percent").and_then(|v| v.trim().parse::<u8>().ok())
+        {
+            busiest = busiest.max(Some(busy));
+        }
+    }
+    if nvidia {
+        busiest = busiest.max(nvml::busy());
+    }
+    busiest.map(|busy| ((f32::from(busy.min(100)) / 5.0).round() * 5.0) as u8)
+}
+
+mod nvml {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+
+    use libloading::Library;
+
+    #[repr(C)]
+    struct Utilization {
+        gpu: u32,
+        memory: u32,
+    }
+
+    // Loaded and started once; the driver's library stays for the shell's life.
+    static NVML: OnceLock<Option<Library>> = OnceLock::new();
+
+    pub fn busy() -> Option<u8> {
+        let library = NVML
+            .get_or_init(|| {
+                // SAFETY: NVML's documented entry point, called before anything else of it.
+                unsafe {
+                    let library = Library::new("libnvidia-ml.so.1").ok()?;
+                    let init = library
+                        .get::<unsafe extern "C" fn() -> i32>(b"nvmlInit_v2")
+                        .ok()?;
+                    (init() == 0).then_some(library)
+                }
+            })
+            .as_ref()?;
+        // SAFETY: the signatures are NVML's own, and the handles come from NVML after its init.
+        unsafe {
+            let count = library
+                .get::<unsafe extern "C" fn(*mut u32) -> i32>(b"nvmlDeviceGetCount_v2")
+                .ok()?;
+            let handle = library
+                .get::<unsafe extern "C" fn(u32, *mut *mut c_void) -> i32>(
+                    b"nvmlDeviceGetHandleByIndex_v2",
+                )
+                .ok()?;
+            let rates = library
+                .get::<unsafe extern "C" fn(*mut c_void, *mut Utilization) -> i32>(
+                    b"nvmlDeviceGetUtilizationRates",
+                )
+                .ok()?;
+            let mut devices = 0;
+            if count(&mut devices) != 0 {
+                return None;
+            }
+            (0..devices)
+                .filter_map(|index| {
+                    let mut device = std::ptr::null_mut();
+                    if handle(index, &mut device) != 0 {
+                        return None;
+                    }
+                    let mut used = Utilization { gpu: 0, memory: 0 };
+                    (rates(device, &mut used) == 0).then(|| used.gpu.min(100) as u8)
+                })
+                .max()
+        }
+    }
 }
 
 // The CPU's own sensor when there's one, else the first thermal zone that says it's the CPU.

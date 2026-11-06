@@ -504,6 +504,7 @@ impl Settings {
                         row![
                             chip("cpu", "CPU", stats.cpu),
                             chip("memory", "Memory", stats.memory),
+                            chip("gpu", "GPU", stats.gpu),
                             chip("temperature", "Temperature", stats.temperature),
                         ]
                         .spacing(6)

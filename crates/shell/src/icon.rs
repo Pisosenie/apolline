@@ -70,6 +70,7 @@ icons! {
     Globe = "globe",
     Gamepad = "gamepad-2",
     Gauge = "gauge",
+    Gpu = "gpu",
     Highlighter = "highlighter",
     Headphones = "headphones",
     Image = "image",

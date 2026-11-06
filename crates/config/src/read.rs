@@ -616,12 +616,13 @@ impl Reader<'_> {
                             match name.as_str() {
                                 "cpu" => stats.cpu = true,
                                 "memory" => stats.memory = true,
+                                "gpu" => stats.gpu = true,
                                 "temperature" => stats.temperature = true,
                                 _ => self.unknown_name(
                                     value,
                                     name,
                                     "stat",
-                                    &["cpu", "memory", "temperature"],
+                                    &["cpu", "memory", "gpu", "temperature"],
                                 ),
                             }
                         }

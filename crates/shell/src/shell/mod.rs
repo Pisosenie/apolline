@@ -877,7 +877,7 @@ impl Shell {
                 iced::Subscription::run(config_watch::watch_config),
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
-                crate::stats::subscription(self.config.bar.stats.any()),
+                crate::stats::subscription(self.config.bar.stats),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
                 if self.listening_for_words() {
                     iced::time::every(std::time::Duration::from_millis(400))

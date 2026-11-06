@@ -148,6 +148,7 @@ dependencies = [
  "iced_sessionlock",
  "image",
  "libc",
+ "libloading",
  "pam",
  "png 0.18.1",
  "serde_json",
