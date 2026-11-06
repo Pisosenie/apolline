@@ -380,6 +380,12 @@ window-rule {{
             lines.push(block("background-effect", &["blur true".to_owned()]));
             text.push_str(&format!("\n{}", block("layer-rule", &lines)));
         }
+        // These cover the screen with a dim veil; blurred, windows don't read through it.
+        let veiled = [
+            "match namespace=\"^apolline-(switcher|keys)$\"".to_owned(),
+            block("background-effect", &["blur true".to_owned()]),
+        ];
+        text.push_str(&format!("\n{}", block("layer-rule", &veiled)));
     }
     if let Some(opacity) = windows.opacity {
         text.push_str(&format!(

@@ -120,8 +120,8 @@ pub fn view<'a>(
             row![
             text("No modes yet. A mode changes wallpaper, notifications, apps and keys in one go.")
                 .size(13)
-                .color(muted),
-            space::horizontal(),
+                .color(muted)
+                .width(Fill),
             button(
                 row![icon(Icon::Sparkles, 14.0, neutral::ink()), text("Make a mode").size(13)]
                     .spacing(8)
@@ -131,19 +131,21 @@ pub fn view<'a>(
             .style(style::primary(Palette::default()))
             .on_press(Message::SettingsPage("modes")),
         ]
+            .spacing(16)
             .align_y(Alignment::Center)
             .into()
         } else {
             row![
                 text("Modes are lists of switches. Change them in Settings → Modes.")
                     .size(13)
-                    .color(muted),
-                space::horizontal(),
+                    .color(muted)
+                    .width(Fill),
                 button(text("Edit modes").size(13))
                     .padding([7, 14])
                     .style(style::secondary)
                     .on_press(Message::SettingsPage("modes")),
             ]
+            .spacing(16)
             .align_y(Alignment::Center)
             .into()
         };
@@ -160,7 +162,8 @@ pub fn view<'a>(
         footer,
     ]
     .spacing(28)
-    .width(width * columns + 24.0 * (columns - 1.0));
+    // The title and the keys need this much even over a single card.
+    .width((width * columns + 24.0 * (columns - 1.0)).max(640.0));
 
     mouse_area(
         container(opaque(panel))
