@@ -120,7 +120,8 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline settings [--page NAME] [--screenshot FILE]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]
-       apolline doctor";
+       apolline doctor
+       apolline version";
 
 // glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
 // allocates holds whole huge pages; for a shell that's a couple of hundred MB for nothing.
@@ -163,6 +164,10 @@ fn main() -> ExitCode {
         Some("doctor") => return doctor::main(),
         Some("help" | "--help" | "-h") => {
             println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Some("version" | "--version" | "-V") => {
+            println!("apolline {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
         Some(

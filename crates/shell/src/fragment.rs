@@ -673,26 +673,58 @@ pub fn sync(fragment: &Fragment, theme: Option<&str>) {
     if settle_theme(theme) {
         text.push_str("\ninclude \"theme.kdl\"\n");
     }
-    if fs::read_to_string(&path).is_ok_and(|current| current != text)
-        && let Err(err) = replace(&path, &text)
-    {
+    if fs::read_to_string(&path).is_ok_and(|current| current == text) {
+        return;
+    }
+    if let Some(refusal) = refused(&path, &text) {
+        eprintln!(
+            "apolline: niri refuses the new {}, so the old one stays:\n{refusal}",
+            path.display()
+        );
+        return;
+    }
+    if let Err(err) = replace(&path, &text) {
         eprintln!("apolline: cannot update {}: {err}", path.display());
     }
 }
 
-pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<String>> {
-    let current = fs::read_to_string(niri).map_err(|err| match err.kind() {
-        io::ErrorKind::NotFound => io::Error::new(
-            err.kind(),
-            format!(
-                "{} is missing; start niri once so it writes its config, then run this again",
-                niri.display()
-            ),
-        ),
-        _ => err,
-    })?;
+// What niri says against `text` written at `path`, checked beside it so relative includes
+// resolve; None when niri takes it or isn't there to ask.
+fn refused(path: &Path, text: &str) -> Option<String> {
+    let draft = path.with_extension("kdl.draft");
+    fs::write(&draft, text).ok()?;
+    let out = std::process::Command::new("niri")
+        .args(["validate", "-c"])
+        .arg(&draft)
+        .output();
+    let _ = fs::remove_file(&draft);
+    let out = out.ok()?;
+    (!out.status.success()).then(|| String::from_utf8_lossy(&out.stderr).trim().to_owned())
+}
 
+pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<String>> {
     let mut done = Vec::new();
+    let current = match fs::read_to_string(niri) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            let stock = fs::read_to_string(STOCK_NIRI_CONFIG).map_err(|_| {
+                io::Error::new(
+                    err.kind(),
+                    format!(
+                        "{} is missing; start niri once so it writes its config, then run this again",
+                        niri.display()
+                    ),
+                )
+            })?;
+            if let Some(dir) = niri.parent() {
+                fs::create_dir_all(dir)?;
+            }
+            fs::write(niri, &stock)?;
+            done.push(format!("started {} from niri's own", niri.display()));
+            stock
+        }
+        read => read?,
+    };
+
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -730,6 +762,8 @@ pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<St
     replace(niri, &next)?;
     Ok(done)
 }
+
+const STOCK_NIRI_CONFIG: &str = "/usr/share/doc/niri/default-config.kdl";
 
 // niri's stock config starts waybar; with Apolline's bar too there would be two.
 fn quiet_other_bars(config: &str) -> (String, Vec<usize>) {
@@ -1090,16 +1124,22 @@ xwayland-satellite { path "/tmp/evil"; }
     }
 
     #[test]
-    fn setup_refuses_to_invent_a_niri_config() {
+    fn setup_starts_from_niris_own_config_when_there_is_none() {
         let dir = scratch("missing");
-        let err = setup(
+        let done = setup(
             &dir.join("apolline/niri.kdl"),
             &dir.join("config.kdl"),
             &look(&Config::default(), None),
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("start niri once"));
-        assert!(!dir.join("config.kdl").exists());
+        );
+        if Path::new(STOCK_NIRI_CONFIG).exists() {
+            let written = fs::read_to_string(dir.join("config.kdl")).unwrap();
+            assert!(done.unwrap()[0].starts_with("started"));
+            assert!(written.starts_with(&fs::read_to_string(STOCK_NIRI_CONFIG).unwrap()[..40]));
+            assert!(written.contains("include \""));
+        } else {
+            assert!(done.unwrap_err().to_string().contains("start niri once"));
+            assert!(!dir.join("config.kdl").exists());
+        }
         fs::remove_dir_all(dir).unwrap();
     }
 }

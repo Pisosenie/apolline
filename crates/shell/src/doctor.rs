@@ -101,6 +101,11 @@ fn config() -> Line {
     let path = apolline_config::default_path();
     let (_, problems) = apolline_config::Config::load(&path);
     match problems.len() {
+        0 if !path.exists() => line(
+            State::Optional,
+            "Config",
+            t("defaults, there's no config.toml yet"),
+        ),
         0 => line(State::Good, "Config", path.display().to_string()),
         n => line(
             State::Bad,
