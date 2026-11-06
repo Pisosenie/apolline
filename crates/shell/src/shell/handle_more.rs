@@ -53,6 +53,7 @@ impl Shell {
                 self.sync();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
+            Message::Live(event) => return self.on_live(event),
             Message::Battery(battery) => {
                 self.system.get_or_insert_default().battery = battery;
                 let low = power::low(battery);

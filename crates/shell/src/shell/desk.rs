@@ -51,6 +51,11 @@ impl Shell {
             .chain(self.outputs.iter().map(|o| Some(o.as_str())))
             .map(|output| self.wallpaper_name(output).to_owned())
             .filter(|name| name != apolline_config::NO_WALLPAPER)
+            // A live one's picture is its poster, there once apolline-wall has shown it.
+            .filter(|name| {
+                crate::live::source(name).is_none()
+                    || crate::live::poster(name).is_some_and(|poster| poster.exists())
+            })
             .collect();
         names.sort();
         names.dedup();
@@ -138,6 +143,7 @@ impl Shell {
     }
 
     pub(super) fn load_wallpaper(&mut self) -> Task<Message> {
+        self.fit_live();
         self.show_wallpapers();
         let wanted = self.wanted_wallpapers();
         let missing: Vec<String> = wanted
@@ -235,13 +241,20 @@ impl Shell {
         )
     }
 
-    // Another program draws the wallpaper under the shell's clock and widgets.
+    // Another program draws the wallpaper under the shell's clock and widgets: one the user
+    // runs, or apolline-wall for a live one.
     pub fn wallpaper_elsewhere(&self) -> bool {
         self.wallpaper_name(None) == apolline_config::NO_WALLPAPER
+            || self
+                .screens()
+                .iter()
+                .any(|output| self.live_source(output.as_deref()).is_some())
     }
 
     pub(super) fn wallpaper_picture(&self, output: Option<&str>) -> Element<'_, Message> {
-        if self.wallpaper_name(output) == apolline_config::NO_WALLPAPER {
+        if self.wallpaper_name(output) == apolline_config::NO_WALLPAPER
+            || self.live_source(output).is_some()
+        {
             return space().width(Fill).height(Fill).into();
         }
         let shown = self
@@ -272,6 +285,133 @@ impl Shell {
                 .height(Fill)
                 .style(|_| container::background(style::color(neutral::ink())))
                 .into(),
+        }
+    }
+
+    fn screens(&self) -> Vec<Option<String>> {
+        if self.outputs.is_empty() {
+            vec![None]
+        } else {
+            self.outputs.iter().cloned().map(Some).collect()
+        }
+    }
+
+    // The live wallpaper a screen shows, unless apolline-wall can't draw it; then its poster
+    // stands in as a picture. Worked out in fit_live, since it looks at the disk.
+    pub(super) fn live_source(&self, output: Option<&str>) -> Option<&PathBuf> {
+        self.live_here
+            .iter()
+            .find(|(screen, _)| screen.as_deref() == output)
+            .map(|(_, source)| source)
+    }
+
+    pub(super) fn live_wanted(&self) -> bool {
+        !self.live_here.is_empty()
+    }
+
+    // Tells apolline-wall what changed: a live wallpaper for each screen that has one, a pause
+    // for a screen that went back to a picture, and the accent for its shaders.
+    pub(super) fn fit_live(&mut self) {
+        self.live_here = if self.live_gone {
+            Vec::new()
+        } else {
+            self.screens()
+                .into_iter()
+                .filter_map(|output| {
+                    let source = crate::live::source(self.wallpaper_name(output.as_deref()))?;
+                    (!self.live_failed.contains(&source)).then_some((output, source))
+                })
+                .collect()
+        };
+        if !self.live_wanted() {
+            self.live = None;
+            self.live_told.clear();
+            self.live_accent = None;
+            return;
+        }
+        let Some(commands) = self.live.clone() else {
+            return;
+        };
+        let screens = self.screens();
+        // Pauses go first, so one doesn't land after a show it would undo. The default for
+        // every screen, told before niri named them, is just forgotten: pausing it would
+        // pause them all.
+        let mut lines: Vec<String> = self
+            .live_told
+            .keys()
+            .filter(|output| {
+                output.is_some()
+                    && (!screens.contains(output) || self.live_source(output.as_deref()).is_none())
+            })
+            .map(|output| crate::live::pause(output.as_deref(), true))
+            .collect();
+        let mut told = std::collections::BTreeMap::new();
+        for (output, source) in self.live_here.clone() {
+            match self.live_told.get(&output) {
+                Some(was) if *was == source => {}
+                Some(_) => lines.push(crate::live::show(output.as_deref(), &source)),
+                None => {
+                    lines.push(crate::live::show(output.as_deref(), &source));
+                    lines.push(crate::live::pause(output.as_deref(), false));
+                }
+            }
+            told.insert(output, source);
+        }
+        self.live_told = told;
+        let accent = self.config.palette(self.mode).accent.to_hex();
+        if self.live_accent.as_ref() != Some(&accent) {
+            lines.push(crate::live::accent(&accent));
+            self.live_accent = Some(accent);
+        }
+        for line in lines {
+            let _ = commands.unbounded_send(line);
+        }
+    }
+
+    pub(super) fn on_live(&mut self, event: crate::live::Event) -> Task<Message> {
+        use crate::live::Event;
+        match event {
+            Event::Started(commands) => {
+                self.live = Some(commands);
+                self.live_told.clear();
+                self.live_accent = None;
+                self.fit_live();
+                Task::none()
+            }
+            // Its frame becomes the picture behind the name: the accent, the switcher and the
+            // lock screen use it, and it shows if the live one stops.
+            Event::Ready { source, poster } => {
+                let names: Vec<String> = self
+                    .screens()
+                    .iter()
+                    .map(|output| self.wallpaper_name(output.as_deref()).to_owned())
+                    .filter(|name| crate::live::source(name).as_ref() == Some(&source))
+                    .collect();
+                for name in names {
+                    if crate::live::keep_poster(&name, &poster) {
+                        self.wallpapers.retain(|(n, _)| *n != name);
+                        self.thumbs.remove(&name);
+                    }
+                }
+                Task::batch([self.load_wallpaper(), self.load_thumbs()])
+            }
+            Event::Failed { source, message } => {
+                eprintln!("apolline: live wallpaper: {message}");
+                match source {
+                    Some(source) => {
+                        self.live_failed.insert(source);
+                        self.sync();
+                        self.load_wallpaper()
+                    }
+                    None => Task::none(),
+                }
+            }
+            Event::Gone(message) => {
+                eprintln!("apolline: live wallpapers: {message}");
+                self.live_gone = true;
+                self.sync();
+                self.load_wallpaper()
+            }
         }
     }
 }

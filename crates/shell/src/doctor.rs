@@ -194,7 +194,7 @@ fn pam() -> Line {
 }
 
 // What each program is for, and the package that has it.
-const PROGRAMS: [(&str, &str, &str, bool); 9] = [
+const PROGRAMS: [(&str, &str, &str, bool); 10] = [
     ("Volume", "wpctl", "wireplumber", true),
     ("Volume on the bar", "pactl", "libpulse", false),
     ("Brightness", "brightnessctl", "brightnessctl", false),
@@ -209,6 +209,12 @@ const PROGRAMS: [(&str, &str, &str, bool); 9] = [
     ("Login screen look", "pkexec", "polkit", false),
     ("Flatpak apps", "flatpak", "flatpak", false),
     ("Notification sound", "pw-play", "pipewire", false),
+    (
+        "Live wallpapers",
+        "apolline-wall",
+        "apolline-wall-git",
+        false,
+    ),
 ];
 
 fn programs() -> Vec<Line> {

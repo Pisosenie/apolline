@@ -42,6 +42,7 @@ mod keymap;
 mod keys;
 mod launcher;
 mod lit;
+mod live;
 mod lock;
 mod logind;
 mod lyrics;

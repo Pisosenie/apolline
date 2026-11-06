@@ -82,6 +82,9 @@ pub fn library(folders: &[String]) -> Vec<String> {
 const LIBRARY: usize = 300;
 
 pub fn resolve(name: &str) -> Source {
+    if crate::live::source(name).is_some() {
+        return Source::File(crate::live::poster(name).unwrap_or_default());
+    }
     let path = Path::new(name);
     let file = if let Some(file) = expand(name) {
         Some(file)

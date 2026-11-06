@@ -55,6 +55,8 @@ const QUIET_AFTER_TOUCH: Duration = Duration::from_millis(1500);
 #[cfg_attr(target_os = "linux", iced_layershell::to_layer_message(multi))]
 #[derive(Clone, Debug)]
 pub enum Message {
+    // News from apolline-wall, which draws the live wallpapers.
+    Live(crate::live::Event),
     Tick,
     Key(keyboard::Event, bool),
     Mode(Option<usize>),
@@ -344,6 +346,14 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
+    // apolline-wall while a screen shows a live wallpaper: where its commands go, what each
+    // screen was last told, the accent it has, and what it couldn't draw.
+    live: Option<iced::futures::channel::mpsc::UnboundedSender<String>>,
+    live_told: std::collections::BTreeMap<Option<String>, PathBuf>,
+    live_here: Vec<(Option<String>, PathBuf)>,
+    live_accent: Option<String>,
+    live_failed: std::collections::HashSet<PathBuf>,
+    live_gone: bool,
     shown: Vec<Shown>,
     usage: crate::usage::Usage,
     tray: Vec<crate::tray::Item>,
@@ -477,6 +487,12 @@ impl Shell {
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
+            live: None,
+            live_told: std::collections::BTreeMap::new(),
+            live_here: Vec::new(),
+            live_accent: None,
+            live_failed: std::collections::HashSet::new(),
+            live_gone: false,
             shown: Vec::new(),
             tray: Vec::new(),
             tunnels: Vec::new(),
@@ -878,6 +894,7 @@ impl Shell {
                 crate::weather::subscription(self.config.weather.clone()),
                 crate::events::subscription(&self.config.calendars),
                 crate::stats::subscription(self.config.bar.stats),
+                crate::live::subscription(self.live_wanted()),
                 crate::machine::subscription(self.overlay == Some(Overlay::Machine)),
                 if self.listening_for_words() {
                     iced::time::every(std::time::Duration::from_millis(400))
