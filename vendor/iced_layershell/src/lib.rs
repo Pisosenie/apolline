@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 pub mod actions;
 pub mod build_pattern;
+mod blur;
 mod clipboard;
 mod conversion;
 mod error;

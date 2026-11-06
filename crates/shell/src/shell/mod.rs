@@ -169,6 +169,9 @@ pub enum Message {
     // A hidden bar's pointer left a while ago; the number tells a later leaving from this one.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     HideBar(iced::window::Id, u64),
+    // Where the open overlay's card ended up, in its window's units.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    OverlayCard(window::Id, Option<iced::Rectangle>),
     ReplyTyped(String),
     ReplySend,
     Wifi(crate::wifi::Seen),

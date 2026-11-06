@@ -47,7 +47,8 @@ pub fn view(look: Look<'_>) -> Element<'_, Message> {
     let card = container(body)
         .width(Length::Fixed(WIDTH))
         .padding(18)
-        .style(style::surface);
+        .style(style::surface)
+        .id(style::CARD);
     mouse_area(style::beside_bar(
         opaque(card),
         look.edge,

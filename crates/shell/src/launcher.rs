@@ -731,7 +731,8 @@ impl Launcher {
             ]
             .width(WIDTH),
         )
-        .style(style::surface_as(self.look));
+        .style(style::surface_as(self.look))
+        .id(style::CARD);
 
         mouse_area(
             container(crate::posed::enter(

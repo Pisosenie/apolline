@@ -1041,7 +1041,8 @@ fn frame<'a>(
 ) -> Element<'a, Message> {
     let card = container(body.width(WIDTH))
         .padding(16)
-        .style(style::surface_as(look));
+        .style(style::surface_as(look))
+        .id(style::CARD);
     mouse_area(style::beside_bar(
         opaque(card),
         edge,

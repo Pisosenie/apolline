@@ -178,6 +178,18 @@ where
                     None,
                     IcedLayerShellEvent::UpdateInputRegion(wl_compositor.create_region(qh, ())),
                 ));
+                if let Ok(manager) = globals
+                    .bind::<crate::blur::ExtBackgroundEffectManagerV1, _, _>(qh, 1..=1, crate::blur::Blur)
+                {
+                    waiting_layer_shell_events.push_back((
+                        None,
+                        IcedLayerShellEvent::UpdateBlur(
+                            manager,
+                            wl_compositor.create_region(qh, ()),
+                            qh.clone(),
+                        ),
+                    ));
+                }
 
                 if let Some(virtual_keyboard_setting) = settings.virtual_keyboard_support.as_ref() {
                     let virtual_keyboard_manager = globals
@@ -280,6 +292,12 @@ where
     cached_layer_dimensions: HashMap<IcedId, (Size<u32>, f32)>,
     clipboard: LayerShellClipboard,
     wl_input_region: Option<WlRegion>,
+    blur: Option<(
+        crate::blur::ExtBackgroundEffectManagerV1,
+        WlRegion,
+        layershellev::reexport::wayland_client::QueueHandle<WindowState<IcedId>>,
+    )>,
+    blurred: HashMap<IcedId, crate::blur::ExtBackgroundEffectSurfaceV1>,
     user_interfaces: UserInterfaces<P>,
     waiting_layer_shell_actions: Vec<(Option<IcedId>, LayerShellCustomAction)>,
     iced_events: Vec<(IcedId, IcedEvent)>,
@@ -314,6 +332,8 @@ where
             cached_layer_dimensions: HashMap::new(),
             clipboard: LayerShellClipboard::unconnected(),
             wl_input_region: Default::default(),
+            blur: None,
+            blurred: HashMap::new(),
             user_interfaces: UserInterfaces::new(application),
             waiting_layer_shell_actions: Default::default(),
             iced_events: Default::default(),
@@ -385,6 +405,9 @@ where
 
         match layer_shell_event {
             IcedLayerShellEvent::UpdateInputRegion(region) => self.wl_input_region = Some(region),
+            IcedLayerShellEvent::UpdateBlur(manager, region, qh) => {
+                self.blur = Some((manager, region, qh))
+            }
             IcedLayerShellEvent::Window(LayerShellWindowEvent::Refresh) => {
                 self.handle_refresh_event(ev, layer_shell_id)
             }
@@ -618,6 +641,9 @@ where
         else {
             return;
         };
+        if let Some(effect) = self.blurred.remove(&iced_id) {
+            effect.destroy();
+        }
         self.cached_layer_dimensions.remove(&iced_id);
         self.window_manager.remove(iced_id);
         self.user_interfaces.remove(&iced_id);
@@ -772,6 +798,28 @@ where
                     .get_wlsurface()
                     .set_input_region(self.wl_input_region.as_ref());
                 layer_shell_window.get_wlsurface().commit();
+            }
+            LayerShellCustomAction::SetBlurRegion(set_region) => {
+                ref_layer_shell_window!(ev, iced_id, layer_shell_id, layer_shell_window);
+                let Some((manager, region, qh)) = &self.blur else {
+                    return;
+                };
+                let surface = layer_shell_window.get_wlsurface();
+                let Some(id) = iced_id else {
+                    return;
+                };
+                let effect = self.blurred.entry(id).or_insert_with(|| {
+                    manager.get_background_effect(surface, qh, crate::blur::Blur)
+                });
+                match set_region {
+                    Some(set_region) => {
+                        region.subtract(0, 0, i32::MAX / 4, i32::MAX / 4);
+                        (set_region.0)(region);
+                        effect.set_blur_region(Some(region));
+                    }
+                    None => effect.set_blur_region(None),
+                }
+                surface.commit();
             }
             LayerShellCustomAction::VirtualKeyboardPressed { key } => {
                 use layershellev::reexport::wayland_client::KeyState;

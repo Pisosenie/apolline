@@ -145,6 +145,8 @@ pub enum LayerShellCustomAction {
         id: IcedId,
     },
     SetInputRegion(ActionCallback),
+    // None takes the blur away.
+    SetBlurRegion(Option<ActionCallback>),
     NewPopUp {
         settings: IcedNewPopupSettings,
         id: IcedId,

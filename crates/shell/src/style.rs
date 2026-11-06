@@ -33,6 +33,8 @@ pub const GOOD: Rgba = Rgba::hex(0x5dd39e);
 pub const WARN: Rgba = Rgba::hex(0xf2b35c);
 pub const DANGER: Rgba = Rgba::hex(0xff7a6b);
 pub const RADIUS_SURFACE: f32 = 20.0;
+// The card an overlay draws; the compositor blurs only what's under it.
+pub const CARD: &str = "apolline-card";
 pub const RADIUS_TILE: f32 = 14.0;
 pub const PILL: f32 = 999.0;
 

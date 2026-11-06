@@ -104,6 +104,13 @@ pub enum WindowEvent {
 #[derive(Debug)]
 pub enum IcedLayerShellEvent<Message> {
     UpdateInputRegion(WlRegion),
+    UpdateBlur(
+        crate::blur::ExtBackgroundEffectManagerV1,
+        WlRegion,
+        layershellev::reexport::wayland_client::QueueHandle<
+            layershellev::WindowState<iced_core::window::Id>,
+        >,
+    ),
     Window(WindowEvent),
     UserAction(Action<Message>),
     NormalDispatch,

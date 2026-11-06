@@ -16,6 +16,20 @@ impl Shell {
         .unwrap_or(1.0)
     }
 
+    // The corner radius of the card to blur under, where the overlay is a card on glass.
+    #[cfg(target_os = "linux")]
+    pub fn card_blur(&self, overlay: Overlay) -> Option<f32> {
+        let style = &self.config.style;
+        let own = match overlay {
+            _ if !self.config.bar.blur => return None,
+            Overlay::Switcher | Overlay::Keys | Overlay::Marks => return None,
+            Overlay::Launcher => style.launcher.radius,
+            Overlay::Panel => style.panel.radius,
+            _ => None,
+        };
+        Some(own.map_or(style::RADIUS_SURFACE, f32::from))
+    }
+
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn overlay(&self) -> Option<Overlay> {
         self.overlay

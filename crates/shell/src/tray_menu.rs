@@ -65,7 +65,8 @@ pub fn view<'a>(
     }
     let card = container(column![list].width(WIDTH))
         .padding(6)
-        .style(style::surface);
+        .style(style::surface)
+        .id(style::CARD);
     mouse_area(style::beside_bar(
         opaque(card),
         edge,

@@ -168,7 +168,8 @@ pub fn view<'a>(
     }
     let card = container(body.spacing(14).width(Length::Fixed(CELL * 7.0)))
         .padding(18)
-        .style(style::surface);
+        .style(style::surface)
+        .id(style::CARD);
 
     mouse_area(style::beside_bar(
         opaque(card),

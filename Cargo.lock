@@ -1797,14 +1797,14 @@ dependencies = [
  "mundy",
  "thiserror 2.0.21",
  "tracing",
+ "wayland-client",
+ "wayland-protocols",
  "window_clipboard",
 ]
 
 [[package]]
 name = "iced_layershell_macros"
 version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99d35752ff73ef8eb5f15008e501d011aead655baab9a5689dcea40e42e3463e"
 dependencies = [
  "darling",
  "manyhow",

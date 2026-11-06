@@ -3,6 +3,7 @@ mod dock;
 use std::collections::BTreeMap;
 
 use apolline_theme::metrics;
+use iced::advanced::widget::{self, Operation, operation::Outcome};
 use iced::widget::space;
 use iced::{Color, Element, Font, Subscription, Task, mouse, window};
 use iced_layershell::actions::ActionCallback;
@@ -82,6 +83,7 @@ struct Layers {
     overlay_on: Option<String>,
     // Whether the overlay takes the keyboard and the pointer; one on its way out doesn't.
     overlay_takes: bool,
+    card: Option<(window::Id, Option<Rounded>)>,
     osd: Option<window::Id>,
     docks: dock::Docks,
 }
@@ -103,6 +105,7 @@ impl Layers {
             overlay: None,
             overlay_on: None,
             overlay_takes: false,
+            card: None,
             osd: None,
             docks: dock::Docks::default(),
         };
@@ -167,11 +170,13 @@ impl Layers {
                 return self.fit_bars();
             }
             Message::LayerEvent(..) => return Task::none(),
+            Message::OverlayCard(id, card) => return self.blur_card(id, card),
             other => other,
         };
         let task = self.shell.update(message);
         Task::batch([
             task,
+            self.find_card(),
             self.fit_screens(),
             self.fit_bars(),
             self.fit_popups(),
@@ -294,6 +299,46 @@ impl Layers {
 
     // One fading out lets the keyboard and the pointer go to what's below at once; opened again
     // midway, it takes them back.
+    // Each change may move or grow the card, so where it is gets asked again.
+    fn find_card(&self) -> Task<Message> {
+        let Some((id, kind)) = self.overlay else {
+            return Task::none();
+        };
+        if self.shell.card_blur(kind).is_none() {
+            return Task::none();
+        }
+        iced::advanced::widget::operate(FindCard(None))
+            .map(move |card| Message::OverlayCard(id, card))
+    }
+
+    fn blur_card(&mut self, id: window::Id, card: Option<iced::Rectangle>) -> Task<Message> {
+        let Some((overlay, kind)) = self.overlay.filter(|(overlay, _)| *overlay == id) else {
+            return Task::none();
+        };
+        let scale = self.shell.size_of(kind);
+        let radius = self.shell.card_blur(kind).unwrap_or(0.0) * scale;
+        let card = card.map(|c| {
+            let edge = |v: f32| (v * scale).round() as i32;
+            (
+                edge(c.x),
+                edge(c.y),
+                edge(c.width),
+                edge(c.height),
+                radius.round() as i32,
+            )
+        });
+        if self.card == Some((overlay, card)) {
+            return Task::none();
+        }
+        self.card = Some((overlay, card));
+        let callback = card.map(|(x, y, w, h, r)| {
+            ActionCallback(std::sync::Arc::new(move |region: &WlRegion| {
+                rounded(region, x, y, w, h, r)
+            }))
+        });
+        Task::done(Message::SetBlurRegion { id, callback })
+    }
+
     fn overlay_input(&mut self, takes: bool) -> Task<Message> {
         let Some((id, _)) = self.overlay else {
             return Task::none();
@@ -725,6 +770,40 @@ fn diff<T: Clone + PartialEq>(have: &[T], wanted: &[T]) -> (Vec<T>, Vec<T>) {
 fn open(settings: NewLayerShellSettings) -> (window::Id, Task<Message>) {
     let id = window::Id::unique();
     (id, Task::done(Message::NewLayerShell { settings, id }))
+}
+
+// x, y, width, height and corner radius, in the surface's points.
+type Rounded = (i32, i32, i32, i32, i32);
+
+// Finds the overlay's card by its id.
+struct FindCard(Option<iced::Rectangle>);
+
+impl Operation<Option<iced::Rectangle>> for FindCard {
+    fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Option<iced::Rectangle>>)) {
+        operate(self);
+    }
+
+    fn container(&mut self, id: Option<&widget::Id>, bounds: iced::Rectangle) {
+        if self.0.is_none() && id == Some(&widget::Id::new(crate::style::CARD)) {
+            self.0 = Some(bounds);
+        }
+    }
+
+    fn finish(&self) -> Outcome<Option<iced::Rectangle>> {
+        Outcome::Some(self.0)
+    }
+}
+
+// A rectangle with its corners cut round, a row of pixels at a time.
+fn rounded(region: &WlRegion, x: i32, y: i32, w: i32, h: i32, r: i32) {
+    let r = r.min(w / 2).min(h / 2).max(0);
+    for row in 0..r {
+        let dy = r as f32 - row as f32 - 0.5;
+        let inset = r - ((r * r) as f32 - dy * dy).max(0.0).sqrt().round() as i32;
+        region.add(x + inset, y + row, w - 2 * inset, 1);
+        region.add(x + inset, y + h - 1 - row, w - 2 * inset, 1);
+    }
+    region.add(x, y + r, w, h - 2 * r);
 }
 
 #[cfg(test)]

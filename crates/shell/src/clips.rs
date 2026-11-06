@@ -174,7 +174,8 @@ impl Picker {
             ]
             .width(WIDTH),
         )
-        .style(style::surface);
+        .style(style::surface)
+        .id(style::CARD);
 
         mouse_area(
             container(crate::posed::enter(

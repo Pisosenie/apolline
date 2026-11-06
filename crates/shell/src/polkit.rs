@@ -474,7 +474,11 @@ pub fn view(dialog: &Dialog, palette: Palette) -> Element<'_, Message> {
         .spacing(8)
         .align_y(Alignment::Center),
     );
-    let card = container(body).padding(22).width(460).style(style::surface);
+    let card = container(body)
+        .padding(22)
+        .width(460)
+        .style(style::surface)
+        .id(style::CARD);
     mouse_area(
         container(opaque(card))
             .width(Fill)

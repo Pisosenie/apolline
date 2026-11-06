@@ -35,3 +35,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [patch.crates-io]
 iced_layershell = { path = "vendor/iced_layershell" }
 iced_sessionlock = { path = "vendor/iced_sessionlock" }
+iced_layershell_macros = { path = "vendor/iced_layershell_macros" }

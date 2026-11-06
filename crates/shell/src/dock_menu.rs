@@ -77,7 +77,8 @@ pub fn view<'a>(menu: Menu) -> Element<'a, Message> {
     }
     let card = container(list.width(WIDTH))
         .padding(6)
-        .style(style::surface);
+        .style(style::surface)
+        .id(style::CARD);
     // Moved off the middle of the edge to sit by its icon.
     let along = 2.0 * offset;
     let nudge = match (edge.vertical(), along >= 0.0) {
