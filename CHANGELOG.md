@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — 2026-11-07
+
+- **Live wallpapers**: a video, a Shadertoy shader or a Wallpaper Engine scene as the wallpaper, drawn by [apolline-wall](https://github.com/Pisosenie/apolline-wall) as the shell's child. Settings → Appearance lists the scenes and videos from every Steam library, marked ▶; they pause while the screen is locked and in modes with performance on, and their last frame stands in for the accent and the lock screen. The one-line installer brings apolline-wall too.
+- **The lock screen's own wallpaper**: Settings → Lock screen → Wallpaper, or `[lock] wallpaper`.
+- **Stay in a game**: `Mod+Shift+G` keeps niri's keys and the hot corner from switching workspaces, columns or windows until it's pressed again or the window closes; sound keys and screenshots still work.
+- **Glass**: quick settings, the calendar, the launcher and the other cards blur what's under them.
+- **The GPU on the bar**: `[bar] stats` takes `gpu`, from amdgpu or NVIDIA's NVML, without waking a sleeping one.
+- **Setup**: runs each screen at its fastest refresh unless you chose one, takes the keyboard layouts from Hyprland, keeps nm-applet and blueman out of niri only, and starts from niri's own config on a fresh system.
+- Steam's toasts open in the corner without taking the focus; the pointer over the shell is the usual arrow; layers redraw on NVIDIA after a present comes back outdated; the lock tells logind the session is locked.
+- The installer survives a rerun and keeps an existing greetd config; the README starts with how to install and the first things to do.
+
 ## 0.2.0 — 2026-11-06
 
 - **Dock** (`[dock] show = true`, Settings → Bar → Dock): pinned and open apps along any edge, a dot for each window, a count of unread notifications on each app, magnify on hover, a menu with the app's windows, drag to reorder or unpin, hidden until the pointer reaches the edge.

@@ -1,6 +1,6 @@
 pkgbase = apolline-desktop
 	pkgdesc = The whole Apolline desktop on a bare Arch: the shell, niri, sound, network, Bluetooth, login screen, files and fonts
-	pkgver = 0.2.0
+	pkgver = 0.3.0
 	pkgrel = 1
 	url = https://github.com/Pisosenie/apolline
 	install = apolline-desktop.install
