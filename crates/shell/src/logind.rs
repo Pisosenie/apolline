@@ -34,9 +34,16 @@ trait Session {
 }
 
 // Tells logind the session is locked or not, which apolline-wall and others watch to stop
-// drawing behind the lock. Bounded, so a slow logind never holds up an unlock.
+// drawing behind the lock. One at a time, so a quick unlock's "no" can't land before the
+// lock's "yes"; an unlock tries twice, since a hint left on keeps the wallpaper paused. Each
+// try is bounded, so a slow logind never holds the unlock up for long.
 pub async fn locked_hint(locked: bool) {
-    let tell = async {
+    static HINTS: std::sync::OnceLock<iced::futures::lock::Mutex<()>> = std::sync::OnceLock::new();
+    let _turn = HINTS
+        .get_or_init(|| iced::futures::lock::Mutex::new(()))
+        .lock()
+        .await;
+    let tell = || async {
         let connection = Connection::system().await.ok()?;
         let manager = ManagerProxy::new(&connection).await.ok()?;
         session(&connection, &manager)
@@ -45,7 +52,12 @@ pub async fn locked_hint(locked: bool) {
             .await
             .ok()
     };
-    let _ = tokio::time::timeout(Duration::from_secs(1), tell).await;
+    let tries = if locked { 1 } else { 2 };
+    for _ in 0..tries {
+        if let Ok(Some(())) = tokio::time::timeout(Duration::from_secs(1), tell()).await {
+            return;
+        }
+    }
 }
 
 pub async fn session_id(connection: &Connection) -> Option<String> {
