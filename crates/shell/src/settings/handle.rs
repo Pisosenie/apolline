@@ -422,9 +422,24 @@ impl Settings {
             }
             Message::UseWallpaper => {
                 let path = self.wallpaper_draft.trim().to_owned();
-                let folder = wallpaper::expand(&path).filter(|p| p.is_dir());
+                // A video, a shader or a Wallpaper Engine project is set as it is; its picture
+                // comes once apolline-wall has shown it.
+                let live = crate::live::source(&path);
+                let folder = wallpaper::expand(&path).filter(|p| p.is_dir() && live.is_none());
                 match wallpaper::resolve(&path) {
                     _ if path.is_empty() => {}
+                    _ if live.as_ref().is_some_and(|source| !source.exists()) => {
+                        let shown = live.unwrap_or_default();
+                        self.error = Some(format!("{} does not exist", shown.display()));
+                    }
+                    _ if live.is_some() => {
+                        self.wallpaper_draft.clear();
+                        return self.update(match self.page {
+                            Page::Modes => Message::ModeWallpaper(Some(path)),
+                            Page::Lock => Message::LockWallpaper(Some(path)),
+                            _ => Message::DesktopWallpaper(path),
+                        });
+                    }
                     _ if folder.is_some() => {
                         let mut folders = self.config.desktop.folders.clone();
                         let name = wallpaper::shorten(&folder.unwrap_or_default());

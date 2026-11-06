@@ -6,6 +6,9 @@
 # APOLLINE_LIVE=no skips apolline-wall, which draws live wallpapers: videos, shaders, Wallpaper Engine.
 set -euo pipefail
 
+# All in a function, so a download cut short runs nothing at all.
+main() {
+
 from=${APOLLINE_FROM:-release}
 greeter=${APOLLINE_GREETER:-apolline}
 live=${APOLLINE_LIVE:-yes}
@@ -24,7 +27,9 @@ sudo pacman -Syu --needed --noconfirm base-devel git
 mkdir -p "$work"
 fetch() {
   if [[ -d $work/$1/.git ]]; then
-    git -C "$work/$1" pull -q --ff-only
+    # The installer's own clone: makepkg changes files in it, which a pull would refuse.
+    git -C "$work/$1" fetch -q origin
+    git -C "$work/$1" reset -q --hard FETCH_HEAD
   else
     git clone -q "https://github.com/Pisosenie/$1" "$work/$1"
   fi
@@ -65,6 +70,10 @@ if [[ $greeter != keep ]]; then
     say "Replacing $(basename "$current") with greetd and apolline greet"
     sudo systemctl disable "$(basename "$current")"
   fi
+  if [[ -f /etc/greetd/config.toml ]] && ! cmp -s /usr/share/apolline/greetd.toml /etc/greetd/config.toml; then
+    say "Keeping your greetd config as /etc/greetd/config.toml.before-apolline"
+    sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.before-apolline
+  fi
   sudo install -Dm644 /usr/share/apolline/greetd.toml /etc/greetd/config.toml
   sudo systemctl enable greetd.service
 fi
@@ -77,3 +86,6 @@ say "Apolline in your niri config"
 apolline setup
 
 say "Done. Reboot, log in to niri, and apolline doctor shows what works."
+}
+
+main "$@"

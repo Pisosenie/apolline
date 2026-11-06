@@ -389,7 +389,7 @@ A video, a Shadertoy shader (`.frag`, `.glsl`) or a Wallpaper Engine project fol
 - **From Steam.** Subscribe to wallpapers in Wallpaper Engine's Workshop (Wallpaper Engine runs in Steam through Proton). Settings → Appearance finds the scenes and videos in every Steam library on the machine, games drives like `/mnt/games` included, and marks them with ▶. Click one.
 - **Your own.** Type a path to a video or a `.frag` shader in the field under the gallery, or set it in the file, a Wallpaper Engine project folder too: `wallpaper = "~/Videos/rain.mp4"`.
 - **What it costs.** Scenes draw natively through [apolline-scene](https://github.com/Pisosenie/apolline-scene), not a browser or Wine. One scene on several monitors runs once. Everything pauses while the screen is locked and in modes with performance on, so a game gets the whole GPU.
-- **When it can't.** The frame apolline-wall sends back stands in for the picture: the accent follows it, the lock screen shows it, and it stays on screen if apolline-wall isn't installed or can't draw that wallpaper. `apolline doctor` says if it's missing.
+- **When it can't.** The frame apolline-wall sends back stands in for the picture: the accent follows it, the lock screen shows it, and it stays on screen if apolline-wall stops or can't draw that wallpaper. A Wallpaper Engine project shows its own preview until then; a video or shader it has never shown has no picture yet. `apolline doctor` says if apolline-wall is missing.
 
 For a picker of its own, with the Workshop to browse and a look per wallpaper, apolline-wall ships the `apolline-wallpapers` app; it talks to the same apolline-wall Apolline runs.
 

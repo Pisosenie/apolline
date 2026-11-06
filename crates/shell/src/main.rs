@@ -333,6 +333,23 @@ fn parse(args: &[String]) -> Result<Options, String> {
 fn command(line: &str) -> ExitCode {
     match control::Command::parse(line).and_then(|_| control::send(line)) {
         Ok(()) => ExitCode::SUCCESS,
+        // The shell that held the keys is gone: give them back here and start it again,
+        // or the window in front would keep every key.
+        Err(err) if line.trim() == "stay" => {
+            eprintln!("apolline: {err}; giving niri's keys back");
+            let (config, _) = Config::load(&apolline_config::default_path());
+            fragment::sync(
+                &fragment::Fragment {
+                    config: &config,
+                    mode: None,
+                    outputs: &[],
+                    stay: false,
+                },
+                None,
+            );
+            let _ = std::process::Command::new("apolline").spawn();
+            ExitCode::SUCCESS
+        }
         Err(err) => {
             eprintln!("apolline: {err}");
             ExitCode::FAILURE

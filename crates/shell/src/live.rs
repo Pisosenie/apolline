@@ -51,11 +51,12 @@ pub fn source(name: &str) -> Option<PathBuf> {
 // Where the frame apolline-wall last sent for a live wallpaper is kept, so the lock screen,
 // the switcher and the accent have a picture of it.
 pub fn poster(name: &str) -> Option<PathBuf> {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    name.hash(&mut hasher);
+    // FNV-1a: the same name keeps the same file from one build of Rust to the next.
+    let hash = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    });
     let cache = apolline_config::xdg_dir("XDG_CACHE_HOME", ".cache")?;
-    Some(cache.join(format!("apolline/live/{:016x}.png", hasher.finish())))
+    Some(cache.join(format!("apolline/live/{hash:016x}.png")))
 }
 
 // The picture that stands for a live wallpaper: its poster once apolline-wall has shown it,

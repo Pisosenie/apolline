@@ -385,6 +385,10 @@ pub fn fastest_modes(
         })
         .filter_map(|output| {
             let now = output.current_mode.and_then(|i| output.modes.get(i))?;
+            // A mode other than the screen's own was picked by someone, in niri's config say.
+            if !now.is_preferred {
+                return None;
+            }
             let best = output
                 .modes
                 .iter()

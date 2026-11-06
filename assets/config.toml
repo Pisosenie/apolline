@@ -53,6 +53,9 @@ switch = "Mod+Shift+M"
 lock = "Super+Alt+L"
 clipboard = "Mod+Alt+V"
 keys = "Mod+Slash"         # every shortcut, searchable
+terminal = "Mod+T"
+replay = "Mod+Alt+R"       # save the last moments, in a mode that keeps them
+stay = "Mod+Shift+G"       # keep a game from losing the focus to a stray key; again to let go
 layout = ""                # next keyboard layout on any keys, like "Mod+Space"; empty leaves it to [keyboard] switch
 
 [lock]

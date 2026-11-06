@@ -1,6 +1,10 @@
+Code in iced_layershell, iced_layershell_macros and iced_sessionlock comes from
+https://github.com/waycrate/exwlshelleventloop, published under the MIT license, with
+Apolline's changes to it under the same license.
+
 MIT License
 
-Copyright (c) 2026 Danil Zorin
+Copyright (c) Decodertalkers, Aakash Sen Sharma and the exwlshelleventloop contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
