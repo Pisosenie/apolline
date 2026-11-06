@@ -26,6 +26,7 @@ const STRIP: i32 = 2;
 // A leaving that only asks for the strip to be set again, once a new bar's surface is up.
 const SETTLED: u64 = u64::MAX;
 const HIDES_AFTER: std::time::Duration = std::time::Duration::from_millis(700);
+const CARD_EVERY: std::time::Duration = std::time::Duration::from_millis(80);
 
 pub fn run(mode: Option<String>) -> Result<(), String> {
     let app = daemon(
@@ -84,6 +85,8 @@ struct Layers {
     // Whether the overlay takes the keyboard and the pointer; one on its way out doesn't.
     overlay_takes: bool,
     card: Option<(window::Id, Option<Rounded>)>,
+    card_asked: Option<std::time::Instant>,
+    card_waits: bool,
     osd: Option<window::Id>,
     docks: dock::Docks,
 }
@@ -106,6 +109,8 @@ impl Layers {
             overlay_on: None,
             overlay_takes: false,
             card: None,
+            card_asked: None,
+            card_waits: false,
             osd: None,
             docks: dock::Docks::default(),
         };
@@ -171,6 +176,10 @@ impl Layers {
             }
             Message::LayerEvent(..) => return Task::none(),
             Message::OverlayCard(id, card) => return self.blur_card(id, card),
+            Message::FindCard => {
+                self.card_waits = false;
+                return self.find_card();
+            }
             other => other,
         };
         let task = self.shell.update(message);
@@ -299,14 +308,29 @@ impl Layers {
 
     // One fading out lets the keyboard and the pointer go to what's below at once; opened again
     // midway, it takes them back.
-    // Each change may move or grow the card, so where it is gets asked again.
-    fn find_card(&self) -> Task<Message> {
+    // A change may move or grow the card, so where it is gets asked again: at most every
+    // CARD_EVERY, with one look after a burst so where it settles isn't missed.
+    fn find_card(&mut self) -> Task<Message> {
         let Some((id, kind)) = self.overlay else {
             return Task::none();
         };
         if self.shell.card_blur(kind).is_none() {
+            // Glass turned off with the card open: its blur goes now, not when it closes.
+            if matches!(self.card, Some((blurred, Some(_))) if blurred == id) {
+                self.card = Some((id, None));
+                return Task::done(Message::SetBlurRegion { id, callback: None });
+            }
             return Task::none();
         }
+        let fresh = self.card.is_none_or(|(asked_for, _)| asked_for != id);
+        if !fresh && self.card_asked.is_some_and(|at| at.elapsed() < CARD_EVERY) {
+            if self.card_waits {
+                return Task::none();
+            }
+            self.card_waits = true;
+            return Task::perform(tokio::time::sleep(CARD_EVERY), |()| Message::FindCard);
+        }
+        self.card_asked = Some(std::time::Instant::now());
         iced::advanced::widget::operate(FindCard(None))
             .map(move |card| Message::OverlayCard(id, card))
     }
