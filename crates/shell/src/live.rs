@@ -58,6 +58,112 @@ pub fn poster(name: &str) -> Option<PathBuf> {
     Some(cache.join(format!("apolline/live/{:016x}.png", hasher.finish())))
 }
 
+// The picture that stands for a live wallpaper: its poster once apolline-wall has shown it,
+// else the preview a Wallpaper Engine project comes with.
+pub fn picture(name: &str) -> PathBuf {
+    let poster = poster(name).unwrap_or_default();
+    if poster.exists() {
+        return poster;
+    }
+    source(name)
+        .filter(|path| path.is_dir())
+        .and_then(|folder| {
+            ["jpg", "jpeg", "png", "gif", "webp"]
+                .iter()
+                .map(|ext| folder.join(format!("preview.{ext}")))
+                .find(|preview| preview.is_file())
+        })
+        .unwrap_or(poster)
+}
+
+// Wallpaper Engine's scenes and videos in every Steam library, Workshop items and the user's
+// own projects: what apolline-wall can draw.
+pub fn projects() -> Vec<String> {
+    let mut found = Vec::new();
+    for library in steam_libraries() {
+        for folder in [
+            "steamapps/workshop/content/431960",
+            "steamapps/common/wallpaper_engine/projects/myprojects",
+        ] {
+            let Ok(entries) = std::fs::read_dir(library.join(folder)) else {
+                continue;
+            };
+            let mut projects: Vec<PathBuf> = entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| drawn(path))
+                .collect();
+            projects.sort();
+            found.extend(projects.iter().map(|path| crate::wallpaper::shorten(path)));
+        }
+    }
+    found.dedup();
+    found.truncate(LIBRARY);
+    found
+}
+
+const LIBRARY: usize = 300;
+
+// Scenes and videos; web pages and programs need Wallpaper Engine itself.
+fn drawn(project: &Path) -> bool {
+    let Ok(file) = std::fs::File::open(project.join("project.json")) else {
+        return false;
+    };
+    let mut text = String::new();
+    if std::io::Read::read_to_string(&mut std::io::Read::take(file, 1 << 20), &mut text).is_err() {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    value
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| {
+            kind.eq_ignore_ascii_case("scene") || kind.eq_ignore_ascii_case("video")
+        })
+}
+
+// Steam's own folder, wherever this install keeps it, and the libraries it lists.
+fn steam_libraries() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    let mut libraries: Vec<PathBuf> = Vec::new();
+    for root in [
+        ".local/share/Steam",
+        ".steam/steam",
+        ".var/app/com.valvesoftware.Steam/.local/share/Steam",
+    ] {
+        let root = home.join(root);
+        let listed = std::fs::read_to_string(root.join("steamapps/libraryfolders.vdf"))
+            .map(|vdf| library_paths(&vdf))
+            .unwrap_or_default();
+        for library in std::iter::once(root).chain(listed) {
+            let Ok(real) = library.canonicalize() else {
+                continue;
+            };
+            if !libraries.contains(&real) {
+                libraries.push(real);
+            }
+        }
+    }
+    libraries
+}
+
+// The "path" values in libraryfolders.vdf.
+fn library_paths(vdf: &str) -> Vec<PathBuf> {
+    vdf.lines()
+        .filter_map(|line| {
+            let mut quoted = line.split('"').skip(1).step_by(2);
+            if quoted.next()? != "path" {
+                return None;
+            }
+            Some(PathBuf::from(quoted.next()?.replace("\\\\", "\\")))
+        })
+        .collect()
+}
+
 // Keeps a copy of the child's poster, which lives in its runtime folder only while it runs.
 pub fn keep_poster(name: &str, from: &Path) -> bool {
     let Some(to) = poster(name) else {
@@ -199,6 +305,39 @@ mod tests {
             matches!(failed, Some(Event::Failed { source: None, ref message }) if message == "no mpv")
         );
         assert!(event(r#"{"status":{}}"#).is_none());
+    }
+
+    #[test]
+    fn steam_lists_its_libraries_by_path() {
+        let vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/me/.local/share/Steam\"\n\t\t\"label\"\t\t\"\"\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/mnt/games/SteamLibrary\"\n\t}\n}\n";
+        assert_eq!(
+            library_paths(vdf),
+            vec![
+                PathBuf::from("/home/me/.local/share/Steam"),
+                PathBuf::from("/mnt/games/SteamLibrary")
+            ]
+        );
+    }
+
+    #[test]
+    fn only_scenes_and_videos_are_offered_and_a_preview_stands_in_until_a_poster() {
+        let dir = std::env::temp_dir().join(format!("apolline-projects-{}", std::process::id()));
+        for (name, kind) in [("scene", "scene"), ("video", "Video"), ("web", "web")] {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+            std::fs::write(
+                dir.join(name).join("project.json"),
+                format!("{{\"type\":\"{kind}\"}}"),
+            )
+            .unwrap();
+        }
+        assert!(drawn(&dir.join("scene")));
+        assert!(drawn(&dir.join("video")));
+        assert!(!drawn(&dir.join("web")));
+        assert!(!drawn(&dir.join("missing")));
+        std::fs::write(dir.join("scene/preview.gif"), "gif").unwrap();
+        let name = dir.join("scene").to_str().unwrap().to_owned();
+        assert_eq!(picture(&name), dir.join("scene/preview.gif"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

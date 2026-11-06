@@ -25,6 +25,7 @@ optdepends=(
   'gpu-screen-recorder: a mode can keep the last moments of a game'
   'sound-theme-freedesktop: the sound notifications can make'
   'xdg-terminal-exec: apps that open a terminal open vif'
+  'apolline-wall-git: videos, shaders and Wallpaper Engine scenes as the wallpaper'
   'cosmic-files: a file manager in Rust and iced, like Apolline'
   'yazi: a file manager inside vif'
 )

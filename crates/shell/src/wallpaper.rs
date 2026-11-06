@@ -83,7 +83,7 @@ const LIBRARY: usize = 300;
 
 pub fn resolve(name: &str) -> Source {
     if crate::live::source(name).is_some() {
-        return Source::File(crate::live::poster(name).unwrap_or_default());
+        return Source::File(crate::live::picture(name));
     }
     let path = Path::new(name);
     let file = if let Some(file) = expand(name) {

@@ -578,6 +578,8 @@ struct Settings {
     sliders_held: Option<board::Held>,
     parts_held: Option<board::Held>,
     library: Vec<String>,
+    // The library's live wallpapers, marked in the gallery.
+    live_walls: std::collections::HashSet<String>,
     apps: Vec<App>,
     pin_query: String,
     app_draft: (&'static str, String),
@@ -684,6 +686,7 @@ impl Settings {
             sliders_held: None,
             parts_held: None,
             library: Vec::new(),
+            live_walls: std::collections::HashSet::new(),
             apps: Vec::new(),
             pin_query: String::new(),
             app_draft: ("", String::new()),
@@ -802,6 +805,9 @@ impl Settings {
 
     fn scan_library(&mut self) -> Task<Message> {
         self.library = wallpaper::library(&self.config.desktop.folders);
+        let live = crate::live::projects();
+        self.live_walls = live.iter().cloned().collect();
+        self.library.extend(live);
         // Themes from folders bring their own wallpapers, which the gallery shows too.
         let mut wanted = self.library.clone();
         for (theme, _) in &self.themes {

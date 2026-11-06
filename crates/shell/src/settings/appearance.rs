@@ -59,7 +59,7 @@ impl Settings {
             .collect();
         let limit = if self.all_walls { names.len() } else { WALLS };
         for name in names.iter().take(limit) {
-            let picture: Element<'a, Message> = match self.thumb(name) {
+            let mut picture: Element<'a, Message> = match self.thumb(name) {
                 Some(handle) => container(
                     image(handle.clone())
                         .width(Fill)
@@ -75,6 +75,19 @@ impl Settings {
                     .style(|_| container::background(style::color(style::sunken_color())))
                     .into(),
             };
+            if self.live_walls.contains(*name) {
+                let mark = container(icon(Icon::Play, 11.0, Rgba::hex(0xffffff)))
+                    .padding(5)
+                    .style(style::pill(Rgba::hex(0x000000).alpha(0.55)));
+                picture = iced::widget::stack![
+                    picture,
+                    container(mark)
+                        .padding(6)
+                        .align_right(Fill)
+                        .align_bottom(88)
+                ]
+                .into();
+            }
             tiles.push(
                 button(picture)
                     .width(Fill)

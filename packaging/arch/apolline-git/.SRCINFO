@@ -32,6 +32,7 @@ pkgbase = apolline-git
 	optdepends = gpu-screen-recorder: a mode can keep the last moments of a game
 	optdepends = sound-theme-freedesktop: the sound notifications can make
 	optdepends = xdg-terminal-exec: apps that open a terminal open vif
+	optdepends = apolline-wall-git: videos, shaders and Wallpaper Engine scenes as the wallpaper
 	optdepends = cosmic-files: a file manager in Rust and iced, like Apolline
 	optdepends = yazi: a file manager inside vif
 	provides = apolline

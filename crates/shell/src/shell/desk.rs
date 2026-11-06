@@ -51,10 +51,9 @@ impl Shell {
             .chain(self.outputs.iter().map(|o| Some(o.as_str())))
             .map(|output| self.wallpaper_name(output).to_owned())
             .filter(|name| name != apolline_config::NO_WALLPAPER)
-            // A live one's picture is its poster, there once apolline-wall has shown it.
+            // A live one's picture is its poster or the preview its project came with.
             .filter(|name| {
-                crate::live::source(name).is_none()
-                    || crate::live::poster(name).is_some_and(|poster| poster.exists())
+                crate::live::source(name).is_none() || crate::live::picture(name).exists()
             })
             .collect();
         names.sort();
