@@ -276,7 +276,7 @@ window-rule {{
             let combo = config.shortcuts.get(shortcut);
             if shortcut == Shortcut::Layout {
                 format!(
-                    "{combo} allow-when-locked=true hotkey-overlay-title=\"{title}\" {{ switch-layout \"next\"; }}"
+                    "{combo} hotkey-overlay-title=\"{title}\" {{ switch-layout \"next\"; }}"
                 )
             } else {
                 format!(
@@ -892,6 +892,43 @@ mod tests {
         assert!(play.contains("animations {\n    off\n}"));
     }
 
+    // niri refuses a whole config over one wrong bind, so what we write goes past niri itself.
+    #[test]
+    fn niri_accepts_what_is_written() {
+        if std::process::Command::new("niri")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let configs = [
+            "",
+            "[shortcuts]\nlauncher = \"Mod+D\"\nlayout = \"Mod+Space\"\n\n[keyboard]\nlayouts = [\"us\", \"ru\"]\nswitch = \"caps\"\n",
+            "[[display]]\nname = \"DP-1\"\nmode = \"2560x1440@164.999\"\ntransform = \"270\"\nposition = [-1080, 0]\n",
+        ];
+        let dir = std::env::temp_dir().join(format!("apolline-niri-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("a temp dir");
+        for (i, source) in configs.iter().enumerate() {
+            let (config, _) = Config::parse(source);
+            for mode in [None, Some(0)] {
+                let path = dir.join(format!("{i}.kdl"));
+                fs::write(&path, render(&look(&config, mode))).expect("written");
+                let out = std::process::Command::new("niri")
+                    .args(["validate", "-c"])
+                    .arg(&path)
+                    .output()
+                    .expect("niri runs");
+                assert!(
+                    out.status.success(),
+                    "{source}\n{}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_layout_shortcut_switches_layouts_on_any_keys() {
         let (config, _) = Config::parse("");
@@ -902,7 +939,7 @@ mod tests {
         assert!(problems.is_empty(), "{problems:?}");
         let text = render(&look(&config, None));
         assert!(text.contains(
-            "Mod+Space allow-when-locked=true hotkey-overlay-title=\"Next keyboard layout\" { switch-layout \"next\"; }"
+            "Mod+Space hotkey-overlay-title=\"Next keyboard layout\" { switch-layout \"next\"; }"
         ), "{text}");
         assert!(text.contains("Mod+D hotkey-overlay-title=\"Search apps and games\""));
     }

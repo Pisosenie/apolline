@@ -12,7 +12,7 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install the toolchain and system libraries
-        run: pacman -Syu --noconfirm --needed rust gcc clang pkgconf pam libxkbcommon wayland git
+        run: pacman -Syu --noconfirm --needed rust gcc clang pkgconf pam libxkbcommon wayland git niri
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Format
