@@ -3,10 +3,12 @@
 #   curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh | bash
 # APOLLINE_FROM=git builds the newest commit instead of the latest release.
 # APOLLINE_GREETER=keep leaves the display manager you have; otherwise greetd shows apolline greet.
+# APOLLINE_LIVE=no skips apolline-wall, which draws live wallpapers: videos, shaders, Wallpaper Engine.
 set -euo pipefail
 
 from=${APOLLINE_FROM:-release}
 greeter=${APOLLINE_GREETER:-apolline}
+live=${APOLLINE_LIVE:-yes}
 work=${APOLLINE_WORK:-$HOME/.cache/apolline-install}
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -47,6 +49,11 @@ else
   build "$work/apolline/packaging/arch/apolline"
 fi
 build "$work/apolline/packaging/arch/apolline-desktop"
+
+if [[ $live != no ]]; then
+  fetch apolline-wall
+  build "$work/apolline-wall/packaging/arch"
+fi
 
 say "Services"
 sudo systemctl enable NetworkManager.service bluetooth.service

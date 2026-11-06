@@ -1,12 +1,39 @@
-# Apolline
+<h1 align="center">Apolline</h1>
 
-A desktop shell for [niri](https://github.com/YaLTeR/niri): bar, launcher, quick settings, notifications, clipboard history, lock screen, polkit agent and a settings window, made to look finished on the first login. Modes are optional: make your own and one key, or a game starting, the battery, the clock or a monitor, switches wallpaper, accent, notifications, apps, performance and even the shortcuts.
+<p align="center"><b>A desktop shell for niri that looks finished on the first login.</b><br>
+Bar, launcher, quick settings, notifications, clipboard, lock and login screens, live wallpapers and a settings window, in one Rust binary. Modes switch the whole desktop with a key, a game or the clock.</p>
 
-At rest the shell wakes once a minute, for the clock; everything else arrives as an event, and the config, sound and network are watched in the background without repainting. In a VM with no GPU that is 0.2–0.4% CPU. When the GPU renderer can't start, every surface falls back to drawing on the CPU, so the lock screen still comes up.
+<p align="center">
+<a href="https://github.com/Pisosenie/apolline/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Pisosenie/apolline/actions/workflows/ci.yml/badge.svg"></a>
+<a href="https://github.com/Pisosenie/apolline/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Pisosenie/apolline?color=86bdf0"></a>
+<img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20or%20Apache--2.0-5dd39e">
+<img alt="For niri" src="https://img.shields.io/badge/made%20for-niri-c084fc">
+<img alt="Arch Linux" src="https://img.shields.io/badge/packaged%20for-Arch-1793d1">
+</p>
 
-Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar as layer-shell surfaces; anywhere else it opens a preview window. Under [niri](https://github.com/YaLTeR/niri) the bar shows live workspaces and the keyboard layout, and a click on a workspace switches to it. Battery comes from UPower and the playing track from any MPRIS player. Arch first.
+<p align="center">
+<a href="#installing">Install</a> · <a href="#first-steps">First steps</a> · <a href="#with-niri">Keys</a> · <a href="#live-wallpapers">Live wallpapers</a> · <a href="#themes">Themes</a> · <a href="#modes">Modes</a> · <a href="#settings">Settings</a> · <a href="#config">Config</a>
+</p>
 
 ![One desktop in four themes: Mocha, Latte with the bar in islands, Hardline in Gruvbox with square corners, and Paper with the bar at the bottom](docs/screenshots/looks.jpg)
+
+Apolline is everything around your windows. [niri](https://github.com/YaLTeR/niri) tiles them; Apolline draws the bar, the wallpaper and the clock on it, opens apps, shows notifications, locks the screen and greets you at login, and gives you a settings window for all of it. It replaces waybar, rofi or fuzzel, mako, swaylock, swww, a polkit agent and a clipboard manager, and it is built to look like one thing instead of ten.
+
+At rest it wakes once a minute, for the clock; everything else arrives as an event. That is 0.2% CPU and about 100 MB on a desktop, 0.2–0.4% in a VM without a GPU. When the GPU renderer can't start, every surface falls back to drawing on the CPU, so the lock screen still comes up.
+
+## At a glance
+
+| | |
+|---|---|
+| **Bar** | workspaces, windows and pinned apps, tray, media, clock with a calendar and the weather, CPU, memory, GPU and temperature, waiting updates, who's using the microphone or the screen; as a bar, islands or one pill, on any edge |
+| **Launcher** `Mod+Space` | apps and Steam games, open windows, sums, units and currency, emoji, files, screenshots, a color picker, screen recording, timers, commands and the web |
+| **Quick settings** `Mod+A` | Wi-Fi, Bluetooth, VPN, volume per app, microphone, brightness, night light, power profile, do not disturb, the player, past notifications |
+| **Live wallpapers** | videos, Shadertoy shaders and Wallpaper Engine scenes from your Steam library, drawn by [apolline-wall](https://github.com/Pisosenie/apolline-wall) and paused while you're locked or playing |
+| **Lock and login** | an ext-session-lock lock screen with what's playing, the weather and the next meeting, a wallpaper of its own if you like, and a greetd greeter in the same look |
+| **Modes** | Work, Play, Evening or your own: a key, a game starting, the battery, the hour or a monitor switches wallpaper, accent, notifications, apps, performance and shortcuts |
+| **Themes** | ten built in, from Catppuccin to Gruvbox; one small file each; GTK, Qt and KDE apps can follow your colors |
+| **Settings** `apolline settings` | every option with switches and a live preview, beside the exact lines it writes to `config.toml`, comments kept |
+| **And** | notifications with replies, clipboard history, screenshot markup, a system monitor, a polkit agent, glass blur under popups |
 
 | | |
 |---|---|
@@ -19,43 +46,63 @@ Early days. Inside a Wayland session on Linux it draws the wallpaper and the bar
 
 A whole rice to start from, wallpaper and terminals included, is in [examples/wired](examples/wired).
 
-## Install on Arch
+## Installing
 
-On a bare Arch with a user in sudo, one line builds and sets up everything: vif, Apolline, niri, sound, network, Bluetooth, the login screen, files and fonts:
+**A fresh Arch**, with your user in sudo. One line builds and sets up the whole desktop: niri, Apolline, its terminal [vif](https://github.com/Pisosenie/vif), live wallpapers, sound, network, Bluetooth, the login screen, a file manager and fonts.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh | bash
 ```
 
-`APOLLINE_FROM=git` builds `main` instead of the latest release; `APOLLINE_GREETER=keep` leaves the display manager you have. Everything it pulls in is the `apolline-desktop` package in `packaging/arch`.
+Reboot and log in to niri. The script is short and worth a read first: [`install.sh`](install.sh). It takes a few switches:
 
-By hand, Apolline's terminal is [vif](https://github.com/Pisosenie/vif), so it goes first (`vif-bin` is the prebuilt one):
-
-```sh
-git clone https://github.com/Pisosenie/vif && cd vif/packaging/arch/vif-bin && makepkg -si
-```
-
-```sh
-cd packaging/arch/apolline && makepkg -si   # the latest release; apolline-git builds main
-apolline setup                              # once, as your user: adds Apolline to your niri config
-                                            # (and comments out niri's stock waybar line, so there's one bar)
-apolline doctor                             # what works here, and what to install for the rest
-```
-
-## Try it
+| Variable | Does |
+|---|---|
+| `APOLLINE_FROM=git` | builds the newest commit (`apolline-git`) instead of the latest release |
+| `APOLLINE_GREETER=keep` | keeps the display manager you have; otherwise greetd shows `apolline greet` |
+| `APOLLINE_LIVE=no` | skips apolline-wall, so no live wallpapers |
 
 ```sh
-cargo run -p apolline-shell                    # layer-shell session under Wayland, preview window elsewhere
-cargo run -p apolline-shell -- --preview       # always a window: 1/2/3 modes, m switcher, space launcher, q quick settings
-cargo run -p apolline-shell -- --preview --open launcher
-cargo run -p apolline-shell -- settings        # the settings app, or settings --page keyboard
-cargo run -p apolline-shell -- lock --preview  # the lock screen in a window
-cargo run -p apolline-shell -- check           # validate ~/.config/apolline/config.toml
-cargo run -p apolline-shell -- --mode play --screenshot shot.png
-tools/headless.sh shot.png --mode play         # Linux: the real session under a headless sway, saved with grim
-tools/fake-controls.sh ~/fakebin               # stand-in wpctl and brightnessctl for quick settings
-tools/fake-bus.sh                              # fake NetworkManager, BlueZ, fprintd, UPower and power profiles on a bus of their own
+curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh | APOLLINE_FROM=git bash
 ```
+
+Run the same line again to update. Everything it pulls in from the Arch repos is the `apolline-desktop` package in [`packaging/arch`](packaging/arch).
+
+**An Arch you already use**, with niri on it, by hand. vif goes first, because Apolline opens it as the terminal (`vif-bin` is prebuilt):
+
+```sh
+git clone https://github.com/Pisosenie/vif && (cd vif/packaging/arch/vif-bin && makepkg -si)
+git clone https://github.com/Pisosenie/apolline && cd apolline
+(cd packaging/arch/apolline && makepkg -si)   # the latest release; packaging/arch/apolline-git builds main
+apolline setup                                # once, as you: adds Apolline to your niri config
+apolline doctor                               # what works here, and what to install for the rest
+```
+
+`apolline setup` saves a copy of your niri config, adds one `include` line to it, and comments out niri's stock waybar line so there's one bar. For live wallpapers add apolline-wall:
+
+```sh
+git clone https://github.com/Pisosenie/apolline-wall && (cd apolline-wall/packaging/arch && makepkg -si)
+```
+
+**Other distributions** aren't packaged yet. Apolline builds with a current stable Rust (`cargo build --release -p apolline-shell`, the binary is `target/release/apolline`), and `apolline setup` and `apolline doctor` work the same; `apolline doctor` names what's missing.
+
+## First steps
+
+| To | Do |
+|---|---|
+| open an app | `Mod+Space`, type, Enter |
+| change the wallpaper | Settings → Appearance; anything with ▶ is live |
+| give the lock screen its own wallpaper | Settings → Lock screen → Wallpaper |
+| try a whole new look | Settings → Themes, or `apolline theme next` |
+| make a mode | Settings → Modes → a template; switch with `Mod+Shift+M` |
+| see every key | `Mod+/` |
+| take a screenshot | niri's `Print` keys, or *screenshot* in the launcher; a card offers to mark it up |
+| lock | `Super+Alt+L` |
+| restart the shell | `pkill -x apolline; niri msg action spawn -- apolline` |
+
+Settings opens from quick settings, the launcher or `apolline settings`, and every change is live. The config is `~/.config/apolline/config.toml`; [`assets/config.toml`](assets/config.toml) has every option with a comment.
+
+**If something goes wrong.** `apolline doctor` says what's missing and how to install it, and `apolline check` points at a line in the config that doesn't read. The shell is a separate process from niri: if it ever quits, `Mod+Space` stops working but your windows stay, and the restart line above brings it back. The lock screen is a process of its own too, so a crash leaves the session locked; from a TTY (`Ctrl+Alt+F3`) run `apolline lock` again to get the password field back.
 
 ## With niri
 
@@ -63,7 +110,7 @@ tools/fake-bus.sh                              # fake NetworkManager, BlueZ, fpr
 apolline setup
 ```
 
-It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one `include` line at the end of your niri config, after saving a copy of it. The fragment starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, opens the settings window floating, and binds these keys:
+It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one `include` line at the end of your niri config, after saving a copy of it. The fragment starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, opens the settings window floating, keeps Steam's toasts in the bottom right corner without taking the focus, and binds these keys:
 
 | Key | Opens |
 |---|---|
@@ -107,7 +154,7 @@ Nothing in `[windows]` is written to niri until you set it, so your niri config 
 
 `timer 25m tea` in the launcher (or `таймер 10 мин`, `timer 1h30m`, `apolline timer 5m` from a script) starts a countdown that shows on the bar next to the recording dot and rings with a card when it's done, through do not disturb as an alarm would; a right click on it stops it, and `apolline timer stop` stops them all.
 
-`[bar] stats = ["cpu", "memory", "temperature"]`, or Settings → Bar, shows the machine on the bar. It is read every five seconds and rounded (CPU in steps of 5%, temperature of 2°), so the bar repaints only when a number really moves. A click on them (or `apolline machine`) opens the machine: load, memory and the network over the last minute and a half, the disk, temperature, and the eight processes doing the most by processor or memory — your own ones end with two clicks on their ×. It's read only while it's open.
+`[bar] stats = ["cpu", "memory", "gpu", "temperature"]`, or Settings → Bar, shows the machine on the bar. It is read every five seconds and rounded (CPU and GPU in steps of 5%, temperature of 2°); the GPU is the busiest one awake, AMD's through sysfs and NVIDIA's through NVML, and a sleeping one is left asleep, so the bar repaints only when a number really moves. A click on them (or `apolline machine`) opens the machine: load, memory and the network over the last minute and a half, the disk, temperature, and the eight processes doing the most by processor or memory — your own ones end with two clicks on their ×. It's read only while it's open.
 
 The bar says who's watching: a warm microphone sign while an app records from a microphone (hover to see which; a paused stream or a volume meter doesn't count), and a screen sign while anything takes the screen through niri — a portal sharing it, a recorder, a VNC server. Both sit where the recording timer does and need niri 26.04 for the screen. The microphone is heard from the sound server as streams come and go, never polled.
 
@@ -329,9 +376,22 @@ Apolline keeps 16 terminal colors made from the palette, readable on its ground 
 
 `[desktop] font`, `gtk`, `icons`, `cursor` and `cursor_size` pick the font of Apolline itself (from its next start), the GTK theme, the icon theme and the pointer, and hand the same choices to GTK apps through gsettings. Take one out and the value you had before comes back, unless you changed it yourself in the meantime.
 
-Wallpapers come from `~/.local/share/apolline/wallpapers`, `~/Pictures/Wallpapers` and any folder you add in Settings → Appearance (`[desktop] folders`). `[desktop] rotate = 60` moves through them every hour (`shuffle = true` for random order); the file keeps the one you picked, and the lock screen shows the current one. `[desktop] clock = "bottom-left"` (or `center`, or any corner, or the middle of the top or bottom edge) puts the time and the date on the wallpaper, big and light, clear of the bar. `[desktop] widgets = ["weather", "agenda", "media"]` adds lines under it, in that order: the weather where `[bar] weather` is set, what's left of today in your calendars, what's playing, and any `[[module]]` by its name (Settings → Appearance → On the desktop). With no clock, say after a theme without one, they stand in the bottom left on their own. With more than one monitor, Settings → Appearance lets each have its own picture (`[desktop] outputs = { "HDMI-A-1" = "wide.jpg" }`); a mode's wallpaper still covers them all.
+## Wallpapers
 
-A video, a Shadertoy shader (`.frag`, `.glsl`) or a Wallpaper Engine project folder as the wallpaper is live: the shell runs [apolline-wall](https://github.com/Pisosenie/apolline-wall) (`apolline-wall-git`) as its child and tells it what each screen shows, and draws only the clock and widgets over it. Settings → Appearance lists the scenes and videos from every Steam library, marked with ▶. The frame apolline-wall sends back stands in for the picture: the accent follows it, the lock screen shows it, and it stays on screen if apolline-wall isn't installed or can't draw the wallpaper.
+Wallpapers come from `~/.local/share/apolline/wallpapers`, `~/Pictures/Wallpapers` and any folder you add in Settings → Appearance (`[desktop] folders`). `[desktop] rotate = 60` moves through them every hour (`shuffle = true` for random order); the file keeps the one you picked, and the lock screen shows the current one unless it has its own (`[lock] wallpaper`). `[desktop] clock = "bottom-left"` (or `center`, or any corner, or the middle of the top or bottom edge) puts the time and the date on the wallpaper, big and light, clear of the bar. `[desktop] widgets = ["weather", "agenda", "media"]` adds lines under it, in that order: the weather where `[bar] weather` is set, what's left of today in your calendars, what's playing, and any `[[module]]` by its name (Settings → Appearance → On the desktop). With no clock, say after a theme without one, they stand in the bottom left on their own. With more than one monitor, Settings → Appearance lets each have its own picture (`[desktop] outputs = { "HDMI-A-1" = "wide.jpg" }`); a mode's wallpaper still covers them all.
+
+### Live wallpapers
+
+A video, a Shadertoy shader (`.frag`, `.glsl`) or a Wallpaper Engine project folder as the wallpaper is live. The shell runs [apolline-wall](https://github.com/Pisosenie/apolline-wall) as its child, tells it what each monitor shows, and draws only the clock and widgets over it. Install it with the one-line installer, or from its repository.
+
+- **From Steam.** Subscribe to wallpapers in Wallpaper Engine's Workshop (Wallpaper Engine runs in Steam through Proton). Settings → Appearance finds the scenes and videos in every Steam library on the machine, games drives like `/mnt/games` included, and marks them with ▶. Click one.
+- **Your own.** Type a path to a video or a `.frag` shader in the field under the gallery, or set it in the file, a Wallpaper Engine project folder too: `wallpaper = "~/Videos/rain.mp4"`.
+- **What it costs.** Scenes draw natively through [apolline-scene](https://github.com/Pisosenie/apolline-scene), not a browser or Wine. One scene on several monitors runs once. Everything pauses while the screen is locked and in modes with performance on, so a game gets the whole GPU.
+- **When it can't.** The frame apolline-wall sends back stands in for the picture: the accent follows it, the lock screen shows it, and it stays on screen if apolline-wall isn't installed or can't draw that wallpaper. `apolline doctor` says if it's missing.
+
+For a picker of its own, with the Workshop to browse and a look per wallpaper, apolline-wall ships the `apolline-wallpapers` app; it talks to the same apolline-wall Apolline runs.
+
+### Another program's wallpaper
 
 When another program draws the wallpaper, such as swww or hyprpaper, `[desktop] wallpaper = "none"` (Settings → Appearance → Drawn by another program) leaves it to that program: the shell draws only the clock and widgets, a layer above it and letting clicks through, and the lock screen shows Apolline's own picture.
 
@@ -359,7 +419,7 @@ Performance turns off animations and window shadows, lets games (Steam and Proto
 
 ## Lock screen
 
-`apolline lock` locks the session with ext-session-lock: the time, your name and a password field, what's playing, how many notifications wait, and the keyboard layout right next to the password. It is a separate process, so if it ever crashes the session stays locked; run `apolline lock` again from a TTY to get the password field back. `[lock] layout = "center"` puts the clock and the password in the middle instead of the bottom left, and `blur = true` softens the wallpaper behind them (Settings → Lock screen, and themes carry both). `show_media`, `show_weather`, `show_next` and `show_count` each take one thing off it: what's playing, the weather, the next event, how many notifications wait. Its text stays light over the dimmed wallpaper whatever the palette.
+`apolline lock` locks the session with ext-session-lock: the time, your name and a password field, what's playing, how many notifications wait, and the keyboard layout right next to the password. It is a separate process, so if it ever crashes the session stays locked; run `apolline lock` again from a TTY to get the password field back. `[lock] layout = "center"` puts the clock and the password in the middle instead of the bottom left, and `blur = true` softens the wallpaper behind them (Settings → Lock screen, and themes carry both). It shows the desktop's wallpaper, or one of its own: Settings → Lock screen → Wallpaper, or `[lock] wallpaper = "fog.jpg"`. A live one shows its last frame. `show_media`, `show_weather`, `show_next` and `show_count` each take one thing off it: what's playing, the weather, the next event, how many notifications wait. Its text stays light over the dimmed wallpaper whatever the palette.
 
 The shell also locks on `loginctl lock-session`, right before the laptop sleeps, and after five idle minutes; the screen goes off at ten, and 30 seconds after locking. Video players that keep the screen awake are respected, modes with *keep the screen awake* (Play has it, since a gamepad doesn't count as input) skip it, and *keep awake* in quick settings holds everything off. All of it lives in `[lock]` and `[idle]`; `[idle.battery]` takes the same `lock_after`, `screen_off_after` and `suspend_after` for while the laptop is off the charger (say, the screen off at three and sleep at fifteen), and whatever it leaves out stays as plugged in. Settings → Lock screen → On battery sets them. Passwords go through PAM: install [`assets/pam/apolline`](assets/pam/apolline) as `/etc/pam.d/apolline`, or the `login` service is used.
 
@@ -406,6 +466,24 @@ Keyboard, touchpad and mouse stay with your niri config until you set them in Ap
 The config is forgiving and live: changes apply as soon as you save, a typo shows up as a card with the line and a suggestion, and everything else still applies. The card goes away when you fix it. See [`assets/config.toml`](assets/config.toml).
 
 The three default wallpapers are built into the binary; point `wallpaper` at your own file to use something else.
+
+## Working on it
+
+```sh
+cargo run -p apolline-shell                    # layer-shell session under Wayland, preview window elsewhere
+cargo run -p apolline-shell -- --preview       # always a window: 1/2/3 modes, m switcher, space launcher, q quick settings
+cargo run -p apolline-shell -- --preview --open launcher
+cargo run -p apolline-shell -- settings        # the settings app, or settings --page keyboard
+cargo run -p apolline-shell -- lock --preview  # the lock screen in a window
+cargo run -p apolline-shell -- check           # validate ~/.config/apolline/config.toml
+cargo run -p apolline-shell -- --mode play --screenshot shot.png
+tools/headless.sh shot.png --mode play         # Linux: the real session under a headless sway, saved with grim
+tools/fake-controls.sh ~/fakebin               # stand-in wpctl and brightnessctl for quick settings
+tools/fake-bus.sh                              # fake NetworkManager, BlueZ, fprintd, UPower and power profiles on a bus of their own
+```
+
+`cargo test --workspace` runs everything; tests never touch the niri you're in. [`docs/ROADMAP.md`](docs/ROADMAP.md) has what's next.
+
 
 ## Layout
 
