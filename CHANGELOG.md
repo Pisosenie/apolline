@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — 2026-11-05
+## 0.2.0 — 2026-11-06
 
 - **Dock** (`[dock] show = true`, Settings → Bar → Dock): pinned and open apps along any edge, a dot for each window, a count of unread notifications on each app, magnify on hover, a menu with the app's windows, drag to reorder or unpin, hidden until the pointer reaches the edge.
 - **Plugins in any language**: a folder with a `plugin.toml` adds bar pieces, quick-settings tiles, launcher sources, desktop widgets and its own settings (secrets go to the keyring). `apolline plugin install|list|enable|disable|remove`, and Settings → Plugins. An example is in `examples/plugins/ip`.
