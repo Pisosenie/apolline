@@ -823,7 +823,7 @@ impl Idle {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lock {
     pub before_sleep: bool,
     pub show_media: bool,
@@ -835,6 +835,8 @@ pub struct Lock {
     // The clock and the password in the bottom left, or both in the middle.
     pub centered: bool,
     pub blur: bool,
+    // A wallpaper of its own; without one it shows the desktop's.
+    pub wallpaper: Option<String>,
 }
 
 impl Shortcuts {
@@ -1068,6 +1070,14 @@ impl Config {
             .unwrap_or(&self.desktop.wallpaper)
     }
 
+    // What the lock screen shows: its own wallpaper, or the desktop's in that mode.
+    pub fn lock_wallpaper(&self, mode: Option<usize>) -> &str {
+        self.lock
+            .wallpaper
+            .as_deref()
+            .unwrap_or_else(|| self.wallpaper(mode))
+    }
+
     pub fn palette(&self, mode: Option<usize>) -> Palette {
         let accent = mode
             .and_then(|i| self.modes.get(i))
@@ -1212,6 +1222,7 @@ impl Default for Config {
                 fingerprint: false,
                 centered: false,
                 blur: false,
+                wallpaper: None,
             },
             idle: Idle {
                 lock_after: 5,

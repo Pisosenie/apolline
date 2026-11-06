@@ -453,6 +453,7 @@ enum Message {
     LockCount(bool),
     LockCentered(bool),
     LockBlur(bool),
+    LockWallpaper(Option<String>),
     LockFingerprint(bool),
     LockNow,
     Language(&'static str),
@@ -793,6 +794,7 @@ impl Settings {
         if !self.config.modes.is_empty() {
             names.push(self.config.wallpaper(Some(self.selected)).to_owned());
         }
+        names.extend(self.config.lock.wallpaper.clone());
         Task::batch(
             names
                 .into_iter()

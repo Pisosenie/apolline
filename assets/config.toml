@@ -61,6 +61,7 @@ show_media = true          # what's playing, with a pause button
 fingerprint = false        # a finger on the reader unlocks it instead of the password (fprintd)
 layout = "corner"          # corner: clock and password bottom left; center: both in the middle
 blur = false               # blur the wallpaper behind it
+# wallpaper = "fog.jpg"    # its own wallpaper; leave out to show the desktop's
 
 [idle]                     # minutes without touching anything, 0 means never
 lock_after = 5

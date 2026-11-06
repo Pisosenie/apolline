@@ -440,10 +440,10 @@ impl Settings {
                     }
                     _ => {
                         self.wallpaper_draft.clear();
-                        return self.update(if self.page == Page::Modes {
-                            Message::ModeWallpaper(Some(path))
-                        } else {
-                            Message::DesktopWallpaper(path)
+                        return self.update(match self.page {
+                            Page::Modes => Message::ModeWallpaper(Some(path)),
+                            Page::Lock => Message::LockWallpaper(Some(path)),
+                            _ => Message::DesktopWallpaper(path),
                         });
                     }
                 }

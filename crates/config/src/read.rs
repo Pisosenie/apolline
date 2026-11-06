@@ -845,6 +845,11 @@ impl Reader<'_> {
                         lock.blur = v
                     }
                 }
+                "wallpaper" => {
+                    if let Some(v) = self.string(key, value) {
+                        lock.wallpaper = Some(v.to_owned()).filter(|v| !v.trim().is_empty())
+                    }
+                }
                 _ => self.unknown(
                     key,
                     "option",
@@ -857,6 +862,7 @@ impl Reader<'_> {
                         "fingerprint",
                         "layout",
                         "blur",
+                        "wallpaper",
                     ],
                 ),
             }

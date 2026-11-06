@@ -265,7 +265,7 @@ impl Lock {
             up: false,
             config,
         };
-        let name = match lock.config.wallpaper(mode) {
+        let name = match lock.config.lock_wallpaper(mode) {
             // Drawn by another program the lock can't show; its own picture instead.
             apolline_config::NO_WALLPAPER => apolline_config::Config::default().desktop.wallpaper,
             name => name.to_owned(),

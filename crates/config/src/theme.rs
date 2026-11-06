@@ -53,7 +53,7 @@ impl Theme {
             appear: config.windows.appear,
             blur: config.windows.blur,
             style: config.style,
-            lock: config.lock,
+            lock: config.lock.clone(),
             clock: config.desktop.clock,
         }
     }

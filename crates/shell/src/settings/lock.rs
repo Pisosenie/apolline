@@ -3,9 +3,9 @@ use iced::widget::column;
 
 impl Settings {
     pub(super) fn lock(&self) -> Element<'_, Message> {
-        let lock = self.config.lock;
+        let lock = &self.config.lock;
         let palette = self.palette();
-        let preview = self.preview(&self.config.desktop.wallpaper, 220.0, {
+        let preview = self.preview(self.config.lock_wallpaper(None), 220.0, {
             let pill = container(
                 row![
                     container(text("D").size(10).color(style::color(palette.on_accent)))
@@ -77,6 +77,15 @@ impl Settings {
         .on_press(Message::LockNow);
         column![
             preview,
+            group(
+                "Wallpaper",
+                vec![padded(self.wallpaper_picker(
+                    lock.wallpaper.as_deref(),
+                    true,
+                    Message::LockWallpaper,
+                    palette,
+                ))]
+            ),
             group(
                 "When",
                 vec![

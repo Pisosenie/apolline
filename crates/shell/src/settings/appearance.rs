@@ -34,7 +34,13 @@ impl Settings {
                         .content_fit(ContentFit::Cover)
                         .border_radius(9.0)
                         .opacity(0.45_f32),
-                    container(text("Desktop's").size(12).font(style::medium())).center(Fill)
+                    container(
+                        text("Desktop's")
+                            .size(12)
+                            .font(style::medium())
+                            .color(style::color(Rgba::hex(0xffffff)))
+                    )
+                    .center(Fill)
                 ]
                 .height(88)
                 .into(),

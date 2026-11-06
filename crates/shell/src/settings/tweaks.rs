@@ -283,6 +283,13 @@ impl Settings {
                 }
             }),
             Message::LockBlur(on) => self.edit(|e| e.set("lock", "blur", on)),
+            Message::LockWallpaper(wallpaper) => {
+                self.edit(|e| match &wallpaper {
+                    Some(name) => e.set("lock", "wallpaper", name.as_str()),
+                    None => e.unset("lock", "wallpaper"),
+                });
+                return self.custom_thumb();
+            }
             Message::LockFingerprint(on) => self.edit(|e| e.set("lock", "fingerprint", on)),
             Message::IdleLock(v) => self.stage(|e| e.set("idle", "lock_after", i64::from(v))),
             Message::IdleScreen(v) => {
