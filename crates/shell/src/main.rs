@@ -1,6 +1,7 @@
 mod apps;
 mod arrange;
 mod auth;
+mod autostart;
 mod bar;
 mod bluetooth;
 mod board;
@@ -101,7 +102,7 @@ mod layers {
     }
 }
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
@@ -473,7 +474,12 @@ fn setup() -> ExitCode {
     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
         Ok(done) => {
             done.iter().for_each(|line| println!("{line}"));
-            for line in terminal::set_up(&apolline_config::config_home()) {
+            let home = apolline_config::config_home();
+            let system = Path::new("/etc/xdg/autostart");
+            for line in terminal::set_up(&home)
+                .into_iter()
+                .chain(autostart::set_up(&home, system))
+            {
                 println!("{line}");
             }
             ExitCode::SUCCESS
