@@ -169,5 +169,5 @@ settings, opacity and animation speed, per-app rules, windows in the launcher.
 - **An AI panel, a process monitor, a notepad.** Other apps do these well.
 - **Live wallpapers** (videos, shaders, Wallpaper Engine scenes) are drawn by `apolline-wall`, a
   program and repository of its own that the shell runs as a child and drives over JSON lines on
-  stdin and stdout. Still to come: pausing it when windows cover a whole screen, and the lock telling
-  it it's locked rather than it asking logind.
+  stdin and stdout. The lock sets logind's LockedHint, which it pauses on. Still to come: pausing it
+  when windows cover a whole screen.
