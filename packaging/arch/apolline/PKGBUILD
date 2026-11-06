@@ -36,7 +36,7 @@ backup=('etc/pam.d/apolline')
 options=('!lto')
 install=apolline.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('0b7e07d993917dd50837e8d0a7b2c003b56b9fe47586f68c319919e433abae49')
+sha256sums=('5e0dd48b8c6e5a9446ec5416d8a4ce86920aa3b0ee3d1ac402f34cd531f16afe')
 
 prepare() {
   cd "$pkgname-$pkgver"

@@ -1,6 +1,6 @@
 pkgbase = apolline
 	pkgdesc = A desktop shell for niri: bar, launcher, quick settings, lock and login screens, themes and modes
-	pkgver = 0.2.0
+	pkgver = 0.3.0
 	pkgrel = 1
 	url = https://github.com/Pisosenie/apolline
 	install = apolline.install
@@ -31,12 +31,13 @@ pkgbase = apolline
 	optdepends = gpu-screen-recorder: a mode can keep the last moments of a game
 	optdepends = sound-theme-freedesktop: the sound notifications can make
 	optdepends = xdg-terminal-exec: apps that open a terminal open vif
+	optdepends = apolline-wall-git: videos, shaders and Wallpaper Engine scenes as the wallpaper
 	optdepends = cosmic-files: a file manager in Rust and iced, like Apolline
 	optdepends = yazi: a file manager inside vif
 	conflicts = apolline-git
 	options = !lto
 	backup = etc/pam.d/apolline
-	source = apolline-0.2.0.tar.gz::https://github.com/Pisosenie/apolline/archive/v0.2.0.tar.gz
-	sha256sums = 0b7e07d993917dd50837e8d0a7b2c003b56b9fe47586f68c319919e433abae49
+	source = apolline-0.3.0.tar.gz::https://github.com/Pisosenie/apolline/archive/v0.3.0.tar.gz
+	sha256sums = 5e0dd48b8c6e5a9446ec5416d8a4ce86920aa3b0ee3d1ac402f34cd531f16afe
 
 pkgname = apolline
