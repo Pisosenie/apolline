@@ -142,23 +142,37 @@ mod nvml {
         memory: u32,
     }
 
-    // Loaded and started once; the driver's library stays for the shell's life.
+    // Loaded once. Each reading starts NVML and shuts it down again, since NVML holding the
+    // device open keeps a laptop's GPU from sleeping.
     static NVML: OnceLock<Option<Library>> = OnceLock::new();
 
     pub fn busy() -> Option<u8> {
         let library = NVML
             .get_or_init(|| {
-                // SAFETY: NVML's documented entry point, called before anything else of it.
-                unsafe {
-                    let library = Library::new("libnvidia-ml.so.1").ok()?;
-                    let init = library
-                        .get::<unsafe extern "C" fn() -> i32>(b"nvmlInit_v2")
-                        .ok()?;
-                    (init() == 0).then_some(library)
-                }
+                // SAFETY: loading the driver's library runs only its own initializers.
+                unsafe { Library::new("libnvidia-ml.so.1").ok() }
             })
             .as_ref()?;
-        // SAFETY: the signatures are NVML's own, and the handles come from NVML after its init.
+        // SAFETY: NVML's own signatures; nothing of it is used outside its init and shutdown.
+        unsafe {
+            let init = library
+                .get::<unsafe extern "C" fn() -> i32>(b"nvmlInit_v2")
+                .ok()?;
+            let shutdown = library
+                .get::<unsafe extern "C" fn() -> i32>(b"nvmlShutdown")
+                .ok()?;
+            if init() != 0 {
+                return None;
+            }
+            let busiest = read(library);
+            shutdown();
+            busiest
+        }
+    }
+
+    /// # Safety
+    /// NVML has to be started, and the handles it gives aren't kept past its shutdown.
+    unsafe fn read(library: &Library) -> Option<u8> {
         unsafe {
             let count = library
                 .get::<unsafe extern "C" fn(*mut u32) -> i32>(b"nvmlDeviceGetCount_v2")
