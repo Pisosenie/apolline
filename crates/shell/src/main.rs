@@ -32,6 +32,7 @@ mod greet;
 mod greet_look;
 mod greetd;
 mod gsettings;
+mod hypr;
 mod i18n;
 mod icon;
 mod idle;
@@ -447,7 +448,19 @@ fn lock_screen(args: &[String]) -> ExitCode {
 }
 
 fn setup() -> ExitCode {
-    let (config, _) = Config::load(&apolline_config::default_path());
+    let path = apolline_config::default_path();
+    let (config, _) = Config::load(&path);
+    let found = hypr::keyboard(&apolline_config::config_home());
+    if let Ok(mut editor) = apolline_config::Editor::load(&path) {
+        let took = hypr::take_keyboard(&config, &found, &mut editor);
+        if !took.is_empty() {
+            match editor.save(&path) {
+                Ok(()) => took.iter().for_each(|line| println!("{line}")),
+                Err(err) => eprintln!("apolline: cannot write {}: {err}", path.display()),
+            }
+        }
+    }
+    let (config, _) = Config::load(&path);
     let look = fragment::Fragment {
         config: &config,
         mode: config.start(),
