@@ -513,6 +513,8 @@ enum Message {
     Commit,
     Thumbs(Vec<(String, image::Handle)>),
     Thumb(String, Option<image::Handle>),
+    // Wallpaper Engine's scenes and videos, found off the UI thread.
+    LiveWalls(Vec<String>),
     Undo,
     Redo,
     Tick,
@@ -804,10 +806,27 @@ impl Settings {
     }
 
     fn scan_library(&mut self) -> Task<Message> {
+        // The live ones found last time stay listed, in their order, until the new look is in.
+        let known: Vec<String> = self
+            .library
+            .iter()
+            .filter(|name| self.live_walls.contains(*name))
+            .cloned()
+            .collect();
         self.library = wallpaper::library(&self.config.desktop.folders);
-        let live = crate::live::projects();
-        self.live_walls = live.iter().cloned().collect();
-        self.library.extend(live);
+        self.library.extend(known);
+        let live = Task::perform(
+            async {
+                tokio::task::spawn_blocking(crate::live::projects)
+                    .await
+                    .unwrap_or_default()
+            },
+            Message::LiveWalls,
+        );
+        Task::batch([self.queue_thumbs(), live])
+    }
+
+    fn queue_thumbs(&mut self) -> Task<Message> {
         // Themes from folders bring their own wallpapers, which the gallery shows too.
         let mut wanted = self.library.clone();
         for (theme, _) in &self.themes {

@@ -496,6 +496,13 @@ impl Settings {
                 return self.next_thumb();
             }
             Message::Thumb(_, None) => return self.next_thumb(),
+            Message::LiveWalls(live) => {
+                let before = std::mem::take(&mut self.live_walls);
+                self.library.retain(|name| !before.contains(name));
+                self.live_walls = live.iter().cloned().collect();
+                self.library.extend(live);
+                return self.queue_thumbs();
+            }
             Message::Tick => {
                 self.live = crate::control::shared();
                 if self.page == Page::Bar {
