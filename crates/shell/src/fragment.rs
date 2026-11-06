@@ -242,6 +242,15 @@ window-rule {{
     default-column-width {{ fixed 1180; }}
     default-window-height {{ fixed 760; }}
 }}
+
+// Steam's toasts, a friend coming online or a download done, keep to the corner and the focus
+// stays where it was.
+window-rule {{
+    match app-id="^steam$" title="^notificationtoastwindow$"
+    open-floating true
+    open-focused false
+    default-floating-position x=12 y=12 relative-to="bottom-right"
+}}
 "##,
         gaps = layout.gaps,
         columns = columns(&fragment.config.windows),
