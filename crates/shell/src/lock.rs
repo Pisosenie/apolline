@@ -139,6 +139,8 @@ fn is_up(mut file: std::fs::File) -> bool {
 async fn locked() {
     let _ = std::fs::write(guard_path(), "locked");
     let _ = tokio::task::spawn_blocking(|| control::send("locked")).await;
+    #[cfg(target_os = "linux")]
+    crate::logind::locked_hint(true).await;
 }
 
 #[cfg_attr(target_os = "linux", iced_sessionlock::to_session_message)]
@@ -870,7 +872,7 @@ fn read_network() -> Task<Message> {
 
 #[cfg(target_os = "linux")]
 fn unlock() -> Task<Message> {
-    Task::done(Message::UnLock)
+    Task::future(crate::logind::locked_hint(false)).map(|()| Message::UnLock)
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -26,10 +26,26 @@ trait Manager {
     default_service = "org.freedesktop.login1"
 )]
 trait Session {
+    fn set_locked_hint(&self, locked: bool) -> zbus::Result<()>;
     #[zbus(signal)]
     fn lock(&self) -> zbus::Result<()>;
     #[zbus(property)]
     fn id(&self) -> zbus::Result<String>;
+}
+
+// Tells logind the session is locked or not, which apolline-wall and others watch to stop
+// drawing behind the lock. Bounded, so a slow logind never holds up an unlock.
+pub async fn locked_hint(locked: bool) {
+    let tell = async {
+        let connection = Connection::system().await.ok()?;
+        let manager = ManagerProxy::new(&connection).await.ok()?;
+        session(&connection, &manager)
+            .await?
+            .set_locked_hint(locked)
+            .await
+            .ok()
+    };
+    let _ = tokio::time::timeout(Duration::from_secs(1), tell).await;
 }
 
 pub async fn session_id(connection: &Connection) -> Option<String> {
