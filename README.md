@@ -21,10 +21,18 @@ A whole rice to start from, wallpaper and terminals included, is in [examples/wi
 
 ## Install on Arch
 
-Apolline's terminal is [vif](https://github.com/Pisosenie/vif), so it goes first (`vif-bin` is the prebuilt one):
+On a bare Arch with a user in sudo, one line builds and sets up everything: vif, Apolline, niri, sound, network, Bluetooth, the login screen, files and fonts:
 
 ```sh
-git clone https://github.com/Pisosenie/vif && cd vif/packaging/arch/vif && makepkg -si
+curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh | bash
+```
+
+`APOLLINE_FROM=git` builds `main` instead of the latest release; `APOLLINE_GREETER=keep` leaves the display manager you have. Everything it pulls in is the `apolline-desktop` package in `packaging/arch`.
+
+By hand, Apolline's terminal is [vif](https://github.com/Pisosenie/vif), so it goes first (`vif-bin` is the prebuilt one):
+
+```sh
+git clone https://github.com/Pisosenie/vif && cd vif/packaging/arch/vif-bin && makepkg -si
 ```
 
 ```sh

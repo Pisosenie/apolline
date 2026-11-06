@@ -25,6 +25,8 @@ optdepends=(
   'gpu-screen-recorder: a mode can keep the last moments of a game'
   'sound-theme-freedesktop: the sound notifications can make'
   'xdg-terminal-exec: apps that open a terminal open vif'
+  'cosmic-files: a file manager in Rust and iced, like Apolline'
+  'yazi: a file manager inside vif'
 )
 # clang: pam-sys makes its bindings with bindgen
 makedepends=('cargo' 'clang' 'git')

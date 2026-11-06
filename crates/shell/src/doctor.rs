@@ -32,6 +32,7 @@ pub async fn gather() -> Vec<Line> {
     lines.extend(programs());
     lines.push(sounds());
     lines.push(terminal());
+    lines.push(files());
     lines.extend(services().await);
     lines
 }
@@ -146,6 +147,23 @@ fn terminal() -> Line {
         );
     }
     line(State::Good, "Terminal", program)
+}
+
+// What opens a folder: the launcher's files and every app's "show in folder" go through it.
+fn files() -> Line {
+    let chosen = std::process::Command::new("xdg-mime")
+        .args(["query", "default", "inode/directory"])
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        .unwrap_or_default();
+    match chosen.strip_suffix(".desktop") {
+        Some(app) if !app.is_empty() => line(State::Good, "Files", app.to_owned()),
+        _ => line(
+            State::Optional,
+            "Files",
+            t("nothing opens folders: pacman -S cosmic-files"),
+        ),
+    }
 }
 
 fn sounds() -> Line {

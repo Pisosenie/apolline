@@ -1,0 +1,9 @@
+post_install() {
+  echo '==> As your user, once: apolline setup'
+  echo '==> The services Apolline talks to:'
+  echo '      systemctl enable --now NetworkManager bluetooth'
+  echo '==> The login screen, in place of another display manager:'
+  echo '      cp /usr/share/apolline/greetd.toml /etc/greetd/config.toml'
+  echo '      systemctl enable greetd'
+  echo '==> install.sh in the repo does all of this for you.'
+}

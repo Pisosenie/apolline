@@ -1027,3 +1027,4 @@
 "Not set" = "Не задано"
 "Any other keys: Shortcuts → Next keyboard layout." = "Любые другие клавиши: «Сочетания клавиш» → «Следующая раскладка»."
 "defaults, there's no config.toml yet" = "по умолчанию, config.toml ещё нет"
+"nothing opens folders: pacman -S cosmic-files" = "папки открывать нечем: pacman -S cosmic-files"

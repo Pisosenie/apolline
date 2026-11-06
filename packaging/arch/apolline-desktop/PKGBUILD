@@ -1,0 +1,42 @@
+# Maintainer: Danil Zorin <45851636+Pisosenie@users.noreply.github.com>
+pkgname=apolline-desktop
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='The whole Apolline desktop on a bare Arch: the shell, niri, sound, network, Bluetooth, login screen, files and fonts'
+arch=('any')
+url='https://github.com/Pisosenie/apolline'
+license=('MIT OR Apache-2.0')
+depends=(
+  # the shell, its compositor and its terminal
+  'apolline' 'niri' 'vif' 'xwayland-satellite'
+  # screen sharing, file pickers and settings for apps
+  'xdg-desktop-portal-gnome' 'xdg-desktop-portal-gtk' 'xdg-user-dirs' 'xdg-utils' 'xdg-terminal-exec'
+  # sound, network, Bluetooth, power
+  'pipewire' 'pipewire-pulse' 'wireplumber' 'libpulse'
+  'networkmanager' 'bluez' 'bluez-utils'
+  'upower' 'power-profiles-daemon' 'brightnessctl' 'polkit'
+  # the login screen
+  'greetd' 'cage'
+  # files, clipboard, screenshots and recordings
+  'cosmic-files' 'yazi' 'gvfs' 'wl-clipboard' 'grim' 'slurp' 'wf-recorder'
+  # updates on the bar, notification sounds, fonts for every script and emoji
+  'pacman-contrib' 'sound-theme-freedesktop'
+  'noto-fonts' 'noto-fonts-cjk' 'noto-fonts-emoji' 'ttf-nerd-fonts-symbols'
+)
+optdepends=(
+  'gpu-screen-recorder: a mode can keep the last moments of a game'
+  'fprintd: unlocking with a finger'
+  'flatpak: Flatpak apps in the launcher'
+)
+install=apolline-desktop.install
+
+package() {
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/apolline/greetd.toml" <<'TOML'
+[terminal]
+vt = 1
+
+[default_session]
+command = "apolline greet --kiosk"
+user = "greeter"
+TOML
+}

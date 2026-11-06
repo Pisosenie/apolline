@@ -20,8 +20,9 @@ pub fn outputs() -> Vec<apolline_niri::Output> {
         .unwrap_or_default()
 }
 
+// Tests never reach the session they happen to run in.
 pub fn connected() -> bool {
-    apolline_niri::socket().is_some()
+    !cfg!(test) && apolline_niri::socket().is_some()
 }
 
 pub fn events() -> Subscription<Message> {
