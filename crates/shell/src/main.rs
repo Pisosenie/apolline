@@ -140,8 +140,19 @@ struct Options {
     open: Vec<shell::Message>,
 }
 
+// Quiet unless RUST_LOG asks; the shell runs under niri, so this lands in niri's journal.
+fn logging() {
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_writer(std::io::stderr)
+            .init();
+    }
+}
+
 fn main() -> ExitCode {
     small_pages();
+    logging();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (config, _) = Config::load(&apolline_config::default_path());
     apolline_theme::set_scheme(config.scheme(config.start()));

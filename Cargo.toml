@@ -28,3 +28,10 @@ chrono-tz = "0.10"
 png = "0.18"
 ureq = "3"
 base64 = "0.23"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Both redraw after a present comes back Outdated or Lost; upstream 0.19.1 gives
+# up on the surface, which freezes every layer on NVIDIA.
+[patch.crates-io]
+iced_layershell = { path = "vendor/iced_layershell" }
+iced_sessionlock = { path = "vendor/iced_sessionlock" }

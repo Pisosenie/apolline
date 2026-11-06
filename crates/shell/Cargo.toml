@@ -27,6 +27,7 @@ serde_json.workspace = true
 ureq.workspace = true
 base64.workspace = true
 zeroize = "1"
+tracing-subscriber.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 iced_layershell = "0.19"
