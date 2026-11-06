@@ -131,6 +131,29 @@ impl Shell {
         }
     }
 
+    // Holds niri's keys that would leave the window in front, a game say, or gives them back.
+    pub(super) fn stay(&mut self) -> Task<Message> {
+        let key = self.config.shortcuts.stay.clone();
+        let front = self
+            .niri
+            .as_ref()
+            .and_then(|state| state.recent().into_iter().find(|w| w.is_focused))
+            .map(|w| (w.id, w.title.clone().unwrap_or_default()));
+        let note = match (self.staying.take(), front) {
+            (Some(_), _) => crate::i18n::t("Workspaces and windows are yours again").to_owned(),
+            (None, Some((id, title))) => {
+                self.staying = Some(id);
+                crate::i18n::fill(
+                    "Staying in {title}; {key} lets go",
+                    &[("title", &title), ("key", &key)],
+                )
+            }
+            (None, None) => crate::i18n::t("No window to stay in").to_owned(),
+        };
+        self.sync();
+        self.show(Osd::Note(note))
+    }
+
     pub(super) fn save_replay(&mut self) -> Task<Message> {
         let saved = self
             .replay

@@ -29,6 +29,39 @@ pub struct Fragment<'a> {
     pub config: &'a Config,
     pub mode: Option<usize>,
     pub outputs: &'a [String],
+    // Staying in the window in front: niri's keys that would leave it do nothing.
+    pub stay: bool,
+}
+
+// Keys niri answers without a bind of anyone's: its window switcher.
+const BUILT_IN: [&str; 4] = ["Alt+Tab", "Alt+Shift+Tab", "Alt+grave", "Alt+Shift+grave"];
+
+// Every key that would take you out of the window in front, from your niri config, Apolline's
+// own and the mode's. What stays: the key that ends it, sound and brightness keys, screenshots.
+pub fn held(niri_config: &str, config: &Config, mode_keys: &[String]) -> Vec<String> {
+    let stay = config.shortcuts.get(Shortcut::Stay);
+    let mut held: Vec<String> = Vec::new();
+    let own = Shortcut::ALL
+        .into_iter()
+        .map(|shortcut| config.shortcuts.get(shortcut).to_owned());
+    let theirs = crate::keys::binds(niri_config)
+        .into_iter()
+        .filter(|(_, action)| !action.contains("screenshot"))
+        .map(|(combo, _)| combo);
+    let built_in = BUILT_IN.iter().map(|combo| (*combo).to_owned());
+    for combo in own
+        .chain(theirs)
+        .chain(mode_keys.iter().cloned())
+        .chain(built_in)
+    {
+        let kept = combo.is_empty()
+            || combo.split('+').any(|part| part.starts_with("XF86"))
+            || crate::keys::same(&combo, stay);
+        if !kept && !held.iter().any(|other| crate::keys::same(other, &combo)) {
+            held.push(combo);
+        }
+    }
+    held
 }
 
 pub fn path() -> PathBuf {
@@ -277,6 +310,30 @@ window-rule {{
         radius = layout.radius,
     ));
     let config = fragment.config;
+    if fragment.stay {
+        let mode_keys: Vec<String> = mode
+            .map(|mode| mode.keys.iter().map(|(combo, _)| combo.clone()).collect())
+            .unwrap_or_default();
+        let niri = fs::read_to_string(niri_config()).unwrap_or_default();
+        let mut binds = vec![format!(
+            "{} hotkey-overlay-title=\"Let go of this window\" {{ spawn \"apolline\" \"stay\"; }}",
+            config.shortcuts.get(Shortcut::Stay)
+        )];
+        binds.extend(MEDIA_KEYS.iter().map(|(key, words)| {
+            let args: Vec<String> = words.split(' ').map(|w| format!("\"{w}\"")).collect();
+            format!(
+                "{key} allow-when-locked=true {{ spawn \"apolline\" {}; }}",
+                args.join(" ")
+            )
+        }));
+        binds.extend(
+            held(&niri, config, &mode_keys)
+                .into_iter()
+                .map(|combo| format!("{combo} hotkey-overlay-title=null {{ spawn \"true\"; }}")),
+        );
+        text.push_str(&format!("\n{}", block("binds", &binds)));
+        text.push_str("\ngestures {\n    hot-corners {\n        off\n    }\n}\n");
+    }
     let binds: Vec<String> = Shortcut::ALL
         .into_iter()
         .filter(|&shortcut| !config.shortcuts.get(shortcut).is_empty())
@@ -321,7 +378,9 @@ window-rule {{
                 }),
         );
     }
-    text.push_str(&format!("\n{}", block("binds", &binds)));
+    if !fragment.stay {
+        text.push_str(&format!("\n{}", block("binds", &binds)));
+    }
     let windows = &config.windows;
     let devices: Vec<String> = [
         keyboard(&config.keyboard),
@@ -498,6 +557,7 @@ pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
         Shortcut::Replay => ("Save the last moments", "replay"),
         Shortcut::Terminal => ("Terminal", "terminal"),
         Shortcut::Layout => ("Next keyboard layout", "layout"),
+        Shortcut::Stay => ("Stay in this window", "stay"),
     }
 }
 
@@ -824,7 +884,39 @@ mod tests {
             config,
             mode,
             outputs: &[],
+            stay: false,
         }
+    }
+
+    #[test]
+    fn staying_holds_every_key_that_leaves_the_window_but_its_own_and_the_sound() {
+        let config = Config::default();
+        let niri = "binds {\n    Mod+1 { focus-workspace 1; }\n    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }\n    Mod+Shift+S { screenshot; }\n    XF86AudioMute { spawn \"wpctl\"; }\n    Mod+Shift+G { spawn \"x\"; }\n}\n";
+        let held = held(niri, &config, &["Mod+F".to_owned()]);
+        for combo in [
+            "Mod+1",
+            "Mod+WheelScrollDown",
+            "Mod+Space",
+            "Alt+Tab",
+            "Mod+F",
+        ] {
+            assert!(
+                held.iter().any(|h| h == combo),
+                "{combo} not held: {held:?}"
+            );
+        }
+        for combo in ["Mod+Shift+S", "XF86AudioMute", "Mod+Shift+G"] {
+            assert!(!held.iter().any(|h| h == combo), "{combo} held: {held:?}");
+        }
+        let text = render(&Fragment {
+            config: &config,
+            mode: None,
+            outputs: &[],
+            stay: true,
+        });
+        assert!(text.contains("Mod+Shift+G hotkey-overlay-title=\"Let go of this window\""));
+        assert!(text.contains("hot-corners {\n        off"));
+        assert_eq!(text.matches("binds {").count(), 1);
     }
 
     #[test]
@@ -1018,10 +1110,12 @@ mod tests {
         let (config, _) = Config::parse("[[mode]]\nname = \"Play\"\nperformance = true\n");
         let calm = render(&Fragment {
             outputs: &outputs,
+            stay: false,
             ..look(&config, None)
         });
         let play = render(&Fragment {
             outputs: &outputs,
+            stay: false,
             ..look(&config, Some(0))
         });
 

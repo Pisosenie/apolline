@@ -464,6 +464,7 @@ impl Settings {
                     config: &self.config,
                     mode: self.config.start(),
                     outputs: &[],
+                    stay: false,
                 };
                 self.setup_log =
                     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {

@@ -97,6 +97,7 @@ git clone https://github.com/Pisosenie/apolline-wall && (cd apolline-wall/packag
 | make a mode | Settings → Modes → a template; switch with `Mod+Shift+M` |
 | see every key | `Mod+/` |
 | take a screenshot | niri's `Print` keys, or *screenshot* in the launcher; a card offers to mark it up |
+| keep a game from losing the focus to a stray key | `Mod+Shift+G`, and again to let go |
 | lock | `Super+Alt+L` |
 | restart the shell | `pkill -x apolline; niri msg action spawn -- apolline` |
 
@@ -121,6 +122,7 @@ It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one
 | `Mod+Alt+V` | clipboard history: kept in memory only, except what you pin, which stays in `~/.local/share/apolline/pinned.json` (readable only by you); password managers' secrets are never kept |
 | `Mod+/` | every shortcut, Apolline's and niri's, searchable |
 | `Super+Alt+L` | the lock screen, instead of swaylock |
+| `Mod+Shift+G` | stay in the window in front, a game say: until you press it again, or the window closes, the keys and the hot corner that would switch workspaces, columns or windows do nothing; sound keys and screenshots still work |
 
 Change them in settings → Shortcuts, which also tells you what each one replaces in your niri config. Quick settings use `wpctl` (PipeWire) and `brightnessctl`, hear about volume changes from `pactl subscribe`, and talk to NetworkManager and BlueZ over D-Bus; whatever is missing just isn't shown.
 

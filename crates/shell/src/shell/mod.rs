@@ -378,6 +378,8 @@ pub struct Shell {
     timers_started: u64,
     recording: Option<crate::capture::Recording>,
     replay: Option<crate::capture::Replay>,
+    // The window niri's keys can't leave, while `apolline stay` holds them.
+    staying: Option<u64>,
     marks: Option<crate::marks::Marks>,
     shot: Option<String>,
     ticks: u64,
@@ -520,6 +522,7 @@ impl Shell {
             timers_started: 0,
             recording: None,
             replay: None,
+            staying: None,
             marks: None,
             shot: None,
             ticks: 0,
@@ -803,6 +806,7 @@ impl Shell {
             config: &self.config,
             mode: self.mode,
             outputs: &self.outputs,
+            stay: self.staying.is_some(),
         }
     }
 

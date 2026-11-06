@@ -748,6 +748,8 @@ pub struct Shortcuts {
     pub keys: String,
     pub replay: String,
     pub terminal: String,
+    // Keeps niri's keys from leaving the window in front, a game say, until pressed again.
+    pub stay: String,
     // The next keyboard layout; empty leaves switching to [keyboard] switch.
     pub layout: String,
 }
@@ -763,10 +765,11 @@ pub enum Shortcut {
     Replay,
     Terminal,
     Layout,
+    Stay,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 9] = [
+    pub const ALL: [Shortcut; 10] = [
         Shortcut::Terminal,
         Shortcut::Keys,
         Shortcut::Launcher,
@@ -775,6 +778,7 @@ impl Shortcut {
         Shortcut::Switch,
         Shortcut::Lock,
         Shortcut::Replay,
+        Shortcut::Stay,
         Shortcut::Layout,
     ];
 
@@ -789,6 +793,7 @@ impl Shortcut {
             Shortcut::Replay => "replay",
             Shortcut::Terminal => "terminal",
             Shortcut::Layout => "layout",
+            Shortcut::Stay => "stay",
         }
     }
 }
@@ -851,6 +856,7 @@ impl Shortcuts {
             Shortcut::Replay => &self.replay,
             Shortcut::Terminal => &self.terminal,
             Shortcut::Layout => &self.layout,
+            Shortcut::Stay => &self.stay,
         }
     }
 
@@ -865,6 +871,7 @@ impl Shortcuts {
             Shortcut::Replay => &mut self.replay,
             Shortcut::Terminal => &mut self.terminal,
             Shortcut::Layout => &mut self.layout,
+            Shortcut::Stay => &mut self.stay,
         }
     }
 }
@@ -880,6 +887,7 @@ impl Default for Shortcuts {
             keys: "Mod+Slash".into(),
             replay: "Mod+Alt+R".into(),
             terminal: "Mod+T".into(),
+            stay: "Mod+Shift+G".into(),
             layout: String::new(),
         }
     }

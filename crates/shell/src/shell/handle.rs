@@ -307,6 +307,7 @@ impl Shell {
             Message::Control(Command::Keys) => return self.toggle(Overlay::Keys),
             Message::Control(Command::Machine) => return self.toggle(Overlay::Machine),
             Message::Control(Command::Replay) => return self.save_replay(),
+            Message::Control(Command::Stay) => return self.stay(),
             Message::Control(Command::Terminal) => {
                 let terminal = self.config.terminal.clone();
                 return self.spawn(&terminal);

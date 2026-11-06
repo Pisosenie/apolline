@@ -35,8 +35,15 @@ impl Shell {
                     return self.show(Osd::Layout(name));
                 }
                 let state = self.niri.get_or_insert_default();
-                let outputs = state.outputs();
                 let mut tasks = vec![];
+                // The window it stayed in is gone: the keys come back with it.
+                if let Some(window) = self.staying
+                    && !state.recent().iter().any(|w| w.id == window)
+                {
+                    tasks.push(self.stay());
+                }
+                let state = self.niri.get_or_insert_default();
+                let outputs = state.outputs();
                 if outputs != self.outputs {
                     self.outputs = outputs;
                     self.sync();

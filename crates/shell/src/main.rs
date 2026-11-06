@@ -110,7 +110,7 @@ use apolline_config::{Config, Editor, slug};
 
 const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none|off
-       apolline switch | launcher | panel | clipboard | keys | replay | terminal | machine | updates
+       apolline switch | launcher | panel | clipboard | keys | replay | stay | terminal | machine | updates
        apolline module [NAME]
        apolline timer LENGTH [LABEL] | timer stop
        apolline volume up|down|mute | mic mute | brightness up|down
@@ -175,7 +175,7 @@ fn main() -> ExitCode {
         }
         Some(
             "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal"
-            | "machine" | "updates" | "module" | "timer",
+            | "machine" | "updates" | "module" | "timer" | "stay",
         ) => {
             return command(&args.join(" "));
         }
@@ -231,6 +231,7 @@ fn main() -> ExitCode {
                     config: &config,
                     mode,
                     outputs: &["eDP-1".to_owned()],
+                    stay: false,
                 })
             );
             return if problems.is_empty() {
@@ -471,6 +472,7 @@ fn setup() -> ExitCode {
         config: &config,
         mode: config.start(),
         outputs: &[],
+        stay: false,
     };
     match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
         Ok(done) => {
