@@ -344,15 +344,18 @@ impl Shell {
             })
             .map(|output| crate::live::pause(output.as_deref(), true))
             .collect();
+        // A mode for games holds live wallpapers still, leaving the GPU to the game.
+        let held = self.current().is_some_and(|mode| mode.performance);
+        let hold_changed = held != self.live_held;
+        self.live_held = held;
         let mut told = std::collections::BTreeMap::new();
         for (output, source) in self.live_here.clone() {
-            match self.live_told.get(&output) {
-                Some(was) if *was == source => {}
-                Some(_) => lines.push(crate::live::show(output.as_deref(), &source)),
-                None => {
-                    lines.push(crate::live::show(output.as_deref(), &source));
-                    lines.push(crate::live::pause(output.as_deref(), false));
-                }
+            let new = !self.live_told.contains_key(&output);
+            if self.live_told.get(&output) != Some(&source) {
+                lines.push(crate::live::show(output.as_deref(), &source));
+            }
+            if new || hold_changed {
+                lines.push(crate::live::pause(output.as_deref(), held));
             }
             told.insert(output, source);
         }
@@ -373,6 +376,7 @@ impl Shell {
             Event::Started(commands) => {
                 self.live = Some(commands);
                 self.live_told.clear();
+                self.live_held = false;
                 self.live_accent = None;
                 self.fit_live();
                 Task::none()
@@ -412,5 +416,61 @@ impl Shell {
                 self.load_wallpaper()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::futures::channel::mpsc;
+
+    fn said(heard: &mut mpsc::UnboundedReceiver<String>) -> Vec<String> {
+        std::iter::from_fn(|| heard.try_recv().ok()).collect()
+    }
+
+    #[test]
+    fn apolline_wall_is_told_each_screen_once_and_pauses_for_pictures_and_games() {
+        let dir = std::env::temp_dir().join(format!("apolline-desk-live-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        let scene = dir.to_str().unwrap().to_owned();
+        let (mut shell, _) = Shell::new(None, true);
+        shell.outputs = vec!["DP-1".into(), "HDMI-A-1".into()];
+        shell.config.desktop.wallpaper = scene.clone();
+        shell.config.desktop.outputs = vec![("HDMI-A-1".into(), "fog.jpg".into())];
+        shell.mode = None;
+        let (commands, mut heard) = mpsc::unbounded();
+        let _ = shell.on_live(crate::live::Event::Started(commands));
+        let first = said(&mut heard);
+        assert_eq!(
+            first[..2],
+            [
+                crate::live::show(Some("DP-1"), &dir),
+                crate::live::pause(Some("DP-1"), false)
+            ]
+        );
+        assert!(first[2].contains("uniforms"), "{first:?}");
+        assert!(shell.wallpaper_elsewhere());
+
+        shell.fit_live();
+        assert!(said(&mut heard).is_empty(), "nothing changed, nothing said");
+
+        shell.config.modes = vec![ModeSettings {
+            performance: true,
+            ..ModeSettings::blank("Play")
+        }];
+        shell.mode = Some(0);
+        shell.fit_live();
+        assert_eq!(said(&mut heard), [crate::live::pause(Some("DP-1"), true)]);
+
+        shell.mode = None;
+        shell.config.desktop.wallpaper = "night.jpg".into();
+        shell.fit_live();
+        assert!(
+            shell.live.is_none(),
+            "no live wallpaper left, so the child goes"
+        );
+        assert!(!shell.wallpaper_elsewhere());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
