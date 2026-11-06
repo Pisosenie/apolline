@@ -311,6 +311,19 @@ impl Shell {
     // Tells apolline-wall what changed: a live wallpaper for each screen that has one, a pause
     // for a screen that went back to a picture, and the accent for its shaders.
     pub(super) fn fit_live(&mut self) {
+        // Picking live wallpapers again is a fresh start: one that failed may be fixed now, and
+        // apolline-wall may have been installed since it was missing.
+        let names: Vec<String> = self
+            .screens()
+            .iter()
+            .map(|output| self.wallpaper_name(output.as_deref()).to_owned())
+            .filter(|name| crate::live::source(name).is_some())
+            .collect();
+        if names != self.live_names {
+            self.live_names = names;
+            self.live_failed.clear();
+            self.live_gone = false;
+        }
         self.live_here = if self.live_gone {
             Vec::new()
         } else {
@@ -332,18 +345,21 @@ impl Shell {
             return;
         };
         let screens = self.screens();
-        // Pauses go first, so one doesn't land after a show it would undo. The default for
-        // every screen, told before niri named them, is just forgotten: pausing it would
-        // pause them all.
+        // Pauses go first, so one doesn't land after a show it would undo. What was told to
+        // every screen before niri named them went to each of them, so once they have names
+        // each one without a live wallpaper of its own is paused by name.
+        let everywhere = self.live_told.contains_key(&None) && !screens.contains(&None);
         let mut lines: Vec<String> = self
             .live_told
             .keys()
+            .filter(|output| output.is_some())
+            .chain(screens.iter().filter(|_| everywhere))
             .filter(|output| {
-                output.is_some()
-                    && (!screens.contains(output) || self.live_source(output.as_deref()).is_none())
+                !screens.contains(output) || self.live_source(output.as_deref()).is_none()
             })
             .map(|output| crate::live::pause(output.as_deref(), true))
             .collect();
+        lines.dedup();
         // A mode for games holds live wallpapers still, leaving the GPU to the game.
         let held = self.current().is_some_and(|mode| mode.performance);
         let hold_changed = held != self.live_held;
@@ -381,6 +397,8 @@ impl Shell {
                 self.fit_live();
                 Task::none()
             }
+            // A video whose frame couldn't be saved gives itself as the poster: nothing to keep.
+            Event::Ready { source, poster } if poster == source => Task::none(),
             // Its frame becomes the picture behind the name: the accent, the switcher and the
             // lock screen use it, and it shows if the live one stops.
             Event::Ready { source, poster } => {
@@ -471,6 +489,31 @@ mod tests {
             "no live wallpaper left, so the child goes"
         );
         assert!(!shell.wallpaper_elsewhere());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn what_went_to_every_screen_is_paused_where_a_picture_shows_once_they_have_names() {
+        let dir = std::env::temp_dir().join(format!("apolline-desk-early-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.json"), "{}").unwrap();
+        let (mut shell, _) = Shell::new(None, true);
+        shell.mode = None;
+        shell.outputs = Vec::new();
+        shell.config.desktop.wallpaper = dir.to_str().unwrap().to_owned();
+        let (commands, mut heard) = mpsc::unbounded();
+        let _ = shell.on_live(crate::live::Event::Started(commands));
+        assert_eq!(said(&mut heard)[0], crate::live::show(None, &dir));
+        shell.outputs = vec!["DP-1".into(), "HDMI-A-1".into()];
+        shell.config.desktop.outputs = vec![("HDMI-A-1".into(), "fog.jpg".into())];
+        shell.fit_live();
+        let lines = said(&mut heard);
+        assert_eq!(
+            lines[0],
+            crate::live::pause(Some("HDMI-A-1"), true),
+            "{lines:?}"
+        );
+        assert!(lines.contains(&crate::live::show(Some("DP-1"), &dir)));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

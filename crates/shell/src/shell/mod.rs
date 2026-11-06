@@ -174,6 +174,9 @@ pub enum Message {
     // Where the open overlay's card ended up, in its window's units.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     OverlayCard(window::Id, Option<iced::Rectangle>),
+    // A look for the card that waited its turn.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    FindCard,
     ReplyTyped(String),
     ReplySend,
     Wifi(crate::wifi::Seen),
@@ -353,6 +356,7 @@ pub struct Shell {
     live_here: Vec<(Option<String>, PathBuf)>,
     live_accent: Option<String>,
     live_held: bool,
+    live_names: Vec<String>,
     live_failed: std::collections::HashSet<PathBuf>,
     live_gone: bool,
     shown: Vec<Shown>,
@@ -493,6 +497,7 @@ impl Shell {
             live_here: Vec::new(),
             live_accent: None,
             live_held: false,
+            live_names: Vec::new(),
             live_failed: std::collections::HashSet::new(),
             live_gone: false,
             shown: Vec::new(),
