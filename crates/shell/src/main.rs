@@ -452,7 +452,11 @@ fn setup() -> ExitCode {
     let (config, _) = Config::load(&path);
     let found = hypr::keyboard(&apolline_config::config_home());
     if let Ok(mut editor) = apolline_config::Editor::load(&path) {
-        let took = hypr::take_keyboard(&config, &found, &mut editor);
+        let mut took = hypr::take_keyboard(&config, &found, &mut editor);
+        for (name, mode) in arrange::fastest_modes(&niri::outputs(), &config.displays) {
+            editor.set_display(&name, "mode", mode.as_str());
+            took.push(format!("{name} runs at {mode}, its fastest"));
+        }
         if !took.is_empty() {
             match editor.save(&path) {
                 Ok(()) => took.iter().for_each(|line| println!("{line}")),

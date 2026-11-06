@@ -369,3 +369,62 @@ mod tests {
         assert!(others.iter().all(|o| !landed.overlaps(o)), "{landed:?}");
     }
 }
+
+// niri starts a screen at its preferred mode, which is often 60 Hz on a 144 or 165 Hz panel.
+// For each screen the config leaves alone: the fastest mode at the size it runs at, if faster.
+pub fn fastest_modes(
+    outputs: &[apolline_niri::Output],
+    displays: &[apolline_config::Display],
+) -> Vec<(String, String)> {
+    outputs
+        .iter()
+        .filter(|output| {
+            !displays
+                .iter()
+                .any(|d| d.name == output.name && d.mode.is_some())
+        })
+        .filter_map(|output| {
+            let now = output.current_mode.and_then(|i| output.modes.get(i))?;
+            let best = output
+                .modes
+                .iter()
+                .filter(|m| m.width == now.width && m.height == now.height)
+                .max_by_key(|m| m.refresh_rate)?;
+            (best.refresh_rate > now.refresh_rate + 1_000).then(|| {
+                (
+                    output.name.clone(),
+                    format!(
+                        "{}x{}@{:.3}",
+                        best.width,
+                        best.height,
+                        f64::from(best.refresh_rate) / 1000.0
+                    ),
+                )
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod fastest {
+    use super::*;
+
+    #[test]
+    fn a_fast_panel_leaves_60_hz_and_a_set_mode_stays() {
+        let outputs = apolline_niri::outputs(
+            r#"{"DP-4":{"name":"DP-4","modes":[{"width":2560,"height":1440,"refresh_rate":60000,"is_preferred":true},{"width":2560,"height":1440,"refresh_rate":164999},{"width":1920,"height":1080,"refresh_rate":240000}],"current_mode":0},"HDMI-A-2":{"name":"HDMI-A-2","modes":[{"width":1920,"height":1080,"refresh_rate":60000},{"width":1920,"height":1080,"refresh_rate":100000}],"current_mode":0},"eDP-1":{"name":"eDP-1","modes":[{"width":1920,"height":1080,"refresh_rate":60000}],"current_mode":0}}"#,
+        );
+        let set = apolline_config::Display {
+            name: "HDMI-A-2".into(),
+            mode: Some("1920x1080@60.000".into()),
+            scale: None,
+            transform: None,
+            position: None,
+            vrr: None,
+        };
+        assert_eq!(
+            fastest_modes(&outputs, &[set]),
+            [("DP-4".to_owned(), "2560x1440@164.999".to_owned())]
+        );
+    }
+}
