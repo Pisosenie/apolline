@@ -1,0 +1,57 @@
+# Every option that reaches niri, so CI can check the fragment against each new niri.
+[desktop]
+wallpaper = "night.jpg"
+accent = "#c084fc"
+cursor = "Adwaita"
+cursor_size = 32
+
+[layout]
+gaps = 16
+radius = 18
+borders = true
+gradient = true
+shadows = true
+
+[bar]
+blur = true
+
+[keyboard]
+layouts = ["us", "ru"]
+switch = "alt-shift"
+
+[touchpad]
+tap = true
+natural_scroll = true
+
+[windows]
+width = "2/3"
+presets = ["1/3", "1/2", "2/3"]
+center = "overflow"
+center_lone = true
+focus_follows_mouse = true
+warp_mouse = true
+opacity = 0.95
+inactive_opacity = 0.8
+animations = 1.5
+motion = "bouncy"
+appear = "pop"
+blur = "all"
+
+[[rule]]
+app = "pavucontrol"
+floating = true
+width = "1/3"
+opacity = 0.9
+
+[[display]]
+name = "HDMI-A-1"
+mode = "2560x1440@143.912"
+scale = 1.25
+transform = "90"
+position = [1920, 0]
+vrr = true
+
+[[mode]]
+name = "Play"
+performance = true
+keys = { "Mod+G" = "steam" }

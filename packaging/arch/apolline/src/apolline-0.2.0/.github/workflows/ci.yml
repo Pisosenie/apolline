@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the toolchain and system libraries
+        run: pacman -Syu --noconfirm --needed rust gcc clang pkgconf pam libxkbcommon wayland git
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  niri:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the toolchain and the newest niri
+        run: pacman -Syu --noconfirm --needed rust gcc clang pkgconf pam libxkbcommon wayland git niri sway foot ttf-dejavu mesa
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - name: Every sample config gives niri a fragment it accepts
+        run: |
+          niri --version
+          for config in tests/configs/*.toml; do
+            for mode in "" play; do
+              ./target/debug/apolline fragment "$config" $mode > fragment.kdl
+              niri validate -c fragment.kdl
+            done
+          done
+      - name: A session recorded from this niri still reads in full
+        run: |
+          useradd -m ci
+          su ci -c "tools/niri-session.sh /tmp/session.jsonl"
+          APOLLINE_NIRI_SESSION=/tmp/session.jsonl cargo test -p apolline-niri live_session
+
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install what makepkg needs
+        run: pacman -Syu --noconfirm --needed base-devel git rust clang pam libxkbcommon niri hicolor-icon-theme
+      - uses: actions/checkout@v4
+      - name: makepkg builds and installs it the way people will, with Arch's own flags
+        run: |
+          useradd -m builder
+          git config --system --add safe.directory '*'
+          cp -r packaging/arch/apolline-git /home/builder/pkg
+          sed -i "s|git+\$url.git|git+file://$GITHUB_WORKSPACE|" /home/builder/pkg/PKGBUILD
+          chown -R builder /home/builder/pkg
+          # vif, the terminal it depends on, isn't in Arch's repositories to install from here.
+          su builder -c "cd /home/builder/pkg && makepkg --noconfirm --nocheck --nodeps"
+          pacman -Udd --noconfirm /home/builder/pkg/apolline-git-*.pkg.tar.zst
+          su builder -c "apolline check"

@@ -1,0 +1,79 @@
+# Maintainer: Danil Zorin <45851636+Pisosenie@users.noreply.github.com>
+pkgname=apolline-git
+_name=apolline
+pkgver=r0
+pkgrel=1
+pkgdesc='A desktop shell for niri: bar, launcher, quick settings, lock and login screens, themes and modes'
+arch=('x86_64' 'aarch64')
+url='https://github.com/Pisosenie/apolline'
+license=('MIT OR Apache-2.0')
+# vif is Apolline's terminal: Mod+T, console apps and the launcher's commands open in it.
+depends=('niri' 'vif' 'pam' 'libxkbcommon' 'libgcc' 'glibc' 'hicolor-icon-theme')
+optdepends=(
+  'wireplumber: volume in quick settings'
+  'libpulse: the volume on the bar follows changes made elsewhere'
+  'networkmanager: Wi-Fi in quick settings'
+  'bluez: Bluetooth in quick settings'
+  'brightnessctl: brightness in quick settings'
+  'upower: battery in the bar'
+  'pacman-contrib: waiting updates on the bar (checkupdates)'
+  'power-profiles-daemon: performance profiles in modes'
+  'polkit: the admin password dialog'
+  'greetd: the login screen, apolline greet'
+  'cage: a kiosk compositor to run apolline greet in'
+  'wf-recorder: screen recording from the launcher'
+  'gpu-screen-recorder: a mode can keep the last moments of a game'
+  'sound-theme-freedesktop: the sound notifications can make'
+  'xdg-terminal-exec: apps that open a terminal open vif'
+)
+# clang: pam-sys makes its bindings with bindgen
+makedepends=('cargo' 'clang' 'git')
+provides=("$_name")
+conflicts=("$_name")
+backup=('etc/pam.d/apolline')
+# ring's C parts come out of gcc as LTO objects, which rust's linker (lld) can't read.
+options=('!lto')
+install=apolline.install
+source=("$_name::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_name"
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
+  cargo build --frozen --release -p apolline-shell
+}
+
+check() {
+  cd "$_name"
+  export RUSTUP_TOOLCHAIN=stable
+  export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase"
+  cargo test --frozen --release --workspace
+}
+
+package() {
+  cd "$_name"
+  install -Dm755 target/release/apolline "$pkgdir/usr/bin/apolline"
+  install -Dm644 assets/pam/apolline "$pkgdir/etc/pam.d/apolline"
+  install -Dm644 assets/apolline-settings.desktop "$pkgdir/usr/share/applications/apolline-settings.desktop"
+  install -Dm644 assets/apolline.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/apolline.svg"
+  install -Dm644 assets/config.toml "$pkgdir/usr/share/doc/$_name/config.toml"
+  install -Dm644 -t "$pkgdir/usr/share/doc/$_name/templates" assets/templates/*
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_name/README.md"
+  install -Dm644 LICENSE-MIT "$pkgdir/usr/share/licenses/$pkgname/LICENSE-MIT"
+  install -Dm644 LICENSE-APACHE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-APACHE"
+  install -Dm644 assets/icons/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE-LUCIDE"
+  install -Dm644 assets/fonts/OFL.txt "$pkgdir/usr/share/licenses/$pkgname/OFL-GEIST"
+}

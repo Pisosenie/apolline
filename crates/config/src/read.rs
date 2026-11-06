@@ -790,7 +790,9 @@ impl Reader<'_> {
             let Some(combo) = self.string(key, value) else {
                 continue;
             };
-            if let Some(combo) = key_combo(combo) {
+            if combo.trim().is_empty() && shortcut == Shortcut::Layout {
+                shortcuts.layout.clear();
+            } else if let Some(combo) = key_combo(combo) {
                 *shortcuts.get_mut(shortcut) = combo;
             } else {
                 self.wrong::<()>(key, value, r#"a key combination like "Mod+Space""#);

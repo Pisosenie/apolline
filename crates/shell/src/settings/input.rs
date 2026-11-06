@@ -75,6 +75,7 @@ impl Settings {
                 Message::Switch,
             ),
         )];
+        switch_rows.push(note("Any other keys: Shortcuts → Next keyboard layout."));
         if keyboard.switch == Some(Switch::SuperSpace)
             && keys::same(&self.config.shortcuts.launcher, "Mod+Space")
         {
@@ -210,6 +211,11 @@ impl Settings {
                 .padding([6, 12])
                 .style(style::pill(palette.accent_soft))
                 .into()
+            } else if combo.is_empty() {
+                text(crate::i18n::t("Not set"))
+                    .size(13)
+                    .color(style::color(style::faint()))
+                    .into()
             } else {
                 keycaps(combo)
             };

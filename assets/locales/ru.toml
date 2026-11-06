@@ -1024,3 +1024,5 @@
 "On the desktop: add “{widget}” to [desktop] widgets" = "На рабочем столе: добавьте «{widget}» в [desktop] widgets"
 "In quick settings: add “{tile}” to [panel] tiles" = "В быстрых настройках: добавьте «{tile}» в [panel] tiles"
 "In the launcher: it answers searches now" = "В лаунчере: теперь он отвечает на поиск"
+"Not set" = "Не задано"
+"Any other keys: Shortcuts → Next keyboard layout." = "Любые другие клавиши: «Сочетания клавиш» → «Следующая раскладка»."

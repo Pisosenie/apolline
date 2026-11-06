@@ -1,0 +1,16 @@
+{
+  "mode": "{{mode}}",
+  "accent": "{{accent}}",
+  "on_accent": "{{on_accent}}",
+  "background": "{{background}}",
+  "window": "{{window}}",
+  "surface": "{{surface}}",
+  "panel": "{{panel}}",
+  "text": "{{text}}",
+  "muted": "{{muted}}",
+  "faint": "{{faint}}",
+  "border": "{{border}}",
+  "good": "{{good}}",
+  "warn": "{{warn}}",
+  "danger": "{{danger}}"
+}

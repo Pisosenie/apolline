@@ -1,0 +1,148 @@
+use std::path::PathBuf;
+
+use apolline_theme::metrics;
+use iced::widget::{container, stack};
+use iced::{Alignment, Element, Fill, Font, Padding, Subscription, Task, window};
+
+use crate::shell::{Message, Shell};
+use crate::{fonts, shot};
+
+pub fn run(mode: Option<String>, screenshot: Option<PathBuf>, open: Vec<Message>) -> iced::Result {
+    let app = iced::application(
+        move || {
+            let (mut shell, load) = Shell::new(mode.clone(), true);
+            let mut start = open.clone();
+            let load = if screenshot.is_none() {
+                let opened: Vec<Task<Message>> = start
+                    .drain(..)
+                    .map(|message| shell.update(message))
+                    .collect();
+                Task::batch(std::iter::once(load).chain(opened))
+            } else {
+                load
+            };
+            let preview = Preview {
+                shell,
+                screenshot: screenshot.clone(),
+                start,
+                ticks: 0,
+                shooting: false,
+            };
+            (preview, load)
+        },
+        Preview::update,
+        Preview::view,
+    )
+    .title("Apolline")
+    .subscription(Preview::subscription)
+    .theme(|_: &Preview| crate::style::theme())
+    .default_font(Font::with_name(crate::style::family()))
+    .window_size((1440.0, 900.0));
+    fonts::ALL
+        .into_iter()
+        .fold(app, |app, font| app.font(font))
+        .run()
+}
+
+struct Preview {
+    shell: Shell,
+    screenshot: Option<PathBuf>,
+    start: Vec<Message>,
+    ticks: u32,
+    shooting: bool,
+}
+
+impl Preview {
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::Tick if self.screenshot.is_some() => {
+                self.ticks += 1;
+                let ready = self.ticks >= 2 && self.shell.is_ready();
+                if ready && !self.start.is_empty() {
+                    let start = std::mem::take(&mut self.start);
+                    let tasks: Vec<Task<Message>> = start
+                        .into_iter()
+                        .map(|message| self.shell.update(message))
+                        .collect();
+                    return Task::batch(tasks);
+                }
+                if !self.shooting && ready {
+                    self.shooting = true;
+                    return window::latest()
+                        .and_then(window::screenshot)
+                        .map(Message::Captured);
+                }
+                self.shell.update(Message::Tick)
+            }
+            Message::Captured(shot) => {
+                if let Some(path) = self.screenshot.take()
+                    && let Err(err) = shot::save(&path, &shot)
+                {
+                    eprintln!("apolline: could not save {}: {err}", path.display());
+                }
+                iced::exit()
+            }
+            other => self.shell.update(other),
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let popups = container(self.shell.popups())
+            .width(Fill)
+            .align_x(Alignment::End)
+            .padding(Padding::new(12.0).top(metrics::BAR_INSET + metrics::BAR_HEIGHT + 8.0));
+        let edge = self.shell.bar_edge();
+        let bar = container(container(self.shell.bar(None)).padding(self.shell.bar_margin()))
+            .width(Fill)
+            .height(Fill)
+            .align_x(if edge == apolline_config::Edge::Right {
+                Alignment::End
+            } else {
+                Alignment::Start
+            })
+            .align_y(if edge == apolline_config::Edge::Bottom {
+                Alignment::End
+            } else {
+                Alignment::Start
+            });
+        let mut layers = stack![self.shell.wallpaper(None), bar, popups];
+        if self.shell.dock_on(None) {
+            layers = layers.push(dock(self.shell.dock(None), self.shell.dock_edge()));
+        }
+        if let Some(osd) = self.shell.osd_view() {
+            layers = layers.push(
+                container(osd)
+                    .width(Fill)
+                    .height(Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::End)
+                    .padding(Padding::new(0.0).bottom(56.0)),
+            );
+        }
+        if self.shell.overlay_drawn().is_some() {
+            layers = layers.push(self.shell.overlay_view());
+        }
+        layers.into()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        self.shell.subscription()
+    }
+}
+
+// The dock in the middle of its edge, as niri places its surface.
+fn dock(dock: Element<'_, Message>, edge: apolline_config::Edge) -> Element<'_, Message> {
+    use apolline_config::Edge;
+    let (x, y) = match edge {
+        Edge::Top => (Alignment::Center, Alignment::Start),
+        Edge::Bottom => (Alignment::Center, Alignment::End),
+        Edge::Left => (Alignment::Start, Alignment::Center),
+        Edge::Right => (Alignment::End, Alignment::Center),
+    };
+    container(dock)
+        .width(Fill)
+        .height(Fill)
+        .align_x(x)
+        .align_y(y)
+        .into()
+}

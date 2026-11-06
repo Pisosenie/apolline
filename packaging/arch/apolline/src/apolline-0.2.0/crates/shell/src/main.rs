@@ -1,0 +1,474 @@
+mod apps;
+mod arrange;
+mod auth;
+mod bar;
+mod bluetooth;
+mod board;
+mod bus;
+mod calc;
+mod caldav;
+mod calendar;
+mod capture;
+mod catalog;
+mod child;
+mod clipboard;
+mod clips;
+mod control;
+mod controls;
+mod deck;
+mod dock;
+mod dock_menu;
+mod dock_shape;
+mod dock_view;
+mod doctor;
+mod drag;
+mod events;
+mod files;
+mod fingerprint;
+mod flatpak;
+mod fonts;
+mod fragment;
+mod greet;
+mod greet_look;
+mod greetd;
+mod gsettings;
+mod i18n;
+mod icon;
+mod idle;
+mod kept;
+mod keymap;
+mod keys;
+mod launcher;
+mod lit;
+mod lock;
+mod logind;
+mod lyrics;
+mod machine;
+mod machine_view;
+mod marks;
+mod media;
+mod modules;
+mod motion;
+mod night;
+mod niri;
+mod notify;
+mod osd;
+mod paint;
+mod panel;
+mod pick;
+mod plugins;
+mod polkit;
+mod popup;
+mod posed;
+mod power;
+mod preview;
+mod privacy;
+mod profile;
+mod rail;
+mod rates;
+mod secrets;
+mod settings;
+mod shell;
+mod shot;
+mod sound;
+mod stats;
+mod status;
+mod strip;
+mod style;
+mod switcher;
+mod templates;
+mod terminal;
+mod themes;
+mod timers;
+mod tray;
+mod tray_menu;
+mod updates;
+mod usage;
+mod vpn;
+mod wallpaper;
+mod weather;
+mod wifi;
+mod windows;
+
+#[cfg(target_os = "linux")]
+mod layers;
+
+#[cfg(not(target_os = "linux"))]
+mod layers {
+    pub fn run(_: Option<String>) -> Result<(), String> {
+        Err("layer surfaces need a Wayland session on Linux; use --preview".into())
+    }
+}
+
+use std::path::PathBuf;
+use std::process::ExitCode;
+
+use apolline_config::{Config, Editor, slug};
+
+const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
+       apolline mode NAME|next|none|off
+       apolline switch | launcher | panel | clipboard | keys | replay | terminal | machine | updates
+       apolline module [NAME]
+       apolline timer LENGTH [LABEL] | timer stop
+       apolline volume up|down|mute | mic mute | brightness up|down
+       apolline theme [list|next|NAME] | theme install PATH|LINK
+       apolline plugin list | install PATH|LINK | remove NAME | enable NAME | disable NAME
+       apolline pick [--prompt TEXT] < lines
+       apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
+       apolline setup
+       apolline fragment [CONFIG] [MODE]
+       apolline settings [--page NAME] [--screenshot FILE]
+       apolline lock [--preview] [--mode NAME] [--screenshot FILE]
+       apolline check [FILE]
+       apolline doctor";
+
+// glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
+// allocates holds whole huge pages; for a shell that's a couple of hundred MB for nothing.
+fn small_pages() {
+    #[cfg(target_os = "linux")]
+    // SAFETY: PR_SET_THP_DISABLE takes plain integers and only changes this process's paging.
+    unsafe {
+        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+    }
+}
+
+#[derive(Default)]
+struct Options {
+    mode: Option<String>,
+    preview: bool,
+    screenshot: Option<PathBuf>,
+    open: Vec<shell::Message>,
+}
+
+fn main() -> ExitCode {
+    small_pages();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (config, _) = Config::load(&apolline_config::default_path());
+    apolline_theme::set_scheme(config.scheme(config.start()));
+    style::choose_family(config.desktop.font);
+    i18n::choose(config.language.as_deref());
+    match args.first().map(String::as_str) {
+        Some("check") => return check(args.get(1).map(PathBuf::from)),
+        Some("doctor") => return doctor::main(),
+        Some("help" | "--help" | "-h") => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Some(
+            "mode" | "switch" | "launcher" | "panel" | "clipboard" | "keys" | "replay" | "terminal"
+            | "machine" | "updates" | "module" | "timer",
+        ) => {
+            return command(&args.join(" "));
+        }
+        Some("volume" | "mic" | "brightness") => return media_key(&args.join(" ")),
+        Some("theme") if args.get(1).is_some_and(|a| a == "install") => {
+            let install = |what: &String| {
+                if what.starts_with("https://") || what.starts_with("http://") {
+                    themes::install_from(what)
+                } else {
+                    themes::install(std::path::Path::new(what))
+                }
+            };
+            return match args.get(2).map(install) {
+                Some(Ok(theme)) => {
+                    println!(
+                        "{} is installed; apolline theme {} applies it",
+                        theme.name,
+                        apolline_config::slug(&theme.name)
+                    );
+                    ExitCode::SUCCESS
+                }
+                Some(Err(err)) => {
+                    eprintln!("apolline: {err}");
+                    ExitCode::FAILURE
+                }
+                None => {
+                    eprintln!("apolline: theme install needs a theme.toml or a folder");
+                    ExitCode::from(2)
+                }
+            };
+        }
+        Some("theme") => return theme(args.get(1).map(String::as_str)),
+        Some("pick") => return pick::main(&args[1..]),
+        Some("plugin") => return plugins::cli::main(&args[1..]),
+        // Over a dimmed wallpaper, so always light text, whatever the palette.
+        Some("greet") => {
+            apolline_theme::set_scheme(apolline_theme::Scheme::DARK);
+            return greet::main(&args[1..]);
+        }
+        Some("setup") => return setup(),
+        Some("fragment") => {
+            let path = args
+                .get(1)
+                .map_or_else(apolline_config::default_path, PathBuf::from);
+            let (config, problems) = Config::load(&path);
+            for problem in &problems {
+                eprintln!("{}:{}: {problem}", path.display(), problem.line);
+            }
+            let mode = args.get(2).and_then(|name| config.find(name));
+            print!(
+                "{}",
+                fragment::render(&fragment::Fragment {
+                    config: &config,
+                    mode,
+                    outputs: &["eDP-1".to_owned()],
+                })
+            );
+            return if problems.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            };
+        }
+        Some("settings") => return open_settings(&args[1..]),
+        Some("lock") => {
+            apolline_theme::set_scheme(apolline_theme::Scheme::DARK);
+            return lock_screen(&args[1..]);
+        }
+        _ => {}
+    }
+
+    let options = match parse(&args) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("apolline: {message}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    match run(options) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run(options: Options) -> Result<(), String> {
+    let layered = !options.preview
+        && options.screenshot.is_none()
+        && std::env::var_os("WAYLAND_DISPLAY").is_some();
+    if layered {
+        layers::run(options.mode)
+    } else {
+        preview::run(options.mode, options.screenshot, options.open).map_err(|err| err.to_string())
+    }
+}
+
+fn parse(args: &[String]) -> Result<Options, String> {
+    let mut options = Options::default();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--mode" => {
+                options.mode = Some(args.next().ok_or("--mode needs a name")?.clone());
+            }
+            "--preview" => options.preview = true,
+            "--open" => {
+                let overlay = |overlay| shell::Message::Overlay(Some(overlay));
+                let opened = match args.next().map(String::as_str) {
+                    Some("launcher") => overlay(shell::Overlay::Launcher),
+                    Some("panel") => overlay(shell::Overlay::Panel),
+                    Some("switch") => overlay(shell::Overlay::Switcher),
+                    Some("clipboard") => overlay(shell::Overlay::Clipboard),
+                    Some("keys") => overlay(shell::Overlay::Keys),
+                    Some("polkit") => shell::Message::Polkit(polkit::sample()),
+                    Some("calendar") => overlay(shell::Overlay::Calendar),
+                    Some("machine") => overlay(shell::Overlay::Machine),
+                    Some("wifi") => {
+                        options.open.push(overlay(shell::Overlay::Panel));
+                        shell::Message::Detail(Some(panel::Detail::Wifi))
+                    }
+                    Some("bluetooth") => {
+                        options.open.push(overlay(shell::Overlay::Panel));
+                        shell::Message::Detail(Some(panel::Detail::Bluetooth))
+                    }
+                    Some("osd") => {
+                        shell::Message::Control(control::Command::Nudge(controls::Nudge::VolumeUp))
+                    }
+                    _ => {
+                        return Err(
+                            "--open needs launcher, panel, wifi, bluetooth, switch, clipboard, keys, calendar, machine, polkit or osd".into(),
+                        );
+                    }
+                };
+                options.open.push(opened);
+            }
+            "--query" => {
+                let query = args.next().ok_or("--query needs some text")?.clone();
+                options
+                    .open
+                    .push(shell::Message::Overlay(Some(shell::Overlay::Launcher)));
+                options.open.push(shell::Message::Query(query));
+            }
+            "--screenshot" => {
+                options.screenshot = Some(args.next().ok_or("--screenshot needs a file")?.into())
+            }
+            other => return Err(format!("unknown argument “{other}”")),
+        }
+    }
+    Ok(options)
+}
+
+fn command(line: &str) -> ExitCode {
+    match control::Command::parse(line).and_then(|_| control::send(line)) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn theme(wanted: Option<&str>) -> ExitCode {
+    let path = apolline_config::default_path();
+    let (config, _) = Config::load(&path);
+    let themes = themes::all();
+    let current = config
+        .desktop
+        .theme
+        .as_deref()
+        .and_then(|name| themes.iter().position(|(t, _)| slug(&t.name) == slug(name)));
+    let index = match wanted {
+        None | Some("list") => {
+            for (i, (theme, _)) in themes.iter().enumerate() {
+                let mark = if current == Some(i) { '*' } else { ' ' };
+                println!("{mark} {}", theme.name);
+            }
+            return ExitCode::SUCCESS;
+        }
+        Some("next") => current.map_or(0, |i| (i + 1) % themes.len()),
+        Some(name) => match themes.iter().position(|(t, _)| slug(&t.name) == slug(name)) {
+            Some(i) => i,
+            None => {
+                eprintln!("apolline: no theme “{name}”; `apolline theme list` shows them");
+                return ExitCode::from(2);
+            }
+        },
+    };
+    let theme = &themes[index].0;
+    let applied = Editor::load(&path).and_then(|mut editor| {
+        theme.apply(&mut editor);
+        editor.save(&path).map_err(|err| err.to_string())
+    });
+    match applied {
+        Ok(()) => {
+            println!("{}", theme.name);
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("apolline: {}: {err}", path.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn media_key(line: &str) -> ExitCode {
+    let nudge = match control::Command::parse(line) {
+        Ok(control::Command::Nudge(nudge)) => nudge,
+        _ => {
+            eprintln!("apolline: unknown command “{line}”\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    if control::send(line).is_ok() {
+        return ExitCode::SUCCESS;
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    match runtime.map(|rt| rt.block_on(controls::nudge(nudge))) {
+        Ok(Some(_)) => ExitCode::SUCCESS,
+        _ => ExitCode::FAILURE,
+    }
+}
+
+fn open_settings(args: &[String]) -> ExitCode {
+    let mut screenshot = None;
+    let mut page = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        match (arg.as_str(), args.next()) {
+            ("--screenshot", Some(path)) => screenshot = Some(PathBuf::from(path)),
+            ("--page", Some(name)) => page = Some(name.clone()),
+            _ => {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    match settings::run(screenshot, page) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn lock_screen(args: &[String]) -> ExitCode {
+    let options = parse(args).and_then(|options| {
+        if options.open.is_empty() {
+            Ok(options)
+        } else {
+            Err("the lock screen takes no --open or --query".to_owned())
+        }
+    });
+    let options = match options {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("apolline: {message}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    match lock::run(options.preview, options.mode, options.screenshot) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn setup() -> ExitCode {
+    let (config, _) = Config::load(&apolline_config::default_path());
+    let look = fragment::Fragment {
+        config: &config,
+        mode: config.start(),
+        outputs: &[],
+    };
+    match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
+        Ok(done) => {
+            done.iter().for_each(|line| println!("{line}"));
+            for line in terminal::set_up(&apolline_config::config_home()) {
+                println!("{line}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+// The config, with plugin names checked against what's installed, then the enabled plugins' own
+// files.
+fn check(path: Option<PathBuf>) -> ExitCode {
+    let path = path.unwrap_or_else(apolline_config::default_path);
+    let installed = plugins::installed();
+    let known: Vec<apolline_config::Plugin> = installed.iter().map(|p| p.plugin.clone()).collect();
+    let (config, diagnostics) = Config::load_with(&path, &known);
+    let in_plugins = plugins::cli::problems(&config, &installed);
+    if diagnostics.is_empty() && in_plugins.is_empty() {
+        println!("{}: ok", path.display());
+        return ExitCode::SUCCESS;
+    }
+    for diagnostic in &diagnostics {
+        eprintln!("{}:{}: {diagnostic}", path.display(), diagnostic.line);
+    }
+    for problem in &in_plugins {
+        eprintln!("{problem}");
+    }
+    ExitCode::FAILURE
+}

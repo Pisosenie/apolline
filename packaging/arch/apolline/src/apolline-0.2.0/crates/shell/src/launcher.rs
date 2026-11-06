@@ -1,0 +1,1264 @@
+use crate::lit::button;
+use crate::style::text;
+use apolline_theme::{Palette, neutral};
+use iced::widget::operation::{focus, scroll_to};
+use iced::widget::scrollable::AbsoluteOffset;
+use iced::widget::{
+    Column, Row, column, container, image, mouse_area, opaque, row, scrollable, space, svg,
+    text_input,
+};
+use iced::{Alignment, Element, Fill, Length, Task};
+
+use crate::apps::{self, App, Picture};
+use crate::calc;
+use crate::capture::Capture;
+use crate::icon::{Icon, icon};
+use crate::panel::Power;
+use crate::shell::{Message, Overlay};
+use crate::style;
+
+const WIDTH: f32 = 680.0;
+const ROW: f32 = 54.0;
+const VISIBLE: usize = 8;
+pub const COLUMNS: usize = 6;
+const TILE: f32 = 104.0;
+const SEARCH: &str = "launcher-search";
+const LIST: &str = "launcher-list";
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Target {
+    App(String),
+    Open(std::path::PathBuf),
+    Window(u64),
+    Copy(String),
+    Mode(Option<usize>),
+    Settings,
+    Clipboard,
+    Keys,
+    Capture(crate::capture::Capture),
+    Power(Power),
+    // A command typed into the search, run as it is.
+    Run(String),
+    // A countdown on the bar.
+    Timer(std::time::Duration, Option<String>),
+    // The search, looked up on the web.
+    Web(String),
+    // A plugin's command, run as that plugin's: its name, then the command.
+    Plugin(String, String),
+}
+
+// Above anything found by its name, below a sum's answer.
+const LIFTED: u32 = 2000;
+
+// A command's program, without its path or arguments.
+fn program(command: &str) -> &str {
+    let first = command.split_whitespace().next().unwrap_or_default();
+    first.rsplit('/').next().unwrap_or(first)
+}
+
+#[derive(Default)]
+pub struct Launcher {
+    pub query: String,
+    pub selected: usize,
+    apps: Vec<App>,
+    modes: Vec<(String, String)>,
+    windows: Vec<OpenWindow>,
+    // Your files, walked on the first search for one and let go when the launcher closes.
+    files: Option<Vec<crate::files::Found>>,
+    walking: bool,
+    open: bool,
+    // What the search found, worked out when something changes rather than on every frame.
+    shown: Vec<Entry>,
+    look: apolline_config::Surface,
+    grid: bool,
+    rates: Option<(std::sync::Arc<crate::rates::Rates>, std::time::Instant)>,
+    asked: bool,
+    usage: crate::usage::Usage,
+    finds: apolline_config::Launcher,
+    // Console apps and commands run in it.
+    terminal: String,
+    // What plugins found for the search, and the prefixes that keep a search to them.
+    plugin_found: Vec<crate::plugins::search::Found>,
+    prefixes: Vec<String>,
+}
+
+pub struct OpenWindow {
+    pub id: u64,
+    pub title: String,
+    pub app: String,
+}
+
+struct Entry {
+    title: String,
+    about: String,
+    picture: Pic,
+    target: Target,
+    game: bool,
+}
+
+enum Pic {
+    // The app's icon, else the first letter of its name.
+    App(Option<Picture>, Option<String>),
+    Icon(Icon),
+    Glyph(&'static str),
+}
+
+const EMOJI: &str = include_str!("../../../assets/emoji.txt");
+
+fn emoji() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EMOJI
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(' '))
+}
+
+const ACTIONS: [(&str, &str, Icon, Target); 11] = [
+    (
+        "Screenshot an area",
+        "Pick a part of the screen",
+        Icon::Scan,
+        Target::Capture(Capture::Area),
+    ),
+    (
+        "Screenshot the screen",
+        "The whole focused screen",
+        Icon::Monitor,
+        Target::Capture(Capture::Screen),
+    ),
+    (
+        "Screenshot the window",
+        "Only the focused window",
+        Icon::AppWindow,
+        Target::Capture(Capture::Window),
+    ),
+    (
+        "Mark the last screenshot",
+        "Arrows, boxes, a marker; hide what shouldn't show",
+        Icon::Pencil,
+        Target::Capture(Capture::Mark),
+    ),
+    (
+        "Pick a color",
+        "Click anywhere; the hex code is copied",
+        Icon::Pipette,
+        Target::Capture(Capture::Color),
+    ),
+    (
+        "Record the screen",
+        "Start or stop; saved to ~/Videos",
+        Icon::Video,
+        Target::Capture(Capture::Record),
+    ),
+    (
+        "Settings",
+        "Apolline settings",
+        Icon::Settings,
+        Target::Settings,
+    ),
+    (
+        "Keyboard shortcuts",
+        "Every key, searchable",
+        Icon::Command,
+        Target::Keys,
+    ),
+    (
+        "Clipboard history",
+        "What you copied lately",
+        Icon::Clipboard,
+        Target::Clipboard,
+    ),
+    (
+        "Lock screen",
+        "Lock",
+        Icon::Lock,
+        Target::Power(Power::Lock),
+    ),
+    (
+        "Log out",
+        "Leave niri",
+        Icon::LogOut,
+        Target::Power(Power::LogOut),
+    ),
+];
+
+impl Launcher {
+    pub fn open(&mut self) -> Task<Message> {
+        self.query.clear();
+        self.selected = 0;
+        self.asked = false;
+        self.open = true;
+        self.refresh();
+        Task::batch([
+            focus(SEARCH),
+            scroll_to(LIST, AbsoluteOffset { x: 0.0, y: 0.0 }),
+        ])
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.plugin_found.clear();
+        self.files = None;
+        self.walking = false;
+        self.shown.clear();
+    }
+
+    pub fn focus(&self) -> Task<Message> {
+        focus(SEARCH)
+    }
+
+    // True once a search for a file is typed and they haven't been walked yet.
+    pub fn wants_files(&mut self) -> bool {
+        let wanted = self.files.is_none()
+            && !self.walking
+            && self.query.trim().starts_with('/')
+            && self.finds.finds("files");
+        self.walking |= wanted;
+        wanted
+    }
+
+    // Only while it's open: what changes while it's closed is worked out when it opens.
+    fn refresh(&mut self) {
+        if self.open {
+            self.shown = self.entries();
+        }
+    }
+
+    // True once a sum of money is typed and there are no rates yet; asked once a launch.
+    pub fn wants_rates(&mut self) -> bool {
+        // Kept for half a day, like the file they come from.
+        let stale = self
+            .rates
+            .as_ref()
+            .is_none_or(|(_, got)| got.elapsed() > std::time::Duration::from_secs(12 * 3600));
+        let wanted = stale && !self.asked && calc::wants_rates(&self.query);
+        self.asked |= wanted;
+        wanted
+    }
+
+    pub fn set_rates(&mut self, rates: std::sync::Arc<crate::rates::Rates>) {
+        self.rates = Some((rates, std::time::Instant::now()));
+        self.refresh();
+    }
+
+    pub fn set_modes(&mut self, modes: Vec<(String, String)>) {
+        self.modes = modes;
+        self.refresh();
+    }
+
+    pub fn set_apps(&mut self, apps: Vec<App>) {
+        self.apps = apps;
+        self.refresh();
+    }
+
+    pub fn set_windows(&mut self, windows: Vec<OpenWindow>) {
+        self.windows = windows;
+        self.refresh();
+    }
+
+    pub fn set_usage(&mut self, usage: crate::usage::Usage) {
+        self.usage = usage;
+        self.refresh();
+    }
+
+    // A walk that ends after the launcher closed isn't kept.
+    pub fn set_files(&mut self, files: Vec<crate::files::Found>) {
+        if self.walking {
+            self.walking = false;
+            self.files = Some(files);
+            self.refresh();
+        }
+    }
+
+    // What came back after the launcher closed, or for a search since emptied, isn't shown.
+    pub fn set_plugin_found(&mut self, found: Vec<crate::plugins::search::Found>) {
+        if self.open && !self.query.trim().is_empty() {
+            self.plugin_found = found;
+            self.refresh();
+        }
+    }
+
+    pub fn set_prefixes(&mut self, prefixes: Vec<String>) {
+        self.prefixes = prefixes;
+    }
+
+    fn plugin_entries(&self) -> Vec<Entry> {
+        use crate::plugins::search::Act;
+        self.plugin_found
+            .iter()
+            .map(|found| {
+                let (glyph, target) = match &found.act {
+                    Act::Run(command) => (
+                        Icon::Terminal,
+                        Target::Plugin(found.plugin.clone(), command.clone()),
+                    ),
+                    Act::Terminal(command) => (
+                        Icon::Terminal,
+                        Target::Plugin(
+                            found.plugin.clone(),
+                            crate::terminal::running(&self.terminal, command),
+                        ),
+                    ),
+                    Act::Copy(words) => (Icon::Copy, Target::Copy(words.clone())),
+                    Act::Open(what) => (Icon::External, Target::Open(what.into())),
+                };
+                let named = found.icon.as_deref().and_then(Icon::by_name);
+                Entry {
+                    title: found.title.clone(),
+                    about: found.about.clone(),
+                    picture: Pic::Icon(named.unwrap_or(glyph)),
+                    target,
+                    game: false,
+                }
+            })
+            .collect()
+    }
+
+    pub fn set_finds(&mut self, finds: apolline_config::Launcher, terminal: &str) {
+        self.finds = finds;
+        self.terminal = terminal.to_owned();
+        self.refresh();
+    }
+
+    // How an app's command is run: console apps open in the terminal.
+    fn command(&self, app: &App, exec: &str) -> String {
+        if app.terminal && !self.terminal.is_empty() {
+            crate::terminal::running(&self.terminal, exec)
+        } else {
+            exec.to_owned()
+        }
+    }
+
+    pub fn set_look(&mut self, look: apolline_config::Surface, grid: bool) {
+        self.look = look;
+        self.grid = grid;
+    }
+
+    pub fn grid(&self) -> bool {
+        self.grid && !self.query.trim_start().starts_with(['/', ':'])
+    }
+
+    pub fn search(&mut self, query: String) -> Task<Message> {
+        self.query = query;
+        self.selected = 0;
+        self.refresh();
+        scroll_to(LIST, AbsoluteOffset { x: 0.0, y: 0.0 })
+    }
+
+    pub fn step(&mut self, by: isize) -> Task<Message> {
+        let count = self.shown.len();
+        if count == 0 {
+            return Task::none();
+        }
+        self.selected = (self.selected as isize + by).rem_euclid(count as isize) as usize;
+        let top = if self.grid() {
+            (self.selected / COLUMNS).saturating_sub(1) as f32 * TILE
+        } else {
+            self.selected.saturating_sub(VISIBLE / 2) as f32 * ROW
+        };
+        scroll_to(LIST, AbsoluteOffset { x: 0.0, y: top })
+    }
+
+    pub fn chosen(&self) -> Option<Target> {
+        self.shown
+            .get(self.selected)
+            .map(|entry| entry.target.clone())
+    }
+
+    fn entries(&self) -> Vec<Entry> {
+        let query = self.query.trim();
+        let prefixed = self
+            .prefixes
+            .iter()
+            .any(|p| self.query.trim_start().starts_with(p.as_str()));
+        if prefixed {
+            return self.plugin_entries();
+        }
+        let mut ranked: Vec<(u32, Entry)> = Vec::new();
+        let installed = self.apps.iter().any(|app| app.id == "apolline-settings");
+        let finds = |what: &str| self.finds.finds(what);
+        if let Some(wanted) = query.strip_prefix('/').filter(|_| finds("files")) {
+            let files = self.files.as_deref().unwrap_or_default();
+            return crate::files::find(files, wanted)
+                .into_iter()
+                .map(|found| Entry {
+                    title: found
+                        .path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    about: found
+                        .path
+                        .parent()
+                        .map(crate::wallpaper::shorten)
+                        .unwrap_or_default(),
+                    picture: Pic::Icon(if found.dir { Icon::Folder } else { Icon::File }),
+                    target: Target::Open(found.path.clone()),
+                    game: false,
+                })
+                .collect();
+        }
+        if let Some(wanted) = query.strip_prefix(':').filter(|_| finds("emoji")) {
+            let mut found: Vec<(u32, Entry)> = emoji()
+                .filter_map(|(glyph, name)| {
+                    let score = apps::rank(wanted, name, "")?;
+                    Some((
+                        score,
+                        Entry {
+                            title: name.to_owned(),
+                            about: String::new(),
+                            picture: Pic::Glyph(glyph),
+                            target: Target::Copy(glyph.to_owned()),
+                            game: false,
+                        },
+                    ))
+                })
+                .collect();
+            found.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+            return found.into_iter().take(60).map(|(_, entry)| entry).collect();
+        }
+        if let Some((length, label)) = crate::timers::parse(query).filter(|_| finds("actions")) {
+            let length_said = crate::timers::length(length);
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: match &label {
+                        Some(label) => crate::i18n::fill(
+                            "Start a {length} timer: {label}",
+                            &[("length", &length_said), ("label", label)],
+                        ),
+                        None => {
+                            crate::i18n::fill("Start a {length} timer", &[("length", &length_said)])
+                        }
+                    },
+                    about: "It counts down on the bar and rings when it's done".to_owned(),
+                    picture: Pic::Icon(Icon::Timer),
+                    target: Target::Timer(length, label),
+                    game: false,
+                },
+            ));
+        }
+        if !finds("calculator") {
+        } else if let Some(result) = calc::answer(query) {
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: format!("= {result}"),
+                    about: "Enter copies it".to_owned(),
+                    picture: Pic::Icon(Icon::Calculator),
+                    target: Target::Copy(result),
+                    game: false,
+                },
+            ));
+        } else if let Some((rates, _)) = &self.rates
+            && let Some(result) = calc::money(query, rates)
+        {
+            ranked.push((
+                u32::MAX,
+                Entry {
+                    title: format!("= {result}"),
+                    about: format!(
+                        "Enter copies it · rates of {} by ExchangeRate-API",
+                        rates.day
+                    ),
+                    picture: Pic::Icon(Icon::Calculator),
+                    target: Target::Copy(result),
+                    game: false,
+                },
+            ));
+        }
+        if !query.is_empty() {
+            for window in self.windows.iter().filter(|_| finds("windows")) {
+                let app = apps::find(&self.apps, &window.app);
+                let name = app.map_or(window.app.as_str(), |app| app.name.as_str());
+                let extra = format!("{name} {} window", window.app);
+                if let Some(score) = apps::rank(query, &window.title, &extra)
+                    .max(apps::rank(query, name, "").map(|s| s.saturating_sub(1)))
+                {
+                    ranked.push((
+                        score + 40,
+                        Entry {
+                            title: window.title.clone(),
+                            about: crate::i18n::fill("Open window · {name}", &[("name", &name)]),
+                            picture: Pic::App(
+                                app.and_then(|app| app.icon.clone()),
+                                app.map(|app| app.name.clone()),
+                            ),
+                            target: Target::Window(window.id),
+                            game: false,
+                        },
+                    ));
+                }
+            }
+            let modes = self.modes.iter().enumerate().map(|(index, (name, glyph))| {
+                (
+                    name.clone(),
+                    crate::i18n::fill("Switch to the {name} mode", &[("name", &name)]),
+                    Icon::named(glyph),
+                    Target::Mode(Some(index)),
+                )
+            });
+            let leave = (!self.modes.is_empty()).then(|| {
+                (
+                    "No mode".to_owned(),
+                    "Back to the plain desktop".to_owned(),
+                    Icon::Circle,
+                    Target::Mode(None),
+                )
+            });
+            let modes: Vec<_> = if finds("modes") {
+                modes.chain(leave).collect()
+            } else {
+                Vec::new()
+            };
+            for (title, about, glyph, target) in modes {
+                if let Some(score) = apps::rank(query, &title, &about) {
+                    ranked.push((
+                        score + 60,
+                        Entry {
+                            title,
+                            about,
+                            picture: Pic::Icon(glyph),
+                            target,
+                            game: false,
+                        },
+                    ));
+                }
+            }
+            for (title, about, glyph, target) in ACTIONS.into_iter().filter(|_| finds("actions")) {
+                if installed && target == Target::Settings {
+                    continue;
+                }
+                if let Some(score) = apps::rank(query, title, about) {
+                    ranked.push((
+                        score + 50,
+                        Entry {
+                            title: title.to_owned(),
+                            about: about.to_owned(),
+                            picture: Pic::Icon(glyph),
+                            target,
+                            game: false,
+                        },
+                    ));
+                }
+            }
+        }
+        // What's started often and lately comes first; while typing it only breaks near ties.
+        let now = crate::usage::now();
+        let used = |exec: &str| {
+            let weight = self.usage.weight(exec, now);
+            if query.is_empty() {
+                weight
+            } else {
+                weight.min(60)
+            }
+        };
+        let asks_terminal = {
+            let query = query.trim().to_lowercase();
+            query.chars().count() >= 3
+                && ["terminal", "терминал", "console", "консоль"]
+                    .iter()
+                    .any(|word| word.starts_with(&query))
+        };
+        for app in self.apps.iter().filter(|_| finds("apps")) {
+            for (name, exec) in &app.actions {
+                if let Some(score) = apps::action_score(query, app, name) {
+                    ranked.push((
+                        score + used(exec),
+                        Entry {
+                            title: name.clone(),
+                            about: app.name.clone(),
+                            picture: Pic::App(app.icon.clone(), Some(app.name.clone())),
+                            target: Target::App(self.command(app, exec)),
+                            game: false,
+                        },
+                    ));
+                }
+            }
+            // "term" finds the terminal you picked before any other.
+            let yours = asks_terminal && program(&app.exec) == program(&self.terminal);
+            let score = if yours {
+                Some(LIFTED)
+            } else {
+                apps::score(query, app)
+            };
+            if let Some(score) = score {
+                let bonus = if query.is_empty() && app.game { 1 } else { 0 };
+                ranked.push((
+                    score + bonus + used(&app.exec),
+                    Entry {
+                        title: app.name.clone(),
+                        about: app.about.clone(),
+                        picture: Pic::App(app.icon.clone(), Some(app.name.clone())),
+                        target: Target::App(self.command(app, &app.exec)),
+                        game: app.game,
+                    },
+                ));
+            }
+        }
+        ranked.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
+        let mut entries: Vec<Entry> = ranked.into_iter().map(|(_, entry)| entry).collect();
+        if !query.is_empty() {
+            entries.extend(self.plugin_entries());
+        }
+        // Nothing found by name: run it, or look it up.
+        if entries.iter().all(|entry| entry.title.starts_with('=')) {
+            entries.extend(fallbacks(query, &self.finds, &self.terminal));
+        }
+        entries
+    }
+
+    pub fn view(&self, palette: Palette, mode: Option<(&str, Icon)>) -> Element<'_, Message> {
+        let entries = &self.shown;
+        let games = entries.iter().filter(|e| e.game).count();
+
+        let search = row![
+            icon(Icon::Search, 20.0, style::faint()),
+            text_input(
+                crate::i18n::t("Search apps, games and actions"),
+                &self.query
+            )
+            .id(SEARCH)
+            .on_input(Message::Query)
+            .on_submit(Message::Submit)
+            .size(18)
+            .padding(0)
+            .style(style::bare_field(palette)),
+            mode.map(|(name, glyph)| {
+                container(
+                    row![
+                        icon(glyph, 13.0, palette.accent),
+                        text(name.to_owned())
+                            .size(12)
+                            .color(style::color(palette.accent)),
+                    ]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+                )
+                .padding([4, 10])
+                .style(style::pill(palette.accent_soft))
+            }),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center);
+
+        let list: Element<'_, Message> = if entries.is_empty() {
+            container(
+                column![
+                    icon(Icon::Search, 28.0, style::faint()),
+                    text(crate::i18n::fill(
+                        "Nothing called “{query}”",
+                        &[("query", &self.query.trim())]
+                    ))
+                    .size(14)
+                    .color(style::color(style::soft_text())),
+                ]
+                .spacing(10)
+                .align_x(Alignment::Center),
+            )
+            .center_x(Fill)
+            .padding([48, 0])
+            .into()
+        } else if self.grid() {
+            let mut grid = Column::new().spacing(4);
+            for (line, chunk) in entries.chunks(COLUMNS).enumerate() {
+                let mut tiles = Row::new().spacing(4);
+                for (column, entry) in chunk.iter().enumerate() {
+                    tiles = tiles.push(self.tile(line * COLUMNS + column, entry, palette));
+                }
+                for _ in chunk.len()..COLUMNS {
+                    tiles = tiles.push(space().width(Fill));
+                }
+                grid = grid.push(tiles);
+            }
+            let lines = entries.len().div_ceil(COLUMNS).min(3);
+            scrollable(grid)
+                .id(LIST)
+                .height(Length::Fixed(TILE * lines as f32 + 8.0))
+                .direction(style::thin())
+                .style(style::scroller)
+                .into()
+        } else {
+            let rows = Column::with_children(
+                entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| self.row(index, entry, palette)),
+            );
+            scrollable(rows)
+                .id(LIST)
+                .height(Length::Fixed(ROW * entries.len().min(VISIBLE) as f32))
+                .direction(style::thin())
+                .style(style::scroller)
+                .into()
+        };
+
+        let caption = if self.query.trim().is_empty() {
+            match games {
+                0 => "Apps".to_owned(),
+                n => crate::i18n::count(n, "1 game · apps", "{n} games · apps"),
+            }
+        } else {
+            crate::i18n::count(entries.len(), "1 result", "{n} results")
+        };
+
+        let footer = row![
+            text(caption).size(12).color(style::color(style::faint())),
+            space::horizontal(),
+            hint("/", "files"),
+            hint(":", "emoji"),
+            hint(
+                if self.grid() {
+                    "←↑↓→"
+                } else {
+                    "↑↓"
+                },
+                "move"
+            ),
+            hint("↵", "open"),
+            hint("esc", "close"),
+        ]
+        .spacing(14)
+        .align_y(Alignment::Center);
+
+        let panel = container(
+            column![
+                container(search).padding([18, 20]),
+                container(space().height(1))
+                    .width(Fill)
+                    .style(|_| container::background(style::color(neutral::hairline()))),
+                container(list).padding([8, 8]),
+                container(footer).padding([10, 18]),
+            ]
+            .width(WIDTH),
+        )
+        .style(style::surface_as(self.look));
+
+        mouse_area(
+            container(crate::posed::enter(
+                opaque(panel),
+                apolline_config::Edge::Top,
+                Alignment::Center,
+            ))
+            .width(Fill)
+            .height(Fill)
+            .align_x(Alignment::Center)
+            .padding(iced::Padding::new(0.0).top(160.0))
+            .style(style::scrim),
+        )
+        .on_press(Message::Overlay(None::<Overlay>))
+        .into()
+    }
+
+    fn tile<'a>(&self, index: usize, entry: &'a Entry, palette: Palette) -> Element<'a, Message> {
+        let selected = index == self.selected;
+        let picture: Element<'a, Message> = match &entry.picture {
+            Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
+                .width(44)
+                .height(44)
+                .opacity(style::fade())
+                .into(),
+            Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
+                .width(44)
+                .height(44)
+                .opacity(style::fade())
+                .into(),
+            Pic::App(None, name) => {
+                container(letter(name.as_ref().unwrap_or(&entry.title), palette))
+                    .center(44)
+                    .into()
+            }
+            Pic::Glyph(glyph) => container(text(*glyph).size(30)).center(44).into(),
+            Pic::Icon(glyph) => container(icon(*glyph, 22.0, neutral::text()))
+                .center(44)
+                .into(),
+        };
+        let name = crate::media::shorten(&entry.title, 14);
+        button(
+            column![picture, text(name).size(12).align_x(Alignment::Center)]
+                .spacing(8)
+                .align_x(Alignment::Center)
+                .width(Fill),
+        )
+        .width(Fill)
+        .height(TILE - 4.0)
+        .padding([12, 4])
+        .style(move |theme, status| {
+            let mut style = style::ghost(12.0)(theme, status);
+            if selected {
+                style.background = Some(iced::Background::Color(style::color(style::fill_color())));
+            }
+            style
+        })
+        .on_press(Message::Run(entry.target.clone()))
+        .into()
+    }
+
+    fn row<'a>(&self, index: usize, entry: &'a Entry, palette: Palette) -> Element<'a, Message> {
+        let selected = index == self.selected;
+        let picture: Element<'a, Message> = match &entry.picture {
+            Pic::App(Some(Picture::Raster(path)), _) => image(image::Handle::from_path(path))
+                .width(32)
+                .height(32)
+                .opacity(style::fade())
+                .into(),
+            Pic::App(Some(Picture::Vector(path)), _) => svg(svg::Handle::from_path(path))
+                .width(32)
+                .height(32)
+                .opacity(style::fade())
+                .into(),
+            Pic::App(None, name) => letter(name.as_ref().unwrap_or(&entry.title), palette),
+            Pic::Glyph(glyph) => container(text(*glyph).size(22)).center(32).into(),
+            Pic::Icon(glyph) => container(icon(*glyph, 17.0, neutral::text()))
+                .center(32)
+                .style(move |_| {
+                    let mut style = style::pill(style::fill_color())(&iced::Theme::Dark);
+                    style.border.radius = 9.0.into();
+                    style
+                })
+                .into(),
+        };
+        let mut words =
+            column![text(entry.title.clone()).size(15).font(style::medium())].spacing(1);
+        if !entry.about.is_empty() {
+            words = words.push(
+                text(entry.about.clone())
+                    .size(12)
+                    .color(style::color(style::faint())),
+            );
+        }
+        let mut line = row![picture, words, space::horizontal()]
+            .spacing(14)
+            .align_y(Alignment::Center);
+        if entry.game {
+            line = line.push(
+                container(text("Game").size(11).color(style::color(palette.accent)))
+                    .padding([3, 8])
+                    .style(style::pill(palette.accent_soft)),
+            );
+        }
+        if selected {
+            line = line.push(icon(Icon::ChevronRight, 16.0, style::faint()));
+        }
+        button(container(line).height(ROW - 4.0).align_y(Alignment::Center))
+            .width(Fill)
+            .padding([2, 12])
+            .style(move |theme, status| {
+                let mut style = style::ghost(12.0)(theme, status);
+                if selected {
+                    style.background =
+                        Some(iced::Background::Color(style::color(style::hover_color())));
+                }
+                style
+            })
+            .on_press(Message::Run(entry.target.clone()))
+            .into()
+    }
+}
+
+// Last in any search: run it if it's a command, or look it up on the web.
+fn fallbacks(query: &str, finds: &apolline_config::Launcher, terminal: &str) -> Vec<Entry> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let program = query.split_whitespace().next().unwrap_or_default();
+    let run = (finds.finds("run") && runnable(program)).then(|| Entry {
+        title: crate::i18n::fill("Run “{query}”", &[("query", &query)]),
+        about: "As a command, in the background".to_owned(),
+        picture: Pic::Icon(Icon::Terminal),
+        target: Target::Run(query.to_owned()),
+        game: false,
+    });
+    // The same command where you can see what it says, and answer it.
+    let shown = (finds.finds("run") && runnable(program) && !terminal.is_empty()).then(|| Entry {
+        title: crate::i18n::fill(
+            "Run “{query}” in {terminal}",
+            &[("query", &query), ("terminal", &terminal)],
+        ),
+        about: "In a terminal window".to_owned(),
+        picture: Pic::Icon(Icon::Terminal),
+        target: Target::Run(crate::terminal::running(terminal, query)),
+        game: false,
+    });
+    let web = finds.finds("web").then(|| Entry {
+        title: crate::i18n::fill("Search the web for “{query}”", &[("query", &query)]),
+        about: crate::i18n::fill(
+            "{site}, in the browser",
+            &[("site", &search_site(finds.web.as_deref()))],
+        ),
+        picture: Pic::Icon(Icon::Globe),
+        target: Target::Web(query.to_owned()),
+        game: false,
+    });
+    run.into_iter().chain(shown).chain(web).collect()
+}
+
+fn runnable(program: &str) -> bool {
+    if program.is_empty() || program.contains('/') {
+        return false;
+    }
+    // Asked on every keystroke and every redraw, so the last answer is kept.
+    static LAST: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
+    if let Ok(last) = LAST.lock()
+        && let Some((asked, found)) = last.as_ref()
+        && asked == program
+    {
+        return *found;
+    }
+    let found = on_path(program);
+    if let Ok(mut last) = LAST.lock() {
+        *last = Some((program.to_owned(), found));
+    }
+    found
+}
+
+pub fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|dir| {
+            std::fs::metadata(dir.join(program)).is_ok_and(|meta| {
+                meta.is_file()
+                    && std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111 != 0
+            })
+        })
+    })
+}
+
+const DUCKDUCKGO: &str = "https://duckduckgo.com/?q={query}";
+
+// Where a search goes, said as its site: duckduckgo.com, www.startpage.com.
+fn search_site(template: Option<&str>) -> String {
+    let link = template.unwrap_or(DUCKDUCKGO);
+    let rest = link.split_once("://").map_or(link, |(_, rest)| rest);
+    rest.split('/').next().unwrap_or(rest).to_owned()
+}
+
+pub fn web_address(template: Option<&str>, query: &str) -> String {
+    let encoded: String = query
+        .bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            b' ' => "+".to_owned(),
+            b => format!("%{b:02X}"),
+        })
+        .collect();
+    template.unwrap_or(DUCKDUCKGO).replace("{query}", &encoded)
+}
+
+fn letter<'a>(name: &str, palette: Palette) -> Element<'a, Message> {
+    let first = name
+        .chars()
+        .next()
+        .unwrap_or('?')
+        .to_uppercase()
+        .to_string();
+    container(
+        text(first)
+            .size(15)
+            .font(style::semibold())
+            .color(style::color(palette.accent)),
+    )
+    .center(32)
+    .style(move |_| container::Style {
+        background: Some(iced::Background::Color(style::color(palette.accent_soft))),
+        border: iced::Border {
+            radius: 9.0.into(),
+            ..iced::Border::default()
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
+fn hint<'a>(key: &'a str, label: &'a str) -> Element<'a, Message> {
+    row![
+        container(text(key).size(11).font(style::mono()))
+            .padding([1, 6])
+            .style(|_| container::Style {
+                border: iced::Border {
+                    color: style::color(neutral::raised()),
+                    width: 1.0,
+                    radius: 5.0.into(),
+                },
+                ..container::Style::default()
+            }),
+        text(label).size(12).color(style::color(style::faint())),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn launcher() -> Launcher {
+        let mut launcher = Launcher::default();
+        let _ = launcher.open();
+        launcher.set_apps(apps::sample());
+        launcher.set_modes(vec![
+            ("Work".into(), "briefcase".into()),
+            ("Play".into(), "gamepad".into()),
+        ]);
+        launcher
+    }
+
+    #[test]
+    fn it_looks_only_where_it_is_told_and_searches_your_site() {
+        let mut launcher = launcher();
+        launcher.set_finds(
+            apolline_config::Launcher {
+                finds: vec!["emoji".into(), "web".into()],
+                web: Some("https://www.startpage.com/do/search?q={query}".into()),
+            },
+            "vif",
+        );
+        launcher.query = "fire".into();
+        let entries = launcher.entries();
+        assert!(
+            entries.iter().all(|e| !matches!(e.target, Target::App(_))),
+            "apps are off"
+        );
+        assert!(matches!(
+            entries.last().map(|e| &e.target),
+            Some(Target::Web(_))
+        ));
+        assert_eq!(
+            entries.last().unwrap().about,
+            "www.startpage.com, in the browser"
+        );
+        launcher.query = ":fire".into();
+        assert!(!launcher.entries().is_empty(), "emoji still answer");
+        assert_eq!(
+            web_address(Some("https://www.startpage.com/do/search?q={query}"), "a b"),
+            "https://www.startpage.com/do/search?q=a+b"
+        );
+    }
+
+    #[test]
+    fn the_terminal_you_picked_comes_first_for_term() {
+        let mut launcher = launcher();
+        let terminal = |name: &str, actions: Vec<(String, String)>| apps::App {
+            id: name.to_lowercase(),
+            name: name.to_owned(),
+            about: "Terminal".into(),
+            exec: name.to_lowercase(),
+            icon: None,
+            game: false,
+            keywords: "terminal;shell;".into(),
+            class: None,
+            terminal: false,
+            actions,
+        };
+        let mut found = apps::sample();
+        found.push(terminal(
+            "Alacritty",
+            vec![("New Terminal".into(), "alacritty".into())],
+        ));
+        found.push(terminal("vif", Vec::new()));
+        launcher.set_apps(found);
+        launcher.set_finds(apolline_config::Launcher::default(), "/usr/bin/vif");
+        launcher.query = "term".into();
+        assert_eq!(launcher.entries()[0].title, "vif");
+        launcher.query = "alac".into();
+        assert_eq!(launcher.entries()[0].title, "Alacritty");
+    }
+
+    #[test]
+    fn games_come_first_when_nothing_is_typed() {
+        let launcher = launcher();
+        let entries = launcher.entries();
+        assert!(entries[..3].iter().all(|e| e.game));
+        assert!(entries[3..].iter().all(|e| !e.game));
+        assert!(entries.iter().all(|e| !matches!(e.target, Target::Mode(_))));
+    }
+
+    #[test]
+    fn a_colon_searches_emoji_and_enter_copies_one() {
+        let mut launcher = launcher();
+        let _ = launcher.search(":fire".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("🔥".into())));
+        let _ = launcher.search(":thumbs up".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("👍".into())));
+        assert!(emoji().count() > 1500);
+    }
+
+    #[test]
+    fn sums_and_open_windows_come_before_apps() {
+        let mut launcher = launcher();
+        launcher.set_windows(vec![OpenWindow {
+            id: 7,
+            title: "Mozilla Firefox — Release notes".into(),
+            app: "firefox".into(),
+        }]);
+        let _ = launcher.search("15% of 340".into());
+        assert_eq!(launcher.chosen(), Some(Target::Copy("51".into())));
+        let _ = launcher.search("release".into());
+        assert_eq!(launcher.chosen(), Some(Target::Window(7)));
+        let _ = launcher.search("firefox".into());
+        assert_eq!(
+            launcher.chosen(),
+            Some(Target::Window(7)),
+            "the running one is a jump away"
+        );
+        let _ = launcher.step(1);
+        assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
+    }
+
+    #[test]
+    fn typing_finds_apps_and_actions() {
+        let mut launcher = launcher();
+        let _ = launcher.search("play".into());
+        assert_eq!(launcher.chosen(), Some(Target::Mode(Some(1))));
+        let _ = launcher.search("no mode".into());
+        assert_eq!(launcher.chosen(), Some(Target::Mode(None)));
+        let _ = launcher.search("fire".into());
+        assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
+        let _ = launcher.search("lock".into());
+        assert_eq!(launcher.chosen(), Some(Target::Power(Power::Lock)));
+    }
+
+    #[test]
+    fn an_apps_actions_show_when_asked_for() {
+        let mut launcher = launcher();
+        launcher.set_apps(apps::sample());
+        let private = Some(Target::App("firefox --private-window".into()));
+        let _ = launcher.search("private".into());
+        assert_eq!(launcher.chosen(), private);
+        let _ = launcher.search("firefox priv".into());
+        assert_eq!(launcher.chosen(), private);
+        let _ = launcher.search("firefox".into());
+        assert_eq!(launcher.chosen(), Some(Target::App("firefox".into())));
+        let _ = launcher.search(String::new());
+        assert!(
+            launcher
+                .entries()
+                .iter()
+                .all(|e| !e.title.contains("Window")),
+            "not in the list before typing"
+        );
+    }
+
+    #[test]
+    fn installed_settings_replace_the_built_in_action() {
+        let mut launcher = launcher();
+        let mut apps = apps::sample();
+        apps.push(App {
+            id: "apolline-settings".into(),
+            name: "Apolline Settings".into(),
+            about: "Desktop settings".into(),
+            exec: "apolline settings".into(),
+            icon: None,
+            game: false,
+            keywords: String::new(),
+            terminal: false,
+            class: None,
+            actions: Vec::new(),
+        });
+        launcher.set_apps(apps);
+        let _ = launcher.search("sett".into());
+        let settings = launcher
+            .entries()
+            .iter()
+            .filter(|e| e.title.contains("Settings"))
+            .count();
+        assert_eq!(settings, 1, "the built-in action steps aside");
+        assert_eq!(
+            launcher.chosen(),
+            Some(Target::App("apolline settings".into()))
+        );
+    }
+
+    #[test]
+    fn a_grid_moves_by_rows_and_files_stay_a_list() {
+        let mut launcher = launcher();
+        launcher.set_look(apolline_config::Surface::default(), true);
+        assert!(launcher.grid());
+        let _ = launcher.step(COLUMNS as isize);
+        assert_eq!(launcher.selected, COLUMNS);
+        let _ = launcher.search("/notes".into());
+        assert!(!launcher.grid(), "file results read better as a list");
+    }
+
+    #[test]
+    fn what_is_started_often_and_lately_comes_first() {
+        let mut launcher = launcher();
+        let mut usage = crate::usage::Usage::default();
+        let firefox = launcher
+            .apps
+            .iter()
+            .find(|a| a.name == "Firefox")
+            .unwrap()
+            .exec
+            .clone();
+        usage.note(&firefox, crate::usage::now());
+        launcher.set_usage(usage);
+        assert_eq!(launcher.entries()[0].title, "Firefox", "before the games");
+    }
+
+    #[test]
+    fn a_search_ends_with_the_web_and_a_command_when_there_is_one() {
+        let mut launcher = launcher();
+        let _ = launcher.search("zzqx".into());
+        let titles: Vec<String> = launcher.entries().into_iter().map(|e| e.title).collect();
+        assert_eq!(titles, ["Search the web for “zzqx”"]);
+        let _ = launcher.search("sh -c true".into());
+        let targets: Vec<Target> = launcher.entries().into_iter().map(|e| e.target).collect();
+        assert!(targets.contains(&Target::Run("sh -c true".into())));
+        assert_eq!(targets.last(), Some(&Target::Web("sh -c true".into())));
+        let _ = launcher.search("fire".into());
+        assert!(
+            launcher
+                .entries()
+                .iter()
+                .all(|e| !matches!(e.target, Target::Web(_))),
+            "something found by name, so no fallbacks"
+        );
+    }
+
+    #[test]
+    fn files_are_walked_once_asked_for_and_let_go_on_close() {
+        let mut launcher = launcher();
+        let _ = launcher.search("fire".into());
+        assert!(!launcher.wants_files(), "no slash, no walk");
+        let _ = launcher.search("/notes".into());
+        assert!(launcher.wants_files());
+        assert!(!launcher.wants_files(), "one walk at a time");
+        let notes = crate::files::Found {
+            path: "/home/a/notes".into(),
+            dir: true,
+        };
+        launcher.set_files(vec![notes.clone()]);
+        assert_eq!(launcher.chosen(), Some(Target::Open(notes.path.clone())));
+        launcher.close();
+        launcher.set_files(vec![notes]);
+        assert!(
+            launcher.files.is_none(),
+            "a walk that ends after closing isn't kept"
+        );
+        let _ = launcher.open();
+        let _ = launcher.search("/notes".into());
+        assert!(launcher.wants_files(), "walked again next time");
+    }
+
+    #[test]
+    fn a_web_search_is_written_into_the_address() {
+        assert_eq!(
+            web_address(None, "rust & wayland?"),
+            "https://duckduckgo.com/?q=rust+%26+wayland%3F"
+        );
+    }
+
+    #[test]
+    fn arrows_wrap_around() {
+        let mut launcher = launcher();
+        let _ = launcher.search("code".into());
+        let count = launcher.entries().len();
+        assert!(count >= 2);
+        let _ = launcher.step(-1);
+        assert_eq!(launcher.selected, count - 1);
+        let _ = launcher.step(1);
+        assert_eq!(launcher.selected, 0);
+    }
+}

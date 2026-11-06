@@ -1,0 +1,38 @@
+[theme]
+name = "Paper"
+author = "Apolline"
+
+[desktop]
+wallpaper = "fog.jpg"
+accent = "palette"
+palette = "paper"
+
+[layout]
+gaps = 8
+radius = 4
+borders = true
+shadows = false
+
+[windows]
+motion = "snappy"
+appear = "fade"
+
+[bar]
+position = "bottom"
+floating = false
+opacity = 1.0
+
+[style.bar]
+radius = 0
+
+[style.launcher]
+radius = 6
+
+[style.panel]
+radius = 6
+
+[style.notifications]
+radius = 4
+
+[style.osd]
+radius = 4

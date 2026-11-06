@@ -1,0 +1,16 @@
+{"WorkspacesChanged":{"workspaces":[{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":null}]}}
+{"WindowsChanged":{"windows":[]}}
+{"KeyboardLayoutsChanged":{"keyboard_layouts":{"names":["English (US)"],"current_idx":0}}}
+{"OverviewOpenedOrClosed":{"is_open":false}}
+{"ConfigLoaded":{"failed":false}}
+{"CastsChanged":{"casts":[]}}
+{"WorkspacesChanged":{"workspaces":[{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":2},{"id":2,"idx":2,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null}]}}
+{"WindowOpenedOrChanged":{"window":{"id":2,"title":"user@host:~","app_id":"foot","pid":12109,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[696.0,858.0],"window_size":[696,858],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[0.0,0.0]},"focus_timestamp":{"secs":154225,"nanos":225046689}}}}
+{"WorkspaceActivated":{"id":2,"focused":true}}
+{"WindowFocusChanged":{"id":null}}
+{"WorkspacesChanged":{"workspaces":[{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":2},{"id":2,"idx":2,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":3},{"id":3,"idx":3,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null}]}}
+{"WindowOpenedOrChanged":{"window":{"id":3,"title":"foot","app_id":"foot","pid":12132,"workspace_id":2,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[696.0,858.0],"window_size":[696,858],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[0.0,0.0]},"focus_timestamp":{"secs":154227,"nanos":267458483}}}}
+{"WindowOpenedOrChanged":{"window":{"id":3,"title":"user@host:~","app_id":"foot","pid":12132,"workspace_id":2,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[696.0,858.0],"window_size":[696,858],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[0.0,0.0]},"focus_timestamp":{"secs":154227,"nanos":267458483}}}}
+{"WorkspaceActivated":{"id":1,"focused":true}}
+{"WindowFocusChanged":{"id":2}}
+{"WindowFocusTimestampChanged":{"id":2,"focus_timestamp":{"secs":154228,"nanos":254357382}}}

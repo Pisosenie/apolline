@@ -1,0 +1,158 @@
+use std::sync::Mutex;
+use std::time::Duration;
+
+use iced::Subscription;
+use iced::futures::channel::oneshot;
+use iced::futures::{SinkExt, Stream, StreamExt};
+use zbus::{Connection, OwnedFd, OwnedObjectPath};
+
+use crate::shell::Message;
+
+#[zbus::proxy(
+    interface = "org.freedesktop.login1.Manager",
+    default_service = "org.freedesktop.login1",
+    default_path = "/org/freedesktop/login1"
+)]
+trait Manager {
+    fn get_session_by_pid(&self, pid: u32) -> zbus::Result<OwnedObjectPath>;
+    fn get_session(&self, id: &str) -> zbus::Result<OwnedObjectPath>;
+    fn inhibit(&self, what: &str, who: &str, why: &str, mode: &str) -> zbus::Result<OwnedFd>;
+    #[zbus(signal)]
+    fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
+}
+
+#[zbus::proxy(
+    interface = "org.freedesktop.login1.Session",
+    default_service = "org.freedesktop.login1"
+)]
+trait Session {
+    #[zbus(signal)]
+    fn lock(&self) -> zbus::Result<()>;
+    #[zbus(property)]
+    fn id(&self) -> zbus::Result<String>;
+}
+
+pub async fn session_id(connection: &Connection) -> Option<String> {
+    let manager = ManagerProxy::new(connection).await.ok()?;
+    session(connection, &manager).await?.id().await.ok()
+}
+
+enum Event {
+    Lock,
+    Sleep(bool),
+}
+
+// The longest a sleep waits for the lock, under logind's own 5 s cap on a delay.
+const LOCK_WAIT: Duration = Duration::from_secs(4);
+
+static SLEEPING: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
+
+// The lock is up, or nothing will lock: the machine may sleep now.
+pub fn may_sleep() {
+    let waiting = SLEEPING
+        .lock()
+        .ok()
+        .and_then(|mut sleeping| sleeping.take());
+    if let Some(waiting) = waiting {
+        let _ = waiting.send(());
+    }
+}
+
+fn wait_for_lock() -> oneshot::Receiver<()> {
+    let (done, wait) = oneshot::channel();
+    if let Ok(mut sleeping) = SLEEPING.lock() {
+        *sleeping = Some(done);
+    }
+    wait
+}
+
+pub fn subscription() -> Subscription<Message> {
+    Subscription::run(watch)
+}
+
+fn watch() -> impl Stream<Item = Message> {
+    iced::stream::channel(4, async |mut output| {
+        let Ok(connection) = Connection::system().await else {
+            return;
+        };
+        let Ok(manager) = ManagerProxy::new(&connection).await else {
+            return;
+        };
+        let Ok(sleep) = manager.receive_prepare_for_sleep().await else {
+            return;
+        };
+        let sleep = sleep.filter_map(|signal| async move {
+            signal.args().ok().map(|args| Event::Sleep(args.start))
+        });
+        let locks = match session(&connection, &manager).await {
+            Some(session) => match session.receive_lock().await {
+                Ok(locks) => locks.map(|_| Event::Lock).boxed(),
+                Err(_) => iced::futures::stream::pending().boxed(),
+            },
+            None => iced::futures::stream::pending().boxed(),
+        };
+        let mut events = iced::futures::stream::select(sleep.boxed(), locks);
+
+        let mut delay = hold(&manager).await;
+        while let Some(event) = events.next().await {
+            let sent = match event {
+                Event::Lock => output.send(Message::LockNow).await,
+                Event::Sleep(true) => {
+                    let locked = wait_for_lock();
+                    let sent = output.send(Message::Sleeping).await;
+                    let _ = tokio::time::timeout(LOCK_WAIT, locked).await;
+                    delay = None;
+                    sent
+                }
+                Event::Sleep(false) => {
+                    delay = delay.or(hold(&manager).await);
+                    Ok(())
+                }
+            };
+            if sent.is_err() {
+                return;
+            }
+        }
+    })
+}
+
+async fn session<'a>(
+    connection: &Connection,
+    manager: &ManagerProxy<'a>,
+) -> Option<SessionProxy<'a>> {
+    let path = match manager.get_session_by_pid(std::process::id()).await {
+        Ok(path) => path,
+        Err(_) => {
+            let id = std::env::var("XDG_SESSION_ID").ok()?;
+            manager.get_session(&id).await.ok()?
+        }
+    };
+    SessionProxy::builder(connection)
+        .path(path)
+        .build()
+        .await
+        .ok()
+}
+
+async fn hold(manager: &ManagerProxy<'_>) -> Option<OwnedFd> {
+    manager
+        .inhibit("sleep", "Apolline", "Lock the screen before sleep", "delay")
+        .await
+        .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_lock_coming_up_lets_the_machine_sleep() {
+        let mut locked = wait_for_lock();
+        assert_eq!(locked.try_recv(), Ok(None));
+        may_sleep();
+        assert_eq!(locked.try_recv(), Ok(Some(())));
+        // Nobody waiting, nothing kept for the next sleep.
+        may_sleep();
+        assert!(SLEEPING.lock().unwrap().is_none());
+    }
+}

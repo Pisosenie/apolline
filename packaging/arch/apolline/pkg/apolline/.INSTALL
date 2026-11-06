@@ -1,0 +1,10 @@
+post_install() {
+  echo '==> Run `apolline setup` once as your user to add Apolline to your niri config,'
+  echo '    then log out and back in to niri.'
+  echo '==> `apolline doctor` shows what works on this machine and what to install for the rest.'
+}
+
+post_upgrade() {
+  echo '==> Restart Apolline to use the new version: log out and back in, or'
+  echo '    pkill -x apolline && niri msg action spawn -- apolline'
+}

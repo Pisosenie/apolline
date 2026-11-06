@@ -44,6 +44,7 @@ pub struct Entry {
 pub fn entries(config: &Config, mode: Option<usize>, niri_config: &str) -> Vec<Entry> {
     let mut list: Vec<Entry> = Shortcut::ALL
         .into_iter()
+        .filter(|&shortcut| !config.shortcuts.get(shortcut).is_empty())
         .map(|shortcut| Entry {
             keys: config.shortcuts.get(shortcut).to_owned(),
             what: fragment::action(shortcut).0.to_owned(),

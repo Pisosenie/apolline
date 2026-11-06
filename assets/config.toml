@@ -53,6 +53,7 @@ switch = "Mod+Shift+M"
 lock = "Super+Alt+L"
 clipboard = "Mod+Alt+V"
 keys = "Mod+Slash"         # every shortcut, searchable
+layout = ""                # next keyboard layout on any keys, like "Mod+Space"; empty leaves it to [keyboard] switch
 
 [lock]
 before_sleep = true        # lock when the laptop goes to sleep

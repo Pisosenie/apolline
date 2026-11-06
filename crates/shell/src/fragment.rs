@@ -270,12 +270,19 @@ window-rule {{
     let config = fragment.config;
     let binds: Vec<String> = Shortcut::ALL
         .into_iter()
+        .filter(|&shortcut| !config.shortcuts.get(shortcut).is_empty())
         .map(|shortcut| {
             let (title, command) = action(shortcut);
-            format!(
-                "{} hotkey-overlay-title=\"{title}\" {{ spawn \"apolline\" \"{command}\"; }}",
-                config.shortcuts.get(shortcut)
-            )
+            let combo = config.shortcuts.get(shortcut);
+            if shortcut == Shortcut::Layout {
+                format!(
+                    "{combo} allow-when-locked=true hotkey-overlay-title=\"{title}\" {{ switch-layout \"next\"; }}"
+                )
+            } else {
+                format!(
+                    "{combo} hotkey-overlay-title=\"{title}\" {{ spawn \"apolline\" \"{command}\"; }}"
+                )
+            }
         })
         .collect();
     let mut binds = binds;
@@ -475,6 +482,7 @@ pub fn action(shortcut: Shortcut) -> (&'static str, &'static str) {
         Shortcut::Keys => ("Keyboard shortcuts", "keys"),
         Shortcut::Replay => ("Save the last moments", "replay"),
         Shortcut::Terminal => ("Terminal", "terminal"),
+        Shortcut::Layout => ("Next keyboard layout", "layout"),
     }
 }
 
@@ -882,6 +890,21 @@ mod tests {
             "one animations block"
         );
         assert!(play.contains("animations {\n    off\n}"));
+    }
+
+    #[test]
+    fn the_layout_shortcut_switches_layouts_on_any_keys() {
+        let (config, _) = Config::parse("");
+        let text = render(&look(&config, None));
+        assert!(!text.contains("switch-layout"), "unbound by default");
+        let (config, problems) =
+            Config::parse("[shortcuts]\nlauncher = \"Mod+D\"\nlayout = \"Mod+Space\"\n");
+        assert!(problems.is_empty(), "{problems:?}");
+        let text = render(&look(&config, None));
+        assert!(text.contains(
+            "Mod+Space allow-when-locked=true hotkey-overlay-title=\"Next keyboard layout\" { switch-layout \"next\"; }"
+        ), "{text}");
+        assert!(text.contains("Mod+D hotkey-overlay-title=\"Search apps and games\""));
     }
 
     #[test]

@@ -747,6 +747,8 @@ pub struct Shortcuts {
     pub keys: String,
     pub replay: String,
     pub terminal: String,
+    // The next keyboard layout; empty leaves switching to [keyboard] switch.
+    pub layout: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -759,10 +761,11 @@ pub enum Shortcut {
     Keys,
     Replay,
     Terminal,
+    Layout,
 }
 
 impl Shortcut {
-    pub const ALL: [Shortcut; 8] = [
+    pub const ALL: [Shortcut; 9] = [
         Shortcut::Terminal,
         Shortcut::Keys,
         Shortcut::Launcher,
@@ -771,6 +774,7 @@ impl Shortcut {
         Shortcut::Switch,
         Shortcut::Lock,
         Shortcut::Replay,
+        Shortcut::Layout,
     ];
 
     pub fn key(self) -> &'static str {
@@ -783,6 +787,7 @@ impl Shortcut {
             Shortcut::Keys => "keys",
             Shortcut::Replay => "replay",
             Shortcut::Terminal => "terminal",
+            Shortcut::Layout => "layout",
         }
     }
 }
@@ -842,6 +847,7 @@ impl Shortcuts {
             Shortcut::Keys => &self.keys,
             Shortcut::Replay => &self.replay,
             Shortcut::Terminal => &self.terminal,
+            Shortcut::Layout => &self.layout,
         }
     }
 
@@ -855,6 +861,7 @@ impl Shortcuts {
             Shortcut::Keys => &mut self.keys,
             Shortcut::Replay => &mut self.replay,
             Shortcut::Terminal => &mut self.terminal,
+            Shortcut::Layout => &mut self.layout,
         }
     }
 }
@@ -870,6 +877,7 @@ impl Default for Shortcuts {
             keys: "Mod+Slash".into(),
             replay: "Mod+Alt+R".into(),
             terminal: "Mod+T".into(),
+            layout: String::new(),
         }
     }
 }

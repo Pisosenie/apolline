@@ -1,0 +1,33 @@
+{"WorkspacesChanged":{"workspaces":[{"id":2,"idx":2,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null},{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":6}]}}
+{"WindowsChanged":{"windows":[{"id":6,"title":"user@host:~","app_id":"foot","pid":276293,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199733,"nanos":166884330}}]}}
+{"KeyboardLayoutsChanged":{"keyboard_layouts":{"names":["English (US)"],"current_idx":0}}}
+{"OverviewOpenedOrClosed":{"is_open":false}}
+{"ConfigLoaded":{"failed":false}}
+{"CastsChanged":{"casts":[]}}
+{"WorkspaceActiveWindowChanged":{"workspace_id":1,"active_window_id":9}}
+{"WindowOpenedOrChanged":{"window":{"id":9,"title":"user@host:~","app_id":"rec-one","pid":278856,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[2,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199768,"nanos":18295260}}}}
+{"WorkspaceActiveWindowChanged":{"workspace_id":1,"active_window_id":10}}
+{"WindowOpenedOrChanged":{"window":{"id":10,"title":"foot","app_id":"rec-two","pid":278899,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[3,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199769,"nanos":521964687}}}}
+{"WindowOpenedOrChanged":{"window":{"id":10,"title":"user@host:~","app_id":"rec-two","pid":278899,"workspace_id":1,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[3,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199769,"nanos":521964687}}}}
+{"WorkspaceActiveWindowChanged":{"workspace_id":1,"active_window_id":9}}
+{"WindowFocusChanged":{"id":9}}
+{"WorkspaceActivated":{"id":2,"focused":true}}
+{"WindowFocusChanged":{"id":null}}
+{"WindowFocusTimestampChanged":{"id":9,"focus_timestamp":{"secs":199771,"nanos":16149991}}}
+{"WorkspaceActivated":{"id":1,"focused":true}}
+{"WindowFocusChanged":{"id":9}}
+{"WorkspacesChanged":{"workspaces":[{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":10},{"id":2,"idx":2,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":9},{"id":3,"idx":3,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null}]}}
+{"WindowOpenedOrChanged":{"window":{"id":9,"title":"user@host:~","app_id":"rec-one","pid":278856,"workspace_id":2,"is_focused":true,"is_floating":false,"is_urgent":false,"layout":{"pos_in_scrolling_layout":[1,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199771,"nanos":16149991}}}}
+{"WindowLayoutsChanged":{"changes":[[10,{"pos_in_scrolling_layout":[2,1],"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":null,"window_offset_in_tile":[1.0,1.0]}]]}}
+{"WindowFocusTimestampChanged":{"id":9,"focus_timestamp":{"secs":199772,"nanos":96178676}}}
+{"WorkspaceActivated":{"id":1,"focused":true}}
+{"WindowFocusChanged":{"id":10}}
+{"WindowFocusTimestampChanged":{"id":10,"focus_timestamp":{"secs":199773,"nanos":167622988}}}
+{"WindowOpenedOrChanged":{"window":{"id":10,"title":"user@host:~","app_id":"rec-two","pid":278899,"workspace_id":1,"is_focused":true,"is_floating":true,"is_urgent":false,"layout":{"pos_in_scrolling_layout":null,"tile_size":[920.0,808.0],"window_size":[918,806],"tile_pos_in_workspace_view":[310.0,92.0],"window_offset_in_tile":[1.0,1.0]},"focus_timestamp":{"secs":199773,"nanos":167622988}}}}
+{"ScreenshotCaptured":{"path":"/home/user/Pictures/Screenshots/Screenshot from 2026-10-31 00-27-35.png"}}
+{"WorkspaceActiveWindowChanged":{"workspace_id":1,"active_window_id":6}}
+{"WindowFocusChanged":{"id":6}}
+{"WindowClosed":{"id":10}}
+{"WindowFocusTimestampChanged":{"id":6,"focus_timestamp":{"secs":199776,"nanos":844662281}}}
+{"WorkspacesChanged":{"workspaces":[{"id":1,"idx":1,"name":null,"output":"winit","is_urgent":false,"is_active":true,"is_focused":true,"active_window_id":6},{"id":3,"idx":2,"name":null,"output":"winit","is_urgent":false,"is_active":false,"is_focused":false,"active_window_id":null}]}}
+{"WindowClosed":{"id":9}}

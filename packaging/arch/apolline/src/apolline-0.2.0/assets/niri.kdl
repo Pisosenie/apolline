@@ -1,0 +1,17 @@
+// Apolline for niri. `apolline setup` copies this to ~/.config/apolline/niri.kdl
+// and includes it at the end of your niri config, so it wins over niri's stock
+// defaults. Apolline rewrites the copy when you switch modes or change settings;
+// to change something for good, put it after the include line in your own config.
+
+spawn-at-startup "apolline"
+
+prefer-no-csd
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+layer-rule {
+    match namespace="^apolline-wallpaper$"
+    place-within-backdrop true
+}
