@@ -391,7 +391,11 @@ pub struct Shell {
 impl Shell {
     pub fn new(mode: Option<String>, demo: bool) -> (Self, Task<Message>) {
         let config_path = apolline_config::default_path();
-        let (config, diagnostics) = Config::load(&config_path);
+        let (config, diagnostics) = if crate::guard::safe() {
+            (Config::default(), Vec::new())
+        } else {
+            Config::load(&config_path)
+        };
 
         let mode = match mode {
             Some(name) => config.find(&name),
@@ -531,6 +535,10 @@ impl Shell {
             moving: moving::Moving::new(Instant::now()),
         };
         shell.report(&diagnostics);
+        if crate::guard::safe() {
+            let card = notify::safe_card();
+            shell.popups.push((card, Instant::now()));
+        }
         // What came in before this start is back in quick settings, and written again at the
         // first change without what got too old. Turned off, nothing is left on disk.
         if !demo && shell.config.alerts.keep {
@@ -544,7 +552,7 @@ impl Shell {
         shell.sync();
         shell.launcher.set_modes(shell.mode_names());
         shell.launcher.set_usage(shell.usage.clone());
-        let welcome = if !demo && !shell.config_path.exists() {
+        let welcome = if !demo && !crate::guard::safe() && !shell.config_path.exists() {
             shell.first_run()
         } else {
             Task::none()
@@ -559,7 +567,12 @@ impl Shell {
         (shell, load)
     }
 
+    // The niri fragment, GTK settings, app colors and templates, as the config says. Never in
+    // safe mode: its defaults written out would undo the person's own setup.
     fn sync(&mut self) {
+        if crate::guard::safe() {
+            return;
+        }
         let theme = self
             .current()
             .and_then(|m| m.theme.as_deref())
@@ -650,6 +663,9 @@ impl Shell {
     }
 
     fn reload_config(&mut self) -> Task<Message> {
+        if crate::guard::safe() {
+            return Task::none();
+        }
         let (mut config, diagnostics) = Config::load(&self.config_path);
         let key = self.current().map(ModeSettings::key);
         let icons = self.config.desktop.icons.clone();
@@ -789,6 +805,9 @@ impl Shell {
     }
 
     fn save(&mut self, change: impl FnOnce(&mut Editor)) {
+        if crate::guard::safe() {
+            return;
+        }
         let result = Editor::load(&self.config_path).and_then(|mut editor| {
             change(&mut editor);
             editor

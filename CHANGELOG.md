@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Safe mode**: a crashed shell starts again by itself, and after three crashes in a minute it starts on the defaults and the CPU without touching your files; a card starts it as usual again. Crashes go to `~/.local/state/apolline/crashes.log`.
+
 ## 0.3.0 — 2026-11-07
 
 - **Live wallpapers**: a video, a Shadertoy shader or a Wallpaper Engine scene as the wallpaper, drawn by [apolline-wall](https://github.com/Pisosenie/apolline-wall) as the shell's child. Settings → Appearance lists the scenes and videos from every Steam library, marked ▶; they pause while the screen is locked and in modes with performance on, and their last frame stands in for the accent and the lock screen. The one-line installer brings apolline-wall too.

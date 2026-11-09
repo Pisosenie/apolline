@@ -24,6 +24,8 @@ pub const BATTERY_CARD: u32 = CONFIG_CARD + 2;
 // Calendar reminders each get their own card from here on, so one doesn't push out another.
 pub const REMINDER_CARD: u32 = CONFIG_CARD + 3;
 const REMINDERS: u32 = 1000;
+// Past the reminders and the timers.
+pub const SAFE_CARD: u32 = CONFIG_CARD + 3000;
 
 pub fn is_reminder(id: u32) -> bool {
     (REMINDER_CARD..REMINDER_CARD + REMINDERS).contains(&id)
@@ -257,6 +259,27 @@ pub fn reminder_card(
         body: said.join(" · "),
         urgency: Urgency::Normal,
         timeout: Some(shown_for),
+        received: SystemTime::now(),
+        sound: Heard::Nothing,
+    }
+}
+
+// The shell kept crashing and runs safe; a click starts it again as usual. Why is in the crash log.
+pub fn safe_card() -> Notification {
+    Notification {
+        id: SAFE_CARD,
+        app: "Apolline".into(),
+        desktop: None,
+        actions: Vec::new(),
+        image: None,
+        progress: None,
+        transient: false,
+        resident: false,
+        reply: None,
+        summary: crate::i18n::t("Safe mode after crashes").into(),
+        body: crate::i18n::t("Settings untouched; click to start normally").into(),
+        urgency: Urgency::Critical,
+        timeout: None,
         received: SystemTime::now(),
         sound: Heard::Nothing,
     }
