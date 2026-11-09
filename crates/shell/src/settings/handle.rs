@@ -33,7 +33,7 @@ impl Settings {
                 self.query.clear();
                 self.spot = None;
                 self.recording = None;
-                self.recording_mode_key = false;
+                self.recording_key = false;
                 self.armed = false;
                 if page == Page::About && self.machine.is_none() {
                     return Task::perform(crate::doctor::gather(), Message::Machine);
@@ -517,7 +517,7 @@ impl Settings {
             }
             Message::KeyCommand(command) => self.key_command = command,
             Message::RecordModeKey => {
-                self.recording_mode_key = true;
+                self.recording_key = true;
                 self.recording = None;
             }
             Message::AddModeKey => {
@@ -535,6 +535,40 @@ impl Settings {
                     self.edit(|e| e.set_mode_keys(index, &keys));
                     self.key_combo = None;
                     self.key_command.clear();
+                }
+            }
+            Message::AddKey => {
+                let Some(combo) = self.key_combo.clone() else {
+                    return Task::none();
+                };
+                match typed_action(&self.key_command) {
+                    Some(action) => {
+                        let mut keys: Vec<_> = self
+                            .config
+                            .keys
+                            .iter()
+                            .filter(|(c, _)| !keys::same(c, &combo))
+                            .cloned()
+                            .collect();
+                        keys.push((combo, action));
+                        self.edit(|e| e.set_keys(&keys));
+                        self.key_combo = None;
+                        self.key_command.clear();
+                        self.shortcut_error = None;
+                    }
+                    None => {
+                        self.shortcut_error = Some(
+                            crate::i18n::t("niri: wants one of niri's actions, like close-window")
+                                .to_owned(),
+                        );
+                    }
+                }
+            }
+            Message::RemoveKey(k) => {
+                let mut keys = self.config.keys.clone();
+                if k < keys.len() {
+                    keys.remove(k);
+                    self.edit(|e| e.set_keys(&keys));
                 }
             }
             Message::RemoveModeKey(k) => {

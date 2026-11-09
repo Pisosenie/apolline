@@ -577,3 +577,35 @@ fn a_module_takes_a_name_and_a_rerun() {
     assert!(!text.contains("week") && !text.contains("every"), "{text}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn keys_of_your_own_are_added_and_taken_away() {
+    let dir = std::env::temp_dir().join(format!("apolline-keys-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let add = |settings: &mut Settings, combo: &str, typed: &str| {
+        settings.key_combo = Some(combo.into());
+        settings.key_command = typed.into();
+        let _ = settings.update(Message::AddKey);
+    };
+    add(&mut settings, "Mod+C", "niri: close-window");
+    add(&mut settings, "Mod+Q", "kitty");
+    add(&mut settings, "Mod+X", "niri: spawn \"rm\"");
+    assert!(
+        settings.shortcut_error.is_some(),
+        "not an action niri reads"
+    );
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("\"Mod+C\" = { niri = \"close-window\" }"),
+        "{text}"
+    );
+    assert!(text.contains("\"Mod+Q\" = \"kitty\""), "{text}");
+    assert_eq!(settings.config.keys.len(), 2);
+    let _ = settings.shortcuts();
+    let _ = settings.update(Message::RemoveKey(0));
+    assert_eq!(settings.config.keys.len(), 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -24,25 +24,44 @@ pub fn main(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let paths = apply::Paths::real();
     if flag == Some("--undo") {
-        return finish(apply::undo(&paths));
+        return finish(apply::undo(&apply::Paths::real()));
     }
+    let write = flag != Some("--dry-run");
+    match import(write) {
+        Ok(imported) => {
+            print!("{}", imported.report);
+            if !write {
+                println!("\nNothing written: run it without --dry-run to bring this over.");
+                return ExitCode::SUCCESS;
+            }
+            let code = finish(Ok(imported.done));
+            println!("apolline import hyprland --undo puts everything back as it was.");
+            code
+        }
+        Err(err) => finish(Err(err)),
+    }
+}
+
+// What an import found and did: the report, what was written, and how many lines came over,
+// were here already and stay behind.
+pub struct Imported {
+    pub report: String,
+    pub done: Vec<String>,
+    pub counts: [usize; 3],
+}
+
+// Reads Hyprland's config and plans what comes over; with `write`, writes it too.
+pub fn import(write: bool) -> Result<Imported, String> {
+    let paths = apply::Paths::real();
     let home = apolline_config::config_home();
     let (file, lines, stopped) = read(&home);
     if lines.is_empty() {
-        eprintln!(
-            "apolline: nothing to read at {}{}",
+        return Err(format!(
+            "nothing to read at {}{}",
             file.display(),
             stopped.map_or(String::new(), |why| format!(": {why}"))
-        );
-        return ExitCode::FAILURE;
-    }
-    if let Some(why) = stopped {
-        println!(
-            "{} stopped partway ({why}); this is what it set before that.\n",
-            file.display()
-        );
+        ));
     }
     let (config, _) = apolline_config::Config::load(&paths.config);
     let niri = std::fs::read_to_string(crate::fragment::niri_config()).unwrap_or_default();
@@ -54,15 +73,41 @@ pub fn main(args: &[String]) -> ExitCode {
         .map(|mut scratch| take_keyboard(&config, &keyboard_of(&lines), &mut scratch))
         .unwrap_or_default();
     also.extend(wallpaper.iter().map(|path| format!("the wallpaper {path}")));
-    print!("{}", report(&plan, &also));
-    if flag == Some("--dry-run") {
-        println!("\nNothing written: run it without --dry-run to bring this over.");
-        return ExitCode::SUCCESS;
+    let mut report = report(&plan, &also);
+    if let Some(why) = stopped {
+        report.insert_str(
+            0,
+            &format!(
+                "{} stopped partway ({why}); this is what it set before that.\n\n",
+                file.display()
+            ),
+        );
     }
-    let done = apply::apply(&plan, &keyboard_of(&lines), wallpaper.as_deref(), &paths);
-    let code = finish(done);
-    println!("apolline import hyprland --undo puts everything back as it was.");
-    code
+    let mut counts = [also.len(), 0, 0];
+    for note in &plan.notes {
+        counts[note.outcome.group().0] += 1;
+    }
+    let done = if write {
+        apply::apply(&plan, &keyboard_of(&lines), wallpaper.as_deref(), &paths)?
+    } else {
+        Vec::new()
+    };
+    Ok(Imported {
+        report,
+        done,
+        counts,
+    })
+}
+
+// A Hyprland config to bring over is here, and whether one was brought over already.
+pub fn found() -> (bool, bool) {
+    let home = apolline_config::config_home();
+    let config = lua::file(&home).is_file() || conf::file(&home).is_file();
+    (config, apply::Paths::real().imported())
+}
+
+pub fn undo() -> Result<Vec<String>, String> {
+    apply::undo(&apply::Paths::real())
 }
 
 fn finish(done: Result<Vec<String>, String>) -> ExitCode {

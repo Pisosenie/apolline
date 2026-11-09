@@ -27,6 +27,10 @@ impl Paths {
     fn backup(&self) -> PathBuf {
         self.config.with_file_name(BACKUP)
     }
+
+    pub fn imported(&self) -> bool {
+        self.backup().exists()
+    }
 }
 
 // Writes the plan into Apolline's config, after a copy of it as it was before the first import,

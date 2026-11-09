@@ -240,13 +240,13 @@ impl Settings {
                 self.shortcut_error = None;
             }
             Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. })
-                if self.recording_mode_key =>
+                if self.recording_key =>
             {
                 if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
-                    self.recording_mode_key = false;
+                    self.recording_key = false;
                 } else if let Some(combo) = keys::combo(&key, modifiers) {
                     self.key_combo = Some(combo);
-                    self.recording_mode_key = false;
+                    self.recording_key = false;
                 }
             }
             Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
@@ -466,6 +466,40 @@ impl Settings {
                 self.setup_log = crate::setup::run()
                     .unwrap_or_else(|err| vec![format!("could not set up: {err}")]);
                 self.reload();
+            }
+            // Run aside: a hyprland.lua can take a moment in its sandbox.
+            Message::ImportHyprland => {
+                self.save();
+                return Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| crate::hypr::import(true))
+                            .await
+                            .map_err(|err| err.to_string())
+                            .and_then(|imported| imported)
+                            .map(|imported| {
+                                let [came, here, left] = imported.counts;
+                                vec![
+                                    crate::i18n::fill(
+                                        "{came} came over, {here} were here already, {left} stay behind",
+                                        &[("came", &came), ("here", &here), ("left", &left)],
+                                    ),
+                                    crate::i18n::t("apolline import hyprland --dry-run lists each line and why")
+                                        .to_owned(),
+                                ]
+                            })
+                    },
+                    Message::Imported,
+                );
+            }
+            Message::Imported(done) => {
+                self.import_log = done.unwrap_or_else(|err| vec![err]);
+                self.reload();
+                self.hyprland = crate::hypr::found();
+            }
+            Message::UndoHyprland => {
+                self.import_log = crate::hypr::undo().unwrap_or_else(|err| vec![err]);
+                self.reload();
+                self.hyprland = crate::hypr::found();
             }
             Message::Finish => return iced::exit(),
             Message::OpenFile => {

@@ -228,7 +228,7 @@ impl Page {
                 "The language, keyboard layouts, how to switch them and how keys repeat."
             }
             Page::Pointer => "Tapping, scrolling and pointer speed.",
-            Page::Shortcuts => "Keys that open Apolline, and what they replace.",
+            Page::Shortcuts => "Keys that open Apolline, keys of your own, and what they replace.",
             Page::Plugins => {
                 "Bar pieces, tiles, widgets and searches others wrote, in any language."
             }
@@ -272,7 +272,7 @@ impl Page {
             Page::Notifications => &["notifications"],
             Page::Keyboard => &["keyboard"],
             Page::Pointer => &["touchpad", "mouse"],
-            Page::Shortcuts => &["shortcuts"],
+            Page::Shortcuts => &["shortcuts", "keys"],
             Page::Plugins => &["plugins"],
         }
     }
@@ -377,6 +377,11 @@ enum Message {
     RecordModeKey,
     AddModeKey,
     RemoveModeKey(usize),
+    AddKey,
+    RemoveKey(usize),
+    ImportHyprland,
+    Imported(Result<Vec<String>, String>),
+    UndoHyprland,
     Draft(String),
     Add,
     Remove(usize),
@@ -550,7 +555,7 @@ struct Settings {
     name_draft: Option<String>,
     key_combo: Option<String>,
     key_command: String,
-    recording_mode_key: bool,
+    recording_key: bool,
     rule: Rule,
     themes: Vec<(Look, Option<PathBuf>)>,
     // None until asked; an empty error while it's on its way.
@@ -617,6 +622,9 @@ struct Settings {
     sample: Status,
     controls: Controls,
     setup_log: Vec<String>,
+    // A Hyprland config is here to bring over, and whether it was already.
+    hyprland: (bool, bool),
+    import_log: Vec<String>,
     tested: Option<Result<(), String>>,
     greet_note: Option<Result<(), String>>,
     error: Option<String>,
@@ -656,7 +664,7 @@ impl Settings {
             name_draft: None,
             key_combo: None,
             key_command: String::new(),
-            recording_mode_key: false,
+            recording_key: false,
             rule: Rule {
                 app: String::new(),
                 floating: Some(true),
@@ -727,6 +735,8 @@ impl Settings {
             sample: Status::sample(),
             controls: Controls::sample(),
             setup_log: Vec::new(),
+            hyprland: crate::hypr::found(),
+            import_log: Vec::new(),
             tested: None,
             greet_note: None,
             error: None,
