@@ -71,6 +71,7 @@ mod privacy;
 mod profile;
 mod rail;
 mod rates;
+mod report;
 mod secrets;
 mod settings;
 mod shell;
@@ -126,6 +127,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--safe] [--preview] [--open 
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]
        apolline doctor
+       apolline report [-]
        apolline version";
 
 // glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
@@ -180,6 +182,7 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("doctor") => return doctor::main(),
+        Some("report") => return report::main(&args[1..]),
         Some("help" | "--help" | "-h") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;

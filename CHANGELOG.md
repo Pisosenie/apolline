@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Safe mode**: a crashed shell starts again by itself, and after three crashes in a minute it starts on the defaults and the CPU without touching your files; a card starts it as usual again. Crashes go to `~/.local/state/apolline/crashes.log`.
+- **`apolline report`**: one file for an issue with the versions, the GPU and screens, what doctor says, the latest crashes, the shell's log and the config, with links, the home folder and the user name taken out.
 
 ## 0.3.0 — 2026-11-07
 
