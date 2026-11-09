@@ -370,12 +370,12 @@ impl Settings {
             (Some(combo), false) => button(keycaps(combo))
                 .padding(2)
                 .style(style::ghost(8.0))
-                .on_press(Message::RecordModeKey)
+                .on_press(Message::RecordKey)
                 .into(),
             (None, false) => button(text("Choose keys").size(13))
                 .padding([7, 14])
                 .style(style::secondary)
-                .on_press(Message::RecordModeKey)
+                .on_press(Message::RecordKey)
                 .into(),
         };
         let ready = self.key_combo.is_some() && !self.key_command.trim().is_empty();

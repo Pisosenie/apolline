@@ -374,7 +374,7 @@ enum Message {
     DropTrigger(usize),
     StartHere(bool),
     KeyCommand(String),
-    RecordModeKey,
+    RecordKey,
     AddModeKey,
     RemoveModeKey(usize),
     AddKey,

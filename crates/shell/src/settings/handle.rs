@@ -516,7 +516,7 @@ impl Settings {
                 });
             }
             Message::KeyCommand(command) => self.key_command = command,
-            Message::RecordModeKey => {
+            Message::RecordKey => {
                 self.recording_key = true;
                 self.recording = None;
             }

@@ -159,7 +159,7 @@ fn clicks_end_up_in_the_file_and_comments_survive() {
     let _ = settings.update(Message::ModeName("Night Owl".into()));
     let _ = settings.update(Message::ModeNameDone);
     let _ = settings.update(Message::StartHere(true));
-    let _ = settings.update(Message::RecordModeKey);
+    let _ = settings.update(Message::RecordKey);
     let _ = settings.update(Message::Key(keyboard::Event::KeyPressed {
         key: keyboard::Key::Character("n".into()),
         modified_key: keyboard::Key::Character("n".into()),
