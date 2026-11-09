@@ -45,6 +45,8 @@ pub struct Config {
     // The terminal Mod+T opens and terminal apps run in, as a command.
     pub terminal: String,
     pub windows: Windows,
+    // Keys of yours that work in every mode.
+    pub keys: Vec<(String, KeyAction)>,
     pub rules: Vec<Rule>,
     pub displays: Vec<Display>,
     pub modules: Vec<Module>,
@@ -360,6 +362,37 @@ pub const TRANSFORMS: [&str; 8] = [
     "flipped-180",
     "flipped-270",
 ];
+
+// What a key of yours does: a command, or one of niri's own actions with its arguments, written
+// the way niri's config writes them ("focus-workspace 3", "set-column-width +10%").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyAction {
+    Run(String),
+    Niri(String),
+}
+
+impl KeyAction {
+    // An action's name and plain arguments, spaced once; None for anything else.
+    pub fn niri(text: &str) -> Option<Self> {
+        let mut words = text.split_whitespace();
+        let name = words.next()?;
+        let named = name.starts_with(|c: char| c.is_ascii_lowercase())
+            && name.chars().all(|c| c.is_ascii_lowercase() || c == '-');
+        let plain = |word: &str| {
+            word.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-%._".contains(c))
+        };
+        let args: Vec<&str> = words.collect();
+        (named && args.iter().all(|word| plain(word))).then(|| {
+            Self::Niri(
+                std::iter::once(name)
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        })
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rule {
@@ -1260,6 +1293,7 @@ impl Default for Config {
                 blur: None,
                 switcher: true,
             },
+            keys: Vec::new(),
             rules: Vec::new(),
             displays: Vec::new(),
             modules: Vec::new(),
@@ -1408,6 +1442,32 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keys_take_commands_and_niri_actions_and_say_what_is_wrong() {
+        let (config, problems) = super::Config::parse(
+            "[keys]\n\"Mod+Return\" = \"kitty\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width  +10%\" }\n\"Mod+B\" = { niri = \"spawn \\\"x\\\"\" }\n\"Hyper+?\" = \"y\"\n\"Mod+D\" = 3\n",
+        );
+        assert_eq!(
+            config.keys,
+            [
+                (
+                    "Mod+C".to_owned(),
+                    super::KeyAction::Niri("close-window".into())
+                ),
+                (
+                    "Mod+Ctrl+Right".to_owned(),
+                    super::KeyAction::Niri("set-column-width +10%".into())
+                ),
+                (
+                    "Mod+Return".to_owned(),
+                    super::KeyAction::Run("kitty".into())
+                ),
+            ]
+        );
+        let lines: Vec<usize> = problems.iter().map(|p| p.line).collect();
+        assert_eq!(lines, [5, 6, 7], "{problems:?}");
+    }
+
     #[test]
     fn desktop_widgets_name_what_there_is() {
         let (config, problems) = super::Config::parse(

@@ -1,4 +1,5 @@
 mod dock;
+mod keys;
 
 use std::ops::{Range, RangeInclusive};
 
@@ -21,7 +22,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 27] = [
+const SECTIONS: [&str; 28] = [
     "general",
     "theme",
     "desktop",
@@ -39,6 +40,7 @@ const SECTIONS: [&str; 27] = [
     "night",
     "style",
     "windows",
+    "keys",
     "rule",
     "display",
     "module",
@@ -397,6 +399,11 @@ impl Reader<'_> {
                 "windows" => {
                     if let Some(t) = self.section(key, value) {
                         self.windows(t, &mut config.windows)
+                    }
+                }
+                "keys" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.global_keys(t, &mut config.keys)
                     }
                 }
                 "rule" => self.rules(key, value, config),

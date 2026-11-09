@@ -3,7 +3,7 @@ use std::{fs, io};
 
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
-use crate::{Accent, Calendar, ModeSettings, Notifications, Rule};
+use crate::{Accent, Calendar, KeyAction, ModeSettings, Notifications, Rule};
 
 #[derive(Debug)]
 pub struct Editor {
@@ -157,6 +157,35 @@ impl Editor {
             self.unset_mode(index, "keys");
         } else {
             self.set_mode(index, "keys", keys(list));
+        }
+    }
+
+    // [keys]; none removes the section.
+    pub fn set_keys(&mut self, keys: &[(String, KeyAction)]) {
+        if keys.is_empty() {
+            self.doc.remove("keys");
+            return;
+        }
+        let section = table(self.doc.as_table_mut(), "keys");
+        // Keys still wanted keep their place and comments; the rest go.
+        let gone: Vec<String> = section
+            .iter()
+            .map(|(combo, _)| combo.to_owned())
+            .filter(|combo| !keys.iter().any(|(wanted, _)| wanted == combo))
+            .collect();
+        for combo in gone {
+            section.remove(&combo);
+        }
+        for (combo, action) in keys {
+            let value = match action {
+                KeyAction::Run(command) => Value::from(command.as_str()),
+                KeyAction::Niri(niri) => {
+                    let mut inline = InlineTable::new();
+                    inline.insert("niri", niri.as_str().into());
+                    Value::InlineTable(inline)
+                }
+            };
+            put(section, combo, value);
         }
     }
 
@@ -501,6 +530,35 @@ fn put(table: &mut Table, key: &str, mut value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_of_your_own_are_written_and_read_back() {
+        let mut editor =
+            Editor::parse("[keys]\n# mine\n\"Mod+Return\" = \"foot\"\n\"Mod+X\" = \"x\"\n")
+                .unwrap();
+        let keys = vec![
+            ("Mod+Return".to_owned(), KeyAction::Run("kitty".into())),
+            ("Mod+C".to_owned(), KeyAction::niri("close-window").unwrap()),
+        ];
+        editor.set_keys(&keys);
+        let text = editor.text();
+        assert!(
+            text.contains("# mine\n\"Mod+Return\" = \"kitty\""),
+            "{text}"
+        );
+        assert!(
+            text.contains("\"Mod+C\" = { niri = \"close-window\" }"),
+            "{text}"
+        );
+        assert!(!text.contains("Mod+X"));
+        let (config, problems) = crate::Config::parse(&text);
+        assert!(problems.is_empty(), "{problems:?}");
+        let mut sorted = keys.clone();
+        sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(config.keys, sorted);
+        editor.set_keys(&[]);
+        assert!(!editor.text().contains("keys"));
+    }
     use crate::Config;
     use apolline_theme::Rgba;
 
