@@ -1,6 +1,7 @@
 pub mod apply;
 pub mod binds;
 pub mod conf;
+pub mod lua;
 pub mod plan;
 
 use std::path::{Path, PathBuf};
@@ -28,11 +29,20 @@ pub fn main(args: &[String]) -> ExitCode {
         return finish(apply::undo(&paths));
     }
     let home = apolline_config::config_home();
-    let file = conf::file(&home);
-    let lines = conf::read(&file);
+    let (file, lines, stopped) = read(&home);
     if lines.is_empty() {
-        eprintln!("apolline: nothing to read at {}", file.display());
+        eprintln!(
+            "apolline: nothing to read at {}{}",
+            file.display(),
+            stopped.map_or(String::new(), |why| format!(": {why}"))
+        );
         return ExitCode::FAILURE;
+    }
+    if let Some(why) = stopped {
+        println!(
+            "{} stopped partway ({why}); this is what it set before that.\n",
+            file.display()
+        );
     }
     let (config, _) = apolline_config::Config::load(&paths.config);
     let niri = std::fs::read_to_string(crate::fragment::niri_config()).unwrap_or_default();
@@ -157,8 +167,21 @@ pub struct Keyboard {
     pub toggle: Option<String>,
 }
 
+// Hyprland reads hyprland.lua when there is one, else hyprland.conf. The Lua one is run in a
+// sandbox, which says why if it stopped partway.
+pub fn read(config_home: &Path) -> (PathBuf, Vec<conf::Line>, Option<String>) {
+    let lua = lua::file(config_home);
+    if lua.is_file() {
+        let (lines, stopped) = lua::read(&lua);
+        return (lua, lines, stopped);
+    }
+    let file = conf::file(config_home);
+    let lines = conf::read(&file);
+    (file, lines, None)
+}
+
 pub fn keyboard(home: &Path) -> Keyboard {
-    keyboard_of(&conf::read(&conf::file(home)))
+    keyboard_of(&read(home).1)
 }
 
 pub fn keyboard_of(lines: &[conf::Line]) -> Keyboard {
@@ -226,6 +249,66 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("hypr/conf.d")).unwrap();
         dir
+    }
+
+    // The calls Hyprland's own example hyprland.lua makes, as a whole import plan.
+    #[test]
+    fn a_lua_config_like_hyprlands_example_comes_over() {
+        let home = scratch("lua");
+        fs::write(
+            home.join("hypr/hyprland.lua"),
+            r#"
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+local terminal, fileManager, menu = "kitty", "dolphin", "hyprlauncher"
+hl.on("hyprland.start", function () hl.exec_cmd("waybar & hyprpaper & firefox") end)
+hl.env("XCURSOR_SIZE", "24")
+hl.config({ general = { gaps_in = 5, border_size = 2, layout = "dwindle" },
+            decoration = { rounding = 10, shadow = { enabled = true, color = 0xee1a1a1a } },
+            input = { kb_layout = "us", follow_mouse = 1, touchpad = { natural_scroll = false } } })
+hl.curve("easy", { type = "spring", mass = 1 })
+hl.animation({ leaf = "global", enabled = true, speed = 10, bezier = "default" })
+hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
+hl.device({ name = "epic-mouse-v1", sensitivity = -0.5 })
+local mainMod = "SUPER"
+hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd(terminal))
+local closeWindowBind = hl.bind(mainMod .. " + C", hl.dsp.window.close())
+hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd(menu))
+hl.bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))
+hl.bind(mainMod .. " + left", hl.dsp.focus({ direction = "left" }))
+for i = 1, 10 do
+    local key = i % 10
+    hl.bind(mainMod .. " + " .. key, hl.dsp.focus({ workspace = i }))
+end
+hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
+hl.bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
+hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+hl.window_rule({ name = "suppress", match = { class = ".*" }, suppress_event = "maximize" })
+hl.window_rule({ name = "run", match = { class = "hyprland-run" }, move = "20 monitor_h-120", float = true })
+"#,
+        )
+        .unwrap();
+        let (file, lines, stopped) = read(&home);
+        assert!(file.ends_with("hypr/hyprland.lua"));
+        assert_eq!(stopped, None);
+        let plan = plan::plan(&lines, &[], &Config::default(), &[]);
+        assert_eq!(
+            plan.shortcuts,
+            [(apolline_config::Shortcut::Launcher, "Mod+R".to_owned())]
+        );
+        let combos: Vec<&str> = plan.keys.iter().map(|(combo, _)| combo.as_str()).collect();
+        assert!(
+            combos.contains(&"Mod+Q") && combos.contains(&"Mod+V") && combos.contains(&"Mod+0")
+        );
+        assert!(combos.contains(&"Mod+WheelScrollDown"));
+        assert!(!combos.contains(&"Mod+J") && !combos.contains(&"Mod+S"));
+        assert_eq!(plan.autostart, ["firefox"]);
+        assert_eq!(plan.rules.len(), 1);
+        assert_eq!(plan.rules[0].app, "hyprland-run");
+        assert!(plan.displays.is_empty());
+        let report = report(&plan, &[]);
+        assert!(report.contains("hyprland.lua:"), "{report}");
+        fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

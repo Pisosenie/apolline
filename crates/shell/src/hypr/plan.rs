@@ -117,6 +117,9 @@ pub fn plan(
             "monitor" => plan.display(config, &line.value, outputs),
             "windowrule" | "windowrulev2" => plan.rule(config, &line.value),
             "exec-once" | "exec" => plan.start(&line.value),
+            "lua:skipped" => {
+                Outcome::Left("this part of the config didn't run outside Hyprland".into())
+            }
             key => match setting(key, &line.value) {
                 Some(Ok(setting)) => {
                     let said = describe(&setting);

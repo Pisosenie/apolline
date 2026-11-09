@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Coming from Hyprland**: `apolline import hyprland` brings a `hyprland.lua` or `hyprland.conf` over, binds, screens, window rules, keyboard, touchpad, looks, autostart and the wallpaper, with a note for every line and `--dry-run` and `--undo`.
+- **Keys of your own** in `[keys]`, in every mode: a command, or one of niri's actions like `{ niri = "close-window" }`.
 - A Wallpaper Engine scene's own preview keeps standing for it on the lock screen, in the switcher and in the accent once it plays: it's saved as a real PNG now, not a JPEG or GIF under a .png name.
 - `Mod+Shift+G` only gives niri's keys back and starts the shell when the shell is gone, not when it's slow, and it keeps your start mode and theme; staying still lets you save a replay and switch the keyboard layout, your own `switch-layout` keys too, and says so when niri didn't take the change.
 - The Set up button in Settings does all that `apolline setup` does: layouts from Hyprland, the fastest refresh, autostart; and both check the fragment with niri before writing it.

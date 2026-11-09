@@ -15,7 +15,8 @@ pub enum Becomes {
     Left(String),
 }
 
-const LAUNCHERS: [&str; 9] = [
+const LAUNCHERS: [&str; 10] = [
+    "hyprlauncher",
     "rofi",
     "wofi",
     "fuzzel",
@@ -137,6 +138,9 @@ pub fn bind(flags: &str, value: &str) -> Becomes {
         "submap" => left("niri has no key chords (submaps)"),
         "pin" => left("niri has no windows pinned over every workspace"),
         "pass" | "sendshortcut" | "global" => left("niri passes keys to apps by itself"),
+        other if other.starts_with("lua:") => {
+            Becomes::Left("it runs Lua, which only Hyprland can".into())
+        }
         other => Becomes::Left(format!("{other} is Hyprland's own")),
     }
 }

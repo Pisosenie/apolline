@@ -94,6 +94,7 @@ git clone https://github.com/Pisosenie/apolline-wall && (cd apolline-wall/packag
 | change the wallpaper | Settings → Appearance; anything with ▶ is live |
 | give the lock screen its own wallpaper | Settings → Lock screen → Wallpaper |
 | try a whole new look | Settings → Themes, or `apolline theme next` |
+| come over from Hyprland | `apolline import hyprland --dry-run` to see, then without `--dry-run` |
 | make a mode | Settings → Modes → a template; switch with `Mod+Shift+M` |
 | see every key | `Mod+/` |
 | take a screenshot | niri's `Print` keys, or *screenshot* in the launcher; a card offers to mark it up |
@@ -104,6 +105,16 @@ git clone https://github.com/Pisosenie/apolline-wall && (cd apolline-wall/packag
 Settings opens from quick settings, the launcher or `apolline settings`, and every change is live. The config is `~/.config/apolline/config.toml`; [`assets/config.toml`](assets/config.toml) has every option with a comment.
 
 **If something goes wrong.** `apolline doctor` says what's missing and how to install it, and `apolline check` points at a line in the config that doesn't read. The shell is a separate process from niri: if it ever quits, `Mod+Space` stops working but your windows stay, and the restart line above brings it back. The lock screen is a process of its own too, so a crash leaves the session locked; from a TTY (`Ctrl+Alt+F3`) run `apolline lock` again to get the password field back.
+
+## Coming from Hyprland
+
+```sh
+apolline import hyprland --dry-run   # what would come over, line by line
+apolline import hyprland             # bring it over
+apolline import hyprland --undo      # put everything back
+```
+
+It reads `hyprland.lua` (run in a sandbox where nothing starts or gets written) or `hyprland.conf` with the files it sources. Your binds become niri's actions in `[keys]`, and the ones for a launcher, a lock, a clipboard or notifications move Apolline's own keys there instead; screens go to `[[display]]` at the refresh they really have, apps matched by name get window rules, keyboard layouts, touchpad, gaps, corners and the accent carry over, and the programs Hyprland started go to `~/.config/autostart` for niri. What niri or Apolline already does is said so, and what has no place here (split layouts, the scratchpad, submaps, Lua callbacks) is listed with why. The config is copied to `config.toml.before-hyprland` first.
 
 ## With niri
 
