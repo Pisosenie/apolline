@@ -63,7 +63,7 @@ impl Shell {
 
     pub(super) fn rotate(&mut self) -> Task<Message> {
         let every = self.config.desktop.rotate;
-        if self.demo || every == 0 || self.wallpaper_elsewhere() {
+        if self.demo || every == 0 || self.rotation_held() {
             return Task::none();
         }
         let since = self.rotated.as_ref().map_or(self.started, |(_, at)| *at);
@@ -240,14 +240,18 @@ impl Shell {
         )
     }
 
-    // Another program draws the wallpaper under the shell's clock and widgets: one the user
-    // runs, or apolline-wall for a live one.
-    pub fn wallpaper_elsewhere(&self) -> bool {
-        self.wallpaper_name(None) == apolline_config::NO_WALLPAPER
-            || self
-                .screens()
-                .iter()
-                .any(|output| self.live_source(output.as_deref()).is_some())
+    // Another program draws this screen's wallpaper under the shell's clock and widgets: one the
+    // user runs, or apolline-wall for a live one.
+    pub fn wallpaper_elsewhere_on(&self, output: Option<&str>) -> bool {
+        self.wallpaper_name(output) == apolline_config::NO_WALLPAPER
+            || self.live_source(output).is_some()
+    }
+
+    // Rotation changes the wallpaper of every screen without one of its own, and leaves it alone
+    // while that one is drawn by another program.
+    fn rotation_held(&self) -> bool {
+        let shared = self.wallpaper_name(None);
+        shared == apolline_config::NO_WALLPAPER || crate::live::source(shared).is_some()
     }
 
     pub(super) fn wallpaper_picture(&self, output: Option<&str>) -> Element<'_, Message> {
@@ -468,7 +472,9 @@ mod tests {
             ]
         );
         assert!(first[2].contains("uniforms"), "{first:?}");
-        assert!(shell.wallpaper_elsewhere());
+        assert!(shell.wallpaper_elsewhere_on(Some("DP-1")));
+        assert!(!shell.wallpaper_elsewhere_on(Some("HDMI-A-1")));
+        assert!(shell.rotation_held());
 
         shell.fit_live();
         assert!(said(&mut heard).is_empty(), "nothing changed, nothing said");
@@ -488,7 +494,8 @@ mod tests {
             shell.live.is_none(),
             "no live wallpaper left, so the child goes"
         );
-        assert!(!shell.wallpaper_elsewhere());
+        assert!(!shell.wallpaper_elsewhere_on(Some("DP-1")));
+        assert!(!shell.rotation_held());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -183,9 +183,12 @@ pub fn listen() -> Subscription<Message> {
 const LONGEST: u64 = 4096;
 const PATIENCE: Duration = Duration::from_secs(2);
 
+// What send says when no shell listens, as against one that's busy or said no.
+pub const NOT_RUNNING: &str = "not running";
+
 pub fn send(line: &str) -> Result<(), String> {
     let path = socket();
-    let mut stream = StdStream::connect(&path).map_err(|_| "not running".to_owned())?;
+    let mut stream = StdStream::connect(&path).map_err(|_| NOT_RUNNING.to_owned())?;
     // A shell that's stuck shouldn't hang whoever asked, the lock screen least of all.
     let wait = Some(PATIENCE * 2);
     stream

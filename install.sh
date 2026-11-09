@@ -41,17 +41,30 @@ build() {
   (cd "$1" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -si --needed --noconfirm "${@:2}")
 }
 
+# The release and the git package conflict, and makepkg can't answer that question itself. The new
+# one is built first and the old one goes only then, so a failed build leaves a working desktop.
+swap() {
+  local dir=$1 old=$2
+  if ! pacman -Q "$old" &>/dev/null; then
+    build "$dir"
+    return
+  fi
+  say "Building $(basename "$dir") to replace $old"
+  (cd "$dir" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -sf --noconfirm)
+  local built
+  mapfile -t built < <(cd "$dir" && makepkg --packagelist)
+  sudo pacman -Rdd --noconfirm "$old"
+  sudo pacman -U --noconfirm "${built[@]}"
+}
+
 fetch vif
 build "$work/vif/packaging/arch/vif-bin"
 
 fetch apolline
 if [[ $from == git ]]; then
-  # The release and the git package conflict; makepkg can't answer that question itself.
-  pacman -Q apolline &>/dev/null && ! pacman -Q apolline-git &>/dev/null && sudo pacman -Rdd --noconfirm apolline
-  build "$work/apolline/packaging/arch/apolline-git"
+  swap "$work/apolline/packaging/arch/apolline-git" apolline
 else
-  pacman -Q apolline-git &>/dev/null && sudo pacman -Rdd --noconfirm apolline-git
-  build "$work/apolline/packaging/arch/apolline"
+  swap "$work/apolline/packaging/arch/apolline" apolline-git
 fi
 build "$work/apolline/packaging/arch/apolline-desktop"
 
@@ -61,7 +74,17 @@ if [[ $live != no ]]; then
 fi
 
 say "Services"
-sudo systemctl enable NetworkManager.service bluetooth.service
+# Quick settings talk to NetworkManager, but a network someone already set up is left alone.
+other=""
+for manager in iwd systemd-networkd connman; do
+  systemctl is-enabled -q "$manager.service" 2>/dev/null && other=$manager
+done
+if systemctl is-enabled -q NetworkManager.service 2>/dev/null || [[ -z $other ]]; then
+  sudo systemctl enable NetworkManager.service
+else
+  say "Your network stays with $other; Wi-Fi in quick settings needs NetworkManager"
+fi
+sudo systemctl enable bluetooth.service
 systemctl --user enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
 
 if [[ $greeter != keep ]]; then
@@ -71,8 +94,11 @@ if [[ $greeter != keep ]]; then
     sudo systemctl disable "$(basename "$current")"
   fi
   if [[ -f /etc/greetd/config.toml ]] && ! cmp -s /usr/share/apolline/greetd.toml /etc/greetd/config.toml; then
-    say "Keeping your greetd config as /etc/greetd/config.toml.before-apolline"
-    sudo cp /etc/greetd/config.toml /etc/greetd/config.toml.before-apolline
+    # An earlier copy is never written over: it may be the only one of the first config.
+    kept=/etc/greetd/config.toml.before-apolline
+    [[ -e $kept ]] && kept=$kept-$(date +%Y%m%d-%H%M%S)
+    say "Keeping your greetd config as $kept"
+    sudo cp /etc/greetd/config.toml "$kept"
   fi
   sudo install -Dm644 /usr/share/apolline/greetd.toml /etc/greetd/config.toml
   sudo systemctl enable greetd.service
@@ -80,7 +106,10 @@ fi
 
 say "Your folders and default apps"
 xdg-user-dirs-update
-xdg-mime default com.system76.CosmicFiles.desktop inode/directory
+# Only where nothing opens folders yet.
+if [[ -z $(xdg-mime query default inode/directory 2>/dev/null) ]]; then
+  xdg-mime default com.system76.CosmicFiles.desktop inode/directory
+fi
 
 say "Apolline in your niri config"
 apolline setup

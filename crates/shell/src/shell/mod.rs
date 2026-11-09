@@ -559,15 +559,12 @@ impl Shell {
         (shell, load)
     }
 
-    fn sync(&mut self) {
-        let theme = self
-            .current()
-            .and_then(|m| m.theme.as_deref())
-            .or(self.config.desktop.theme.as_deref())
-            .and_then(crate::themes::niri_part);
-        fragment::sync(&self.look(), theme.as_deref());
+    // Returns whether niri took the fragment.
+    fn sync(&mut self) -> bool {
+        let theme = crate::themes::niri_part_of(&self.config, self.mode);
+        let landed = fragment::sync(&self.look(), theme.as_deref());
         if self.demo {
-            return;
+            return landed;
         }
         let desktop = &self.config.desktop;
         let font = desktop.font.as_ref().map(|family| format!("{family} 11"));
@@ -625,6 +622,7 @@ impl Shell {
             }
             self.templated = Some(wanted);
         }
+        landed
     }
 
     fn first_run(&mut self) -> Task<Message> {

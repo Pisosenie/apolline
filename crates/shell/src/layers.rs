@@ -63,14 +63,14 @@ struct Screen {
     wallpaper: window::Id,
     // None on a screen [bar] screens leaves out.
     bar: Option<window::Id>,
+    // Its wallpaper is drawn by another program, so this one sits a layer up and lets clicks by.
+    elsewhere: bool,
 }
 
 struct Layers {
     shell: Shell,
     screens: BTreeMap<Output, Screen>,
     look: (Edge, bool, u16, bool),
-    // Whether another program draws the wallpaper, which puts the shell's desktop a layer up.
-    elsewhere: bool,
     // Bars out on their screens, and the ones the pointer is over with when it last left.
     out: BTreeMap<window::Id, bool>,
     over: BTreeMap<window::Id, Option<u64>>,
@@ -98,7 +98,6 @@ impl Layers {
             shell,
             screens: BTreeMap::new(),
             look: (Edge::Top, true, 100, false),
-            elsewhere: false,
             out: BTreeMap::new(),
             over: BTreeMap::new(),
             leavings: 0,
@@ -422,15 +421,28 @@ impl Layers {
             .map(|(output, screen)| (output.clone(), screen.bar.is_some()))
             .collect();
         let look = self.shell.bar_look();
-        let elsewhere = self.shell.wallpaper_elsewhere();
         let mut tasks = Vec::new();
-        if look != self.look || elsewhere != self.elsewhere {
+        if look != self.look {
             self.look = look;
-            self.elsewhere = elsewhere;
             for (_, screen) in std::mem::take(&mut self.screens) {
                 tasks.extend(close_screen(screen));
             }
             have.clear();
+        }
+        // A screen whose wallpaper moved to another program or back opens again on its layer.
+        let moved: Vec<Output> = self
+            .screens
+            .iter()
+            .filter(|(output, screen)| {
+                screen.elsewhere != self.shell.wallpaper_elsewhere_on(output.as_deref())
+            })
+            .map(|(output, _)| output.clone())
+            .collect();
+        for output in moved {
+            if let Some(screen) = self.screens.remove(&output) {
+                tasks.extend(close_screen(screen));
+            }
+            have.retain(|(had, _)| *had != output);
         }
         let (added, removed) = diff(&have, &wanted);
 
@@ -440,6 +452,7 @@ impl Layers {
             }
         }
         for (output, with_bar) in added {
+            let elsewhere = self.shell.wallpaper_elsewhere_on(output.as_deref());
             let (screen, open_screen) = open_screen(&output, look, with_bar, elsewhere);
             if elsewhere {
                 tasks.extend(pass_through(screen.wallpaper));
@@ -749,6 +762,7 @@ fn open_screen(
         let screen = Screen {
             wallpaper,
             bar: None,
+            elsewhere,
         };
         return (screen, open_wallpaper);
     }
@@ -772,6 +786,7 @@ fn open_screen(
         Screen {
             wallpaper,
             bar: Some(bar),
+            elsewhere,
         },
         Task::batch([open_wallpaper, open_bar]),
     )

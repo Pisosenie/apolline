@@ -68,6 +68,14 @@ fn read(file: &Path) -> Option<Theme> {
 }
 
 // The looks a theme folder hands niri, from its own niri.kdl.
+// The niri part of the theme the mode wears, else the desktop's.
+pub fn niri_part_of(config: &apolline_config::Config, mode: Option<usize>) -> Option<String> {
+    mode.and_then(|i| config.modes.get(i))
+        .and_then(|m| m.theme.as_deref())
+        .or(config.desktop.theme.as_deref())
+        .and_then(niri_part)
+}
+
 pub fn niri_part(name: &str) -> Option<String> {
     let wanted = slug(name);
     let (_, file) = all()

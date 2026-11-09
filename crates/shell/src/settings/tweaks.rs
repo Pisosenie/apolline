@@ -459,21 +459,13 @@ impl Settings {
                 })
                 .discard();
             }
+            // Setup writes the config too (layouts, refresh rates): what's staged goes first, and
+            // what it wrote is read back.
             Message::Setup => {
-                let look = Fragment {
-                    config: &self.config,
-                    mode: self.config.start(),
-                    outputs: &[],
-                    stay: false,
-                };
-                self.setup_log =
-                    match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
-                        Ok(done) => done
-                            .into_iter()
-                            .chain(crate::terminal::set_up(&apolline_config::config_home()))
-                            .collect(),
-                        Err(err) => vec![format!("could not set up: {err}")],
-                    };
+                self.save();
+                self.setup_log = crate::setup::run()
+                    .unwrap_or_else(|err| vec![format!("could not set up: {err}")]);
+                self.reload();
             }
             Message::Finish => return iced::exit(),
             Message::OpenFile => {

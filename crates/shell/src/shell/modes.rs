@@ -139,7 +139,8 @@ impl Shell {
             .as_ref()
             .and_then(|state| state.recent().into_iter().find(|w| w.is_focused))
             .map(|w| (w.id, w.title.clone().unwrap_or_default()));
-        let note = match (self.staying.take(), front) {
+        let was = self.staying.take();
+        let note = match (was, front) {
             (Some(_), _) => crate::i18n::t("Workspaces and windows are yours again").to_owned(),
             (None, Some((id, title))) => {
                 self.staying = Some(id);
@@ -150,7 +151,11 @@ impl Shell {
             }
             (None, None) => crate::i18n::t("No window to stay in").to_owned(),
         };
-        self.sync();
+        if !self.sync() {
+            self.staying = was;
+            let refused = crate::i18n::t("niri didn't take the change; nothing moved");
+            return self.show(Osd::Note(refused.to_owned()));
+        }
         self.show(Osd::Note(note))
     }
 

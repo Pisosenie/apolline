@@ -36,17 +36,24 @@ pub struct Fragment<'a> {
 // Keys niri answers without a bind of anyone's: its window switcher.
 const BUILT_IN: [&str; 4] = ["Alt+Tab", "Alt+Shift+Tab", "Alt+grave", "Alt+Shift+grave"];
 
-// Every key that would take you out of the window in front, from your niri config, Apolline's
-// own and the mode's. What stays: the key that ends it, sound and brightness keys, screenshots.
+// Apolline's keys that still work while staying: they act in place and leave nothing.
+const KEPT_WHILE_STAYING: [Shortcut; 2] = [Shortcut::Replay, Shortcut::Layout];
+
+// Every key that would take you out of the window in front: Apolline's own, the mode's and the
+// one-line binds in niri's main config (included files aren't read). What stays: the key that ends
+// it, sound and brightness keys, screenshots, saving a replay and switching the layout.
 pub fn held(niri_config: &str, config: &Config, mode_keys: &[String]) -> Vec<String> {
     let stay = config.shortcuts.get(Shortcut::Stay);
     let mut held: Vec<String> = Vec::new();
     let own = Shortcut::ALL
         .into_iter()
+        .filter(|shortcut| !KEPT_WHILE_STAYING.contains(shortcut))
         .map(|shortcut| config.shortcuts.get(shortcut).to_owned());
     let theirs = crate::keys::binds(niri_config)
         .into_iter()
-        .filter(|(_, action)| !action.contains("screenshot"))
+        .filter(|(_, action)| {
+            !action.contains("screenshot") && !action.starts_with("switch-layout")
+        })
         .map(|(combo, _)| combo);
     let built_in = BUILT_IN.iter().map(|combo| (*combo).to_owned());
     for combo in own
@@ -62,6 +69,16 @@ pub fn held(niri_config: &str, config: &Config, mode_keys: &[String]) -> Vec<Str
         }
     }
     held
+}
+
+fn shortcut_bind(config: &Config, shortcut: Shortcut) -> String {
+    let (title, command) = action(shortcut);
+    let combo = config.shortcuts.get(shortcut);
+    if shortcut == Shortcut::Layout {
+        format!("{combo} hotkey-overlay-title=\"{title}\" {{ switch-layout \"next\"; }}")
+    } else {
+        format!("{combo} hotkey-overlay-title=\"{title}\" {{ spawn \"apolline\" \"{command}\"; }}")
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -327,6 +344,12 @@ window-rule {{
             )
         }));
         binds.extend(
+            KEPT_WHILE_STAYING
+                .into_iter()
+                .filter(|&shortcut| !config.shortcuts.get(shortcut).is_empty())
+                .map(|shortcut| shortcut_bind(config, shortcut)),
+        );
+        binds.extend(
             held(&niri, config, &mode_keys)
                 .into_iter()
                 .map(|combo| format!("{combo} hotkey-overlay-title=null {{ spawn \"true\"; }}")),
@@ -337,19 +360,7 @@ window-rule {{
     let binds: Vec<String> = Shortcut::ALL
         .into_iter()
         .filter(|&shortcut| !config.shortcuts.get(shortcut).is_empty())
-        .map(|shortcut| {
-            let (title, command) = action(shortcut);
-            let combo = config.shortcuts.get(shortcut);
-            if shortcut == Shortcut::Layout {
-                format!(
-                    "{combo} hotkey-overlay-title=\"{title}\" {{ switch-layout \"next\"; }}"
-                )
-            } else {
-                format!(
-                    "{combo} hotkey-overlay-title=\"{title}\" {{ spawn \"apolline\" \"{command}\"; }}"
-                )
-            }
-        })
+        .map(|shortcut| shortcut_bind(config, shortcut))
         .collect();
     let mut binds = binds;
     binds.extend(MEDIA_KEYS.iter().map(|(key, words)| {
@@ -742,24 +753,29 @@ fn block(name: &str, lines: &[String]) -> String {
     format!("{name} {{\n{body}}}\n")
 }
 
-pub fn sync(fragment: &Fragment, theme: Option<&str>) {
+// True when the fragment on disk is the one asked for, written now or already there.
+pub fn sync(fragment: &Fragment, theme: Option<&str>) -> bool {
     let path = path();
     let mut text = render(fragment);
     if settle_theme(theme) {
         text.push_str("\ninclude \"theme.kdl\"\n");
     }
     if fs::read_to_string(&path).is_ok_and(|current| current == text) {
-        return;
+        return true;
     }
     if let Some(refusal) = refused(&path, &text) {
         eprintln!(
             "apolline: niri refuses the new {}, so the old one stays:\n{refusal}",
             path.display()
         );
-        return;
+        return false;
     }
-    if let Err(err) = replace(&path, &text) {
-        eprintln!("apolline: cannot update {}: {err}", path.display());
+    match replace(&path, &text) {
+        Ok(()) => true,
+        Err(err) => {
+            eprintln!("apolline: cannot update {}: {err}", path.display());
+            false
+        }
     }
 }
 
@@ -803,7 +819,14 @@ pub fn setup(path: &Path, niri: &Path, fragment: &Fragment) -> io::Result<Vec<St
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    replace(path, &render(fragment))?;
+    let text = render(fragment);
+    if let Some(refusal) = refused(path, &text) {
+        return Err(io::Error::other(format!(
+            "niri refuses the fragment for {}:\n{refusal}",
+            path.display()
+        )));
+    }
+    replace(path, &text)?;
     done.push(format!("wrote {}", path.display()));
 
     let (mut next, quieted) = quiet_other_bars(&current);
@@ -891,7 +914,7 @@ mod tests {
     #[test]
     fn staying_holds_every_key_that_leaves_the_window_but_its_own_and_the_sound() {
         let config = Config::default();
-        let niri = "binds {\n    Mod+1 { focus-workspace 1; }\n    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }\n    Mod+Shift+S { screenshot; }\n    XF86AudioMute { spawn \"wpctl\"; }\n    Mod+Shift+G { spawn \"x\"; }\n}\n";
+        let niri = "binds {\n    Mod+1 { focus-workspace 1; }\n    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }\n    Mod+Shift+S { screenshot; }\n    XF86AudioMute { spawn \"wpctl\"; }\n    Mod+Shift+G { spawn \"x\"; }\n    Mod+Shift+Space { switch-layout \"next\"; }\n}\n";
         let held = held(niri, &config, &["Mod+F".to_owned()]);
         for combo in [
             "Mod+1",
@@ -905,7 +928,13 @@ mod tests {
                 "{combo} not held: {held:?}"
             );
         }
-        for combo in ["Mod+Shift+S", "XF86AudioMute", "Mod+Shift+G"] {
+        for combo in [
+            "Mod+Shift+S",
+            "XF86AudioMute",
+            "Mod+Shift+G",
+            "Mod+Shift+Space",
+            "Mod+Alt+R",
+        ] {
             assert!(!held.iter().any(|h| h == combo), "{combo} held: {held:?}");
         }
         let text = render(&Fragment {
@@ -914,6 +943,10 @@ mod tests {
             outputs: &[],
             stay: true,
         });
+        assert!(text.contains(&format!(
+            "{} hotkey-overlay-title=\"Save the last moments\"",
+            config.shortcuts.get(Shortcut::Replay)
+        )));
         assert!(text.contains("Mod+Shift+G hotkey-overlay-title=\"Let go of this window\""));
         assert!(text.contains("hot-corners {\n        off"));
         assert_eq!(text.matches("binds {").count(), 1);
@@ -1052,9 +1085,13 @@ mod tests {
         fs::create_dir_all(&dir).expect("a temp dir");
         for (i, source) in configs.iter().enumerate() {
             let (config, _) = Config::parse(source);
-            for mode in [None, Some(0)] {
+            for (mode, stay) in [(None, false), (Some(0), false), (None, true)] {
                 let path = dir.join(format!("{i}.kdl"));
-                fs::write(&path, render(&look(&config, mode))).expect("written");
+                let fragment = Fragment {
+                    stay,
+                    ..look(&config, mode)
+                };
+                fs::write(&path, render(&fragment)).expect("written");
                 let out = std::process::Command::new("niri")
                     .args(["validate", "-c"])
                     .arg(&path)

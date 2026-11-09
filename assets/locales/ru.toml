@@ -855,6 +855,7 @@
 "Workspaces and windows are yours again" = "Рабочие столы и окна снова переключаются"
 "Staying in {title}; {key} lets go" = "Остаёмся в {title}; {key} отпускает"
 "No window to stay in" = "Нет окна, в котором остаться"
+"niri didn't take the change; nothing moved" = "niri не принял изменение; ничего не поменялось"
 "Saved the last {n} seconds to Videos/Replays" = ["Сохранена последняя {n} секунда в Видео/Replays", "Сохранены последние {n} секунды в Видео/Replays", "Сохранены последние {n} секунд в Видео/Replays"]
 "gpu-screen-recorder stopped; switch the mode again" = "gpu-screen-recorder остановился; переключите режим ещё раз"
 "Nothing is kept: turn on “Keep the last moments” in a mode" = "Ничего не хранится: включите «Хранить последние мгновения» в режиме"

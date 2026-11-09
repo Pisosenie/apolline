@@ -53,7 +53,7 @@ use crate::apps::{self, App};
 use crate::board;
 use crate::controls::Controls;
 use crate::events::{self, Heard};
-use crate::fragment::{self, Fragment};
+use crate::fragment;
 use crate::icon::{Icon, MODE_ICONS, icon};
 use crate::status::Status;
 use crate::{bar, caldav, fonts, keys, notify, secrets, shot, style, themes, wallpaper};

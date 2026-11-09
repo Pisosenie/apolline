@@ -188,6 +188,9 @@ struct Lock {
     answer: Option<Sender<Zeroizing<String>>>,
     note: Option<String>,
     wallpaper: Option<image::Handle>,
+    // What to show next if a picture won't load, a live one without its frame yet say: the
+    // desktop's, then Apolline's own.
+    fallbacks: Vec<String>,
     battery: Option<Battery>,
     track: Option<Track>,
     niri: apolline_niri::State,
@@ -220,7 +223,7 @@ impl Lock {
             .and_then(|key| config.find(&key))
             .or_else(|| config.start());
         let sample = preview && !niri::connected();
-        let lock = Self {
+        let mut lock = Self {
             mode,
             user: if sample {
                 User {
@@ -237,6 +240,7 @@ impl Lock {
             answer: None,
             note: None,
             wallpaper: None,
+            fallbacks: Vec::new(),
             battery: sample.then_some(Battery {
                 percent: 82,
                 charging: false,
@@ -265,22 +269,29 @@ impl Lock {
             up: false,
             config,
         };
-        let name = match lock.config.lock_wallpaper(mode) {
-            // Drawn by another program the lock can't show; its own picture instead.
-            apolline_config::NO_WALLPAPER => apolline_config::Config::default().desktop.wallpaper,
+        let own = apolline_config::Config::default().desktop.wallpaper;
+        // Drawn by another program the lock can't show; its own picture instead.
+        let shown = |name: &str| match name {
+            apolline_config::NO_WALLPAPER => own.clone(),
             name => name.to_owned(),
         };
-        let load = if lock.config.lock.blur {
-            Task::perform(wallpaper::load_blurred(name), Message::Wallpaper)
-        } else {
-            Task::perform(wallpaper::load(name), Message::Wallpaper)
-        };
+        let name = shown(lock.config.lock_wallpaper(mode));
+        lock.fallbacks = fallbacks(&name, &shown(lock.config.wallpaper(mode)), &own);
+        let load = lock.load_wallpaper(name);
         let network = if sample { Task::none() } else { read_network() };
         (lock, Task::batch([load, network, focus(FIELD)]))
     }
 
     fn palette(&self) -> Palette {
         self.config.palette(self.mode)
+    }
+
+    fn load_wallpaper(&self, name: String) -> Task<Message> {
+        if self.config.lock.blur {
+            Task::perform(wallpaper::load_blurred(name), Message::Wallpaper)
+        } else {
+            Task::perform(wallpaper::load(name), Message::Wallpaper)
+        }
     }
 
     // Typing clears a refusal but keeps a question PAM is waiting on.
@@ -389,7 +400,12 @@ impl Lock {
                 return focus(FIELD);
             }
             Message::Wallpaper(Ok(handle)) => self.wallpaper = Some(handle),
-            Message::Wallpaper(Err(err)) => eprintln!("apolline: wallpaper: {err}"),
+            Message::Wallpaper(Err(err)) => {
+                eprintln!("apolline: wallpaper: {err}");
+                if let Some(next) = self.fallbacks.pop() {
+                    return self.load_wallpaper(next);
+                }
+            }
             Message::Battery(battery) => self.battery = battery,
             Message::Media(track) => self.track = track,
             Message::Player(action) => {
@@ -921,9 +937,32 @@ fn account(passwd: &str, uid: u32) -> Option<(String, Option<String>)> {
     })
 }
 
+// Taken from the end: the desktop's picture, then Apolline's own, each only if it's another one.
+fn fallbacks(shown: &str, desktop: &str, own: &str) -> Vec<String> {
+    let mut next: Vec<String> = Vec::new();
+    for name in [desktop, own] {
+        if name != shown && !next.iter().any(|n| n == name) {
+            next.push(name.to_owned());
+        }
+    }
+    next.reverse();
+    next
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_that_wont_load_gives_way_to_the_desktops_then_apollines() {
+        assert_eq!(
+            fallbacks("clip.mp4", "dunes.jpg", "fog.jpg"),
+            ["fog.jpg", "dunes.jpg"]
+        );
+        assert_eq!(fallbacks("dunes.jpg", "dunes.jpg", "fog.jpg"), ["fog.jpg"]);
+        assert_eq!(fallbacks("clip.mp4", "fog.jpg", "fog.jpg"), ["fog.jpg"]);
+        assert!(fallbacks("fog.jpg", "fog.jpg", "fog.jpg").is_empty());
+    }
 
     #[test]
     fn the_account_comes_from_passwd() {

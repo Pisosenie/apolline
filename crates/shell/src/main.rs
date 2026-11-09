@@ -71,6 +71,7 @@ mod rail;
 mod rates;
 mod secrets;
 mod settings;
+mod setup;
 mod shell;
 mod shot;
 mod sound;
@@ -103,7 +104,7 @@ mod layers {
     }
 }
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
@@ -334,18 +335,19 @@ fn command(line: &str) -> ExitCode {
     match control::Command::parse(line).and_then(|_| control::send(line)) {
         Ok(()) => ExitCode::SUCCESS,
         // The shell that held the keys is gone: give them back here and start it again,
-        // or the window in front would keep every key.
-        Err(err) if line.trim() == "stay" => {
-            eprintln!("apolline: {err}; giving niri's keys back");
+        // or the window in front would keep every key. A shell that's only slow keeps them.
+        Err(err) if line.trim() == "stay" && err == control::NOT_RUNNING => {
+            eprintln!("apolline: the shell is {err}; giving niri's keys back");
             let (config, _) = Config::load(&apolline_config::default_path());
+            let mode = config.start();
             fragment::sync(
                 &fragment::Fragment {
                     config: &config,
-                    mode: None,
+                    mode,
                     outputs: &[],
                     stay: false,
                 },
-                None,
+                themes::niri_part_of(&config, mode).as_deref(),
             );
             let _ = std::process::Command::new("apolline").spawn();
             ExitCode::SUCCESS
@@ -468,40 +470,9 @@ fn lock_screen(args: &[String]) -> ExitCode {
 }
 
 fn setup() -> ExitCode {
-    let path = apolline_config::default_path();
-    let (config, _) = Config::load(&path);
-    let found = hypr::keyboard(&apolline_config::config_home());
-    if let Ok(mut editor) = apolline_config::Editor::load(&path) {
-        let mut took = hypr::take_keyboard(&config, &found, &mut editor);
-        for (name, mode) in arrange::fastest_modes(&niri::outputs(), &config.displays) {
-            editor.set_display(&name, "mode", mode.as_str());
-            took.push(format!("{name} runs at {mode}, its fastest"));
-        }
-        if !took.is_empty() {
-            match editor.save(&path) {
-                Ok(()) => took.iter().for_each(|line| println!("{line}")),
-                Err(err) => eprintln!("apolline: cannot write {}: {err}", path.display()),
-            }
-        }
-    }
-    let (config, _) = Config::load(&path);
-    let look = fragment::Fragment {
-        config: &config,
-        mode: config.start(),
-        outputs: &[],
-        stay: false,
-    };
-    match fragment::setup(&fragment::path(), &fragment::niri_config(), &look) {
+    match setup::run() {
         Ok(done) => {
             done.iter().for_each(|line| println!("{line}"));
-            let home = apolline_config::config_home();
-            let system = Path::new("/etc/xdg/autostart");
-            for line in terminal::set_up(&home)
-                .into_iter()
-                .chain(autostart::set_up(&home, system))
-            {
-                println!("{line}");
-            }
             ExitCode::SUCCESS
         }
         Err(err) => {

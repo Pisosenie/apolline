@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A Wallpaper Engine scene's own preview keeps standing for it on the lock screen, in the switcher and in the accent once it plays: it's saved as a real PNG now, not a JPEG or GIF under a .png name.
+- `Mod+Shift+G` only gives niri's keys back and starts the shell when the shell is gone, not when it's slow, and it keeps your start mode and theme; staying still lets you save a replay and switch the keyboard layout, your own `switch-layout` keys too, and says so when niri didn't take the change.
+- The Set up button in Settings does all that `apolline setup` does: layouts from Hyprland, the fastest refresh, autostart; and both check the fragment with niri before writing it.
+- A lock screen picture that won't load, a video without its frame yet say, gives way to the desktop's, then Apolline's own.
+- A live wallpaper on one screen no longer stops the others from changing their pictures or puts their desktop a layer up.
+- The installer builds the new package before it removes the old one, leaves a file manager you chose and a network set up with iwd or systemd-networkd alone, and never writes over an earlier copy of your greetd config.
+
 ## 0.3.0 — 2026-11-07
 
 - **Live wallpapers**: a video, a Shadertoy shader or a Wallpaper Engine scene as the wallpaper, drawn by [apolline-wall](https://github.com/Pisosenie/apolline-wall) as the shell's child. Settings → Appearance lists the scenes and videos from every Steam library, marked ▶; they pause while the screen is locked and in modes with performance on, and their last frame stands in for the accent and the lock screen. The one-line installer brings apolline-wall too.

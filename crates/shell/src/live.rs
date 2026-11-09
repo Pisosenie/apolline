@@ -170,10 +170,27 @@ pub fn keep_poster(name: &str, from: &Path) -> bool {
     let Some(to) = poster(name) else {
         return false;
     };
-    to.parent()
+    let kept = to
+        .parent()
         .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::copy(from, &to))
-        .is_ok()
+        .map_err(|err| err.to_string())
+        .and_then(|()| save_png(from, &to));
+    if let Err(err) = &kept {
+        eprintln!("apolline: live wallpaper poster: {err}");
+    }
+    kept.is_ok()
+}
+
+// A scene's poster is its project's own preview, often a JPEG or a GIF, and pictures are opened by
+// their extension: what isn't a PNG already becomes one.
+fn save_png(from: &Path, to: &Path) -> Result<(), String> {
+    let bytes = std::fs::read(from).map_err(|err| format!("{}: {err}", from.display()))?;
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return std::fs::write(to, bytes).map_err(|err| err.to_string());
+    }
+    image::load_from_memory(&bytes)
+        .and_then(|picture| picture.save_with_format(to, image::ImageFormat::Png))
+        .map_err(|err| format!("{}: {err}", from.display()))
 }
 
 pub fn show(output: Option<&str>, source: &Path) -> String {
@@ -288,6 +305,28 @@ fn run() -> impl Stream<Item = Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_jpeg_poster_is_kept_as_a_png_that_opens() {
+        let dir = std::env::temp_dir().join(format!("apolline-poster-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let jpeg = dir.join("preview.jpg");
+        image::RgbImage::from_pixel(4, 3, image::Rgb([200, 40, 90]))
+            .save(&jpeg)
+            .unwrap();
+        let kept = dir.join("kept.png");
+        save_png(&jpeg, &kept).unwrap();
+        let opened = image::open(&kept).unwrap();
+        assert_eq!((opened.width(), opened.height()), (4, 3));
+        let again = dir.join("again.png");
+        save_png(&kept, &again).unwrap();
+        assert_eq!(
+            std::fs::read(&kept).unwrap(),
+            std::fs::read(&again).unwrap()
+        );
+        assert!(save_png(&dir.join("missing.gif"), &again).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn commands_and_events_are_apolline_walls_json() {
