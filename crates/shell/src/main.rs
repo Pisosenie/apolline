@@ -120,6 +120,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline pick [--prompt TEXT] < lines
        apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
        apolline setup
+       apolline import hyprland [--dry-run | --undo]
        apolline fragment [CONFIG] [MODE]
        apolline settings [--page NAME] [--screenshot FILE]
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
@@ -217,6 +218,7 @@ fn main() -> ExitCode {
             return greet::main(&args[1..]);
         }
         Some("setup") => return setup(),
+        Some("import") => return hypr::main(&args[1..]),
         Some("fragment") => {
             let path = args
                 .get(1)

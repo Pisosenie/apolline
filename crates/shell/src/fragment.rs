@@ -83,16 +83,29 @@ fn key_bind(combo: &str, action: &KeyAction) -> String {
             let words: Vec<String> = niri
                 .split_whitespace()
                 .enumerate()
-                .map(|(i, word)| {
-                    if i == 0 || word.parse::<i64>().is_ok() {
-                        word.to_owned()
-                    } else {
-                        format!("\"{}\"", quote(word))
-                    }
+                .map(|(i, word)| match word.split_once('=') {
+                    _ if i == 0 => word.to_owned(),
+                    Some((name, value)) => format!("{name}={}", niri_value(value)),
+                    None => niri_value(word),
                 })
                 .collect();
-            format!("{combo} {{ {}; }}", words.join(" "))
+            // A wheel flicks past many workspaces without a pause, as in niri's own config.
+            let cooldown = if combo.contains("Wheel") {
+                " cooldown-ms=150"
+            } else {
+                ""
+            };
+            format!("{combo}{cooldown} {{ {}; }}", words.join(" "))
         }
+    }
+}
+
+// Numbers and true/false bare, anything else in quotes.
+fn niri_value(word: &str) -> String {
+    if word.parse::<i64>().is_ok() || word == "true" || word == "false" {
+        word.to_owned()
+    } else {
+        format!("\"{}\"", quote(word))
     }
 }
 
@@ -969,7 +982,7 @@ mod tests {
         }
     }
 
-    const KEYS: &str = "[keys]\n\"Mod+Return\" = \"kitty --single-instance\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width +10%\" }\n\"Mod+Shift+3\" = { niri = \"move-column-to-workspace 3\" }\n\"Mod+Space\" = \"rofi -show drun\"\n\"Mod+P\" = \"x\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+P\" = \"y\" }\n";
+    const KEYS: &str = "[keys]\n\"Mod+Return\" = \"kitty --single-instance\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width +10%\" }\n\"Mod+Shift+3\" = { niri = \"move-column-to-workspace 3 focus=false\" }\n\"Mod+Space\" = \"rofi -show drun\"\n\"Mod+P\" = \"x\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+P\" = \"y\" }\n";
 
     #[test]
     fn your_keys_bind_everywhere_but_where_apolline_or_the_mode_has_its_own() {
@@ -980,7 +993,7 @@ mod tests {
             "Mod+Return hotkey-overlay-title=\"kitty --single-instance\" { spawn-sh \"kitty --single-instance\"; }",
             "Mod+C { close-window; }",
             "Mod+Ctrl+Right { set-column-width \"+10%\"; }",
-            "Mod+Shift+3 { move-column-to-workspace 3; }",
+            "Mod+Shift+3 { move-column-to-workspace 3 focus=false; }",
             "Mod+P hotkey-overlay-title=\"x\"",
         ] {
             assert!(text.contains(line), "{line} missing:\n{text}");

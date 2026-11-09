@@ -363,8 +363,9 @@ pub const TRANSFORMS: [&str; 8] = [
     "flipped-270",
 ];
 
-// What a key of yours does: a command, or one of niri's own actions with its arguments, written
-// the way niri's config writes them ("focus-workspace 3", "set-column-width +10%").
+// What a key of yours does: a command, or one of niri's own actions with its arguments and
+// properties, written the way niri's config writes them, without the quotes ("focus-workspace 3",
+// "set-column-width +10%", "move-column-to-workspace 2 focus=false").
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeyAction {
     Run(String),
@@ -380,7 +381,7 @@ impl KeyAction {
             && name.chars().all(|c| c.is_ascii_lowercase() || c == '-');
         let plain = |word: &str| {
             word.chars()
-                .all(|c| c.is_ascii_alphanumeric() || "+-%._".contains(c))
+                .all(|c| c.is_ascii_alphanumeric() || "+-%._=".contains(c))
         };
         let args: Vec<&str> = words.collect();
         (named && args.iter().all(|word| plain(word))).then(|| {
