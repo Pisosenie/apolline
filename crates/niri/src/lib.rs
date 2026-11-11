@@ -240,6 +240,9 @@ pub enum Event {
     CastStopped {
         stream_id: u64,
     },
+    OverviewOpenedOrClosed {
+        is_open: bool,
+    },
 }
 
 impl Event {
@@ -257,6 +260,7 @@ pub struct State {
     casts: BTreeMap<u64, Cast>,
     // niri has said which windows are open; until then none are known, not none open.
     windows_known: bool,
+    overview: bool,
 }
 
 impl State {
@@ -339,6 +343,7 @@ impl State {
             Event::CastStopped { stream_id } => {
                 self.casts.remove(&stream_id);
             }
+            Event::OverviewOpenedOrClosed { is_open } => self.overview = is_open,
         }
     }
 
@@ -392,6 +397,10 @@ impl State {
             .values()
             .filter_map(|w| w.app_id.as_deref())
             .any(|app| app.eq_ignore_ascii_case(name))
+    }
+
+    pub fn overview(&self) -> bool {
+        self.overview
     }
 
     pub fn windows_known(&self) -> bool {
@@ -584,6 +593,15 @@ mod tests {
     }
 
     #[test]
+    fn the_overview_opens_and_closes() {
+        let mut state = State::default();
+        state.apply(Event::parse(r#"{"OverviewOpenedOrClosed":{"is_open":true}}"#).unwrap());
+        assert!(state.overview());
+        state.apply(Event::parse(r#"{"OverviewOpenedOrClosed":{"is_open":false}}"#).unwrap());
+        assert!(!state.overview());
+    }
+
+    #[test]
     fn replies_are_ok_or_err() {
         assert!(is_ok(r#"{"Ok":"Handled"}"#));
         assert!(!is_ok(r#"{"Err":"error parsing request"}"#));
@@ -622,7 +640,7 @@ mod tests {
     // shows up in the tests instead of as a quietly stale bar. Returns the state at the
     // end, and whether the focused window read as floating when the screenshot was taken.
     fn replay_session(session: &str) -> (State, bool) {
-        const KNOWN: [&str; 10] = [
+        const KNOWN: [&str; 11] = [
             "WorkspacesChanged",
             "WorkspaceActivated",
             "WindowsChanged",
@@ -633,6 +651,7 @@ mod tests {
             "KeyboardLayoutsChanged",
             "KeyboardLayoutSwitched",
             "ScreenshotCaptured",
+            "OverviewOpenedOrClosed",
         ];
         let mut state = State::default();
         let mut floated = false;
@@ -675,6 +694,10 @@ mod tests {
         };
         let session = std::fs::read_to_string(file).expect("the recorded session");
         assert!(session.lines().count() > 10, "too little was recorded");
+        assert!(
+            session.contains("\"OverviewOpenedOrClosed\""),
+            "the overview opening was heard"
+        );
         let (state, floated) = replay_session(&session);
         assert!(floated, "the window made floating reads as floating");
         assert!(!state.is_running("session-one") && !state.is_running("session-two"));

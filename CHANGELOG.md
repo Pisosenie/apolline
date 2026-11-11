@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The overview over a soft wallpaper**: while niri's overview is open the wallpaper blurs and dims behind the workspaces, and comes back sharp as it closes. A live one softens to its poster. Nothing to set; performance modes leave it sharp.
 - **Settings in eight pages**: Modes, Appearance, Windows, Bar and dock, Displays, Notifications, Lock and sleep, Input, System. Themes sit at the top of Appearance, window shape moved to Windows, the launcher to Bar and dock, keyboard, mouse and shortcuts are one page. The size, corners and glass of each surface, clock formats and card sizes are left to themes and the file, and your own colors open from one line. `settings --page` still takes the old names.
 - **Six themes in the box**: Fog, Ember, Night, Mocha, Paper and Glass. Tonal, Latte, Hardline and Minimal moved to the catalog, a click away with Try on.
 - The README is a short tour now; everything else is in `docs/CONFIG.md`, and building it in `CONTRIBUTING.md`.

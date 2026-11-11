@@ -8,7 +8,7 @@ Everything Apolline does and every option it takes, a section at a time. The [RE
 apolline setup
 ```
 
-It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one `include` line at the end of your niri config, after saving a copy of it. The fragment starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview, opens the settings window floating, keeps Steam's toasts in the bottom right corner without taking the focus, and binds these keys:
+It writes Apolline's niri fragment to `~/.config/apolline/niri.kdl` and adds one `include` line at the end of your niri config, after saving a copy of it. The fragment starts Apolline with the session, matches window gaps, borders and corners to the shell, puts the wallpaper behind the overview and softens it there while the overview is open (not in performance modes), opens the settings window floating, keeps Steam's toasts in the bottom right corner without taking the focus, and binds these keys:
 
 | Key | Opens |
 |---|---|

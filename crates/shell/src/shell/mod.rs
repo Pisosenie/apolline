@@ -1,5 +1,6 @@
 use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications, Trigger};
 mod actions;
+mod backdrop;
 mod cards;
 mod config_watch;
 mod desk;
@@ -66,6 +67,7 @@ pub enum Message {
     NiriReply(Result<(), String>),
     Control(Command),
     Wallpaper(String, Result<image::Handle, String>),
+    Blurred(String, Result<image::Handle, String>),
     Battery(Option<Battery>),
     Media(Option<Track>),
     Lyrics(String, Option<crate::lyrics::Lyrics>),
@@ -349,6 +351,10 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
+    // The same, soft, for behind the overview.
+    blurred: Vec<(String, image::Handle)>,
+    // When the overview last opened or closed, while the wallpaper softens or sharpens.
+    overview_at: Option<Instant>,
     // apolline-wall while a screen shows a live wallpaper: where its commands go, what each
     // screen was last told, the accent it has, and what it couldn't draw.
     live: Option<iced::futures::channel::mpsc::UnboundedSender<String>>,
@@ -502,6 +508,8 @@ impl Shell {
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
+            blurred: Vec::new(),
+            overview_at: None,
             live: None,
             live_told: std::collections::BTreeMap::new(),
             live_here: Vec::new(),
@@ -887,7 +895,7 @@ impl Shell {
         } else {
             clipboard::subscription().map(Message::Clip)
         };
-        let fading = if self.shown.iter().any(|s| s.from.is_some()) {
+        let fading = if self.shown.iter().any(|s| s.from.is_some()) || self.softening() {
             iced::time::every(crate::motion::FRAME).map(|_| Message::Frame)
         } else {
             iced::Subscription::none()
