@@ -238,15 +238,6 @@ impl Settings {
             vec![
                 column(screens).spacing(0).into(),
                 setting(
-                    "Drawn by another program",
-                    "apolline-wall, swww or hyprpaper draws it; the clock and widgets stay on top",
-                    switch(
-                        self.config.desktop.wallpaper == apolline_config::NO_WALLPAPER,
-                        Message::WallpaperElsewhere,
-                        palette,
-                    ),
-                ),
-                setting(
                     "Change the wallpaper",
                     "Goes through the gallery above; the file keeps the one you picked",
                     segmented(
@@ -440,124 +431,63 @@ impl Settings {
                 .into()
         });
 
-        column![
-            self.layers(palette),
-            preview,
-            desktop,
-            self.own_colors(),
-            group(
-                "Windows",
-                vec![
-                    setting(
-                        "Gaps",
-                        "Space between windows and around them",
-                        value_slider(0..=32, layout.gaps, Message::Gaps, "px", palette),
-                    ),
-                    setting(
-                        "Corner radius",
-                        "How round window corners are",
-                        value_slider(0..=24, layout.radius, Message::Radius, "px", palette),
-                    ),
-                    setting(
-                        "Borders",
-                        "A thin line around the focused window; a gradient flows across the workspace",
-                        segmented(
-                            [(0u8, "Off", None), (1, "Accent", None), (2, "Gradient", None)],
-                            match (layout.borders, layout.gradient) {
-                                (false, _) => 0,
-                                (true, false) => 1,
-                                (true, true) => 2,
-                            },
-                            Message::BorderStyle,
-                        ),
-                    ),
-                    setting(
-                        "Border width",
-                        "One pixel is a hairline; four and up is a frame",
-                        value_slider(1..=8, layout.border_width, Message::BorderWidth, "px", palette),
-                    ),
-                    setting(
-                        "Shadows",
-                        "Soft shadows under windows. Play mode always turns them off",
-                        switch(layout.shadows, Message::Shadows, palette),
-                    ),
-                ]
-            ),
-            self.surfaces(palette),
-            self.launcher_finds(),
-            self.terminal_group(),
-        ]
-        .spacing(22)
-        .into()
+        column![preview, desktop, self.own_colors()]
+            .spacing(22)
+            .into()
     }
 
-    pub(super) fn surfaces(&self, palette: Palette) -> Element<'_, Message> {
-        let style = &self.config.style;
-        let mut rows = vec![setting(
-            "Launcher layout",
-            "A list with details, or a grid of big icons moved through with the arrows",
-            segmented(
-                [(false, "List", None), (true, "Grid", None)],
-                style.grid,
-                Message::LauncherGrid,
-            ),
-        )];
-        for look in Part::ALL {
-            let surface = look.of(style);
-            let (corners, glass) = look.defaults();
-            rows.push(setting(
-                look.name(),
-                "Size, corners and how solid it is over what's behind",
-                column![
-                    value_slider(
-                        80..=150,
-                        (surface.size.unwrap_or(1.0) * 100.0).round() as u16,
-                        move |v| Message::Style(look, Knob::Size, v),
-                        "%",
-                        palette,
+    // How every window is shaped: what used to sit among the looks belongs with the windows.
+    pub(super) fn window_shape(&self) -> Element<'_, Message> {
+        let layout = self.config.layout;
+        let palette = self.palette();
+        group(
+            "Shape",
+            vec![
+                setting(
+                    "Gaps",
+                    "Space between windows and around them",
+                    value_slider(0..=32, layout.gaps, Message::Gaps, "px", palette),
+                ),
+                setting(
+                    "Corner radius",
+                    "How round window corners are",
+                    value_slider(0..=24, layout.radius, Message::Radius, "px", palette),
+                ),
+                setting(
+                    "Borders",
+                    "A thin line around the focused window; a gradient flows across the workspace",
+                    segmented(
+                        [
+                            (0u8, "Off", None),
+                            (1, "Accent", None),
+                            (2, "Gradient", None),
+                        ],
+                        match (layout.borders, layout.gradient) {
+                            (false, _) => 0,
+                            (true, false) => 1,
+                            (true, true) => 2,
+                        },
+                        Message::BorderStyle,
                     ),
+                ),
+                setting(
+                    "Border width",
+                    "One pixel is a hairline; four and up is a frame",
                     value_slider(
-                        0..=40,
-                        surface.radius.unwrap_or(corners),
-                        move |v| Message::Style(look, Knob::Corners, v),
+                        1..=8,
+                        layout.border_width,
+                        Message::BorderWidth,
                         "px",
                         palette,
                     ),
-                    value_slider(
-                        30..=100,
-                        (surface.opacity.unwrap_or(glass) * 100.0).round() as u16,
-                        move |v| Message::Style(look, Knob::Glass, v),
-                        "%",
-                        palette,
-                    ),
-                    self.font_picker(look, surface.font),
-                ]
-                .spacing(6),
-            ));
-        }
-        group("Launcher, quick settings and popups", rows)
-    }
-
-    // The fonts on this computer, or the one everything else uses.
-    pub(super) fn font_picker(
-        &self,
-        look: Part,
-        font: Option<apolline_config::FontName>,
-    ) -> Element<'_, Message> {
-        iced::widget::pick_list(
-            std::iter::once(SAME_FONT.to_owned())
-                .chain(self.families.iter().cloned())
-                .collect::<Vec<_>>(),
-            Some(
-                font.map_or(SAME_FONT, apolline_config::FontName::name)
-                    .to_owned(),
-            ),
-            move |family| Message::SurfaceFont(look, family),
+                ),
+                setting(
+                    "Shadows",
+                    "Soft shadows under windows. Play mode always turns them off",
+                    switch(layout.shadows, Message::Shadows, palette),
+                ),
+            ],
         )
-        .text_size(13)
-        .padding([7, 12])
-        .width(240)
-        .into()
     }
 
     pub(super) fn color_apps(&self, palette: Palette) -> Element<'_, Message> {
@@ -627,67 +557,6 @@ pub(super) async fn thumbnails() -> Vec<(String, image::Handle)> {
             .collect()
     };
     tokio::task::spawn_blocking(make).await.unwrap_or_default()
-}
-
-// The surfaces with a style of their own, by their [style.…] name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Part {
-    Launcher,
-    Panel,
-    Cards,
-    Osd,
-    Bar,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Knob {
-    Size,
-    Corners,
-    Glass,
-}
-
-impl Part {
-    const ALL: [Part; 4] = [Part::Launcher, Part::Panel, Part::Cards, Part::Osd];
-
-    pub(super) fn key(self) -> &'static str {
-        match self {
-            Part::Launcher => "launcher",
-            Part::Panel => "panel",
-            Part::Cards => "notifications",
-            Part::Osd => "osd",
-            Part::Bar => "bar",
-        }
-    }
-
-    pub(super) fn name(self) -> &'static str {
-        match self {
-            Part::Launcher => "Launcher",
-            Part::Panel => "Quick settings",
-            Part::Cards => "Notifications",
-            Part::Osd => "Volume and brightness",
-            Part::Bar => "Bar",
-        }
-    }
-
-    pub(super) fn of(self, style: &apolline_config::Styles) -> apolline_config::Surface {
-        match self {
-            Part::Launcher => style.launcher,
-            Part::Panel => style.panel,
-            Part::Cards => style.cards,
-            Part::Osd => style.osd,
-            Part::Bar => style.bar,
-        }
-    }
-
-    // Corners and glass as each one comes.
-    pub(super) fn defaults(self) -> (u16, f32) {
-        match self {
-            Part::Launcher | Part::Panel => (20, 0.95),
-            Part::Cards => (16, 1.0),
-            Part::Osd => (16, 0.95),
-            Part::Bar => (apolline_theme::metrics::RADIUS_BAR as u16, 0.55),
-        }
-    }
 }
 
 pub(super) fn where_cards(corner: Corner) -> &'static str {

@@ -50,3 +50,35 @@ about = "Neon night, the bar down the right"
 folder = "dracula"
 files = ["theme.toml", "dusk.jpg"]
 preview = "preview.jpg"
+
+[[theme]]
+name = "Tonal"
+author = "Apolline"
+about = "Colors from the wallpaper, the bar as islands"
+folder = "tonal"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Latte"
+author = "Apolline"
+about = "Catppuccin, light"
+folder = "latte"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Hardline"
+author = "Apolline"
+about = "Gruvbox, square and flat"
+folder = "hardline"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Minimal"
+author = "Apolline"
+about = "Nothing in the way"
+folder = "minimal"
+files = ["theme.toml"]
+preview = "preview.jpg"

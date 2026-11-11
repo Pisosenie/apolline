@@ -66,18 +66,6 @@ impl Settings {
             Message::NightWarmth(kelvin) => {
                 self.stage(|e| e.set("night", "temperature", i64::from(kelvin)))
             }
-            Message::SurfaceFont(look, family) => self.edit(|e| {
-                if family == SAME_FONT {
-                    e.unset_in(&["style", look.key()], "font");
-                } else {
-                    e.set_in(&["style", look.key()], "font", family.as_str());
-                }
-            }),
-            Message::Style(look, knob, v) => self.stage(|e| match knob {
-                Knob::Corners => e.set_in(&["style", look.key()], "radius", i64::from(v)),
-                Knob::Glass => e.set_in(&["style", look.key()], "opacity", hundredths(v)),
-                Knob::Size => e.set_in(&["style", look.key()], "size", hundredths(v)),
-            }),
             Message::LauncherGrid(on) => {
                 self.edit(|e| e.set_in(&["style", "launcher"], "grid", on))
             }
@@ -166,7 +154,6 @@ impl Settings {
                 apolline_config::Shape::Bar => e.unset("bar", "shape"),
                 shape => e.set("bar", "shape", shape.key()),
             }),
-            Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
             Message::BarBlur(on) => self.edit(|e| {
                 if on {
                     e.set("bar", "blur", true);
@@ -182,8 +169,6 @@ impl Settings {
             Message::PopupSeconds(v) => {
                 self.stage(|e| e.set("notifications", "seconds", i64::from(v)))
             }
-            Message::Cards(v) => self.stage(|e| e.set("notifications", "cards", i64::from(v))),
-            Message::CardWidth(v) => self.stage(|e| e.set("notifications", "width", i64::from(v))),
             Message::SoundKind(kind) => self.set_sound_kind(kind),
             Message::SoundDraft(text) => self.sound_draft = Some(text),
             Message::SoundSet => self.set_sound_file(),

@@ -177,6 +177,7 @@ impl Settings {
 
         column![
             preview,
+            self.window_shape(),
             group(
                 "New windows",
                 vec![

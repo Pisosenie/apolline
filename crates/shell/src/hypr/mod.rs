@@ -273,7 +273,7 @@ pub fn take_keyboard(config: &Config, found: &Keyboard, editor: &mut Editor) -> 
             if crate::keys::same(&config.shortcuts.launcher, "Mod+Space") {
                 editor.set("shortcuts", "launcher", "Mod+D");
                 done.push(
-                    "so the launcher moved to Super+D; Settings → Shortcuts changes it".to_owned(),
+                    "so the launcher moved to Super+D; Settings → Input changes it".to_owned(),
                 );
             }
         }

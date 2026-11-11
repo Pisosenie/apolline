@@ -75,12 +75,12 @@ impl Settings {
                 Message::Switch,
             ),
         )];
-        switch_rows.push(note("Any other keys: Shortcuts → Next keyboard layout."));
+        switch_rows.push(note("Any other keys: Next keyboard layout, below."));
         if keyboard.switch == Some(Switch::SuperSpace)
             && keys::same(&self.config.shortcuts.launcher, "Mod+Space")
         {
             switch_rows.push(warning(
-                "Super+Space also opens the launcher. Pick another key here or in Shortcuts.",
+                "Super+Space also opens the launcher. Pick another key here or below.",
             ));
         }
 

@@ -22,7 +22,24 @@ const ROLES: [(&str, &str, &str); 5] = [
 ];
 
 impl Settings {
+    // One line until it's opened, or until a color of your own is set.
     pub(super) fn own_colors(&self) -> Element<'_, Message> {
+        let set = ROLES
+            .iter()
+            .any(|(role, ..)| self.config.colors.get(role).is_some());
+        if !self.colors_open && !set {
+            return group(
+                "Your colors",
+                vec![setting(
+                    "Colors of your own",
+                    "Over any palette, the bar, cards, overlays and text a role at a time",
+                    button(text("Choose").size(13))
+                        .padding([8, 14])
+                        .style(style::secondary)
+                        .on_press(Message::OwnColors),
+                )],
+            );
+        }
         let palette = self.palette();
         let scheme = self.config.scheme(None);
         let shown = |role: &str| match role {

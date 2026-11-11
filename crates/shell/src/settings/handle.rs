@@ -9,10 +9,6 @@ impl Settings {
                 self.color_drafts.insert(role, text);
             }
             Message::ColorSet(role) => self.set_color(role),
-            Message::ClockDraft(key, text) => {
-                self.clock_drafts.insert(key, text);
-            }
-            Message::ClockSet(key) => self.set_clock(key),
             Message::LauncherFinds(name, on) => self.set_finds(name, on),
             Message::WebDraft(text) => self.web_draft = Some(text),
             Message::WebSet => self.set_web(),
@@ -23,6 +19,7 @@ impl Settings {
                     e.set("apps", "terminal", terminal.as_str());
                 }
             }),
+            Message::OwnColors => self.colors_open = true,
             Message::ColorReset(role) => {
                 self.color_drafts.remove(role);
                 self.edit(|e| e.unset("colors", role));
@@ -35,7 +32,7 @@ impl Settings {
                 self.recording = None;
                 self.recording_key = false;
                 self.armed = false;
-                if page == Page::About && self.machine.is_none() {
+                if page == Page::System && self.machine.is_none() {
                     return Task::perform(crate::doctor::gather(), Message::Machine);
                 }
             }
@@ -209,14 +206,6 @@ impl Settings {
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::DesktopWidget(name, on) => self.set_desktop_widget(name, on),
-            Message::WallpaperElsewhere(on) => {
-                let name = if on {
-                    apolline_config::NO_WALLPAPER.to_owned()
-                } else {
-                    apolline_config::Config::default().desktop.wallpaper
-                };
-                self.edit(|e| e.set("desktop", "wallpaper", name.as_str()));
-            }
             Message::DesktopClock(label) => {
                 let spot = CLOCK_SPOTS
                     .iter()

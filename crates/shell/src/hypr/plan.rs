@@ -186,7 +186,7 @@ impl Plan {
         {
             let title = crate::fragment::action(*shortcut).0;
             return Outcome::Left(format!(
-                "Apolline's “{title}” is on {combo}; Settings → Shortcuts moves it"
+                "Apolline's “{title}” is on {combo}; Settings → Input moves it"
             ));
         }
         if config

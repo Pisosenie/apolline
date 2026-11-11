@@ -2,16 +2,12 @@ use std::path::{Path, PathBuf};
 
 use apolline_config::{Theme, slug};
 
-const BUNDLED: [&str; 10] = [
+const BUNDLED: [&str; 6] = [
     include_str!("../../../assets/themes/fog.toml"),
     include_str!("../../../assets/themes/ember.toml"),
     include_str!("../../../assets/themes/night.toml"),
-    include_str!("../../../assets/themes/tonal.toml"),
     include_str!("../../../assets/themes/mocha.toml"),
-    include_str!("../../../assets/themes/latte.toml"),
-    include_str!("../../../assets/themes/hardline.toml"),
     include_str!("../../../assets/themes/paper.toml"),
-    include_str!("../../../assets/themes/minimal.toml"),
     include_str!("../../../assets/themes/glass.toml"),
 ];
 
@@ -158,13 +154,7 @@ mod tests {
             .iter()
             .map(|text| Theme::parse(text).unwrap().name)
             .collect();
-        assert_eq!(
-            names,
-            [
-                "Fog", "Ember", "Night", "Tonal", "Mocha", "Latte", "Hardline", "Paper", "Minimal",
-                "Glass"
-            ]
-        );
+        assert_eq!(names, ["Fog", "Ember", "Night", "Mocha", "Paper", "Glass"]);
     }
 
     #[test]
