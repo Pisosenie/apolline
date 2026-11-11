@@ -111,24 +111,19 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
-       apolline mode NAME|next|none|off
+// pick, fragment, greet and --screenshot work too; they're for the greeter, CI and making Apolline.
+const USAGE: &str = "usage: apolline [--mode NAME]
+       apolline settings [--page NAME]
+       apolline mode NAME|next|none
+       apolline theme [list|next|NAME] | theme install PATH|LINK
+       apolline import hyprland [--dry-run | --undo]
        apolline switch | launcher | panel | clipboard | keys | replay | stay | terminal | machine | updates
        apolline module [NAME]
        apolline timer LENGTH [LABEL] | timer stop
        apolline volume up|down|mute | mic mute | brightness up|down
-       apolline theme [list|next|NAME] | theme install PATH|LINK
        apolline plugin list | install PATH|LINK | remove NAME | enable NAME | disable NAME
-       apolline pick [--prompt TEXT] < lines
-       apolline greet [--kiosk | --preview] [--look FILE] [--screenshot FILE]
-       apolline setup
-       apolline import hyprland [--dry-run | --undo]
-       apolline fragment [CONFIG] [MODE]
-       apolline settings [--page NAME] [--screenshot FILE]
-       apolline lock [--preview] [--mode NAME] [--screenshot FILE]
-       apolline check [FILE]
-       apolline doctor
-       apolline version";
+       apolline lock
+       apolline setup | check [FILE] | doctor | version";
 
 // glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
 // allocates holds whole huge pages; for a shell that's a couple of hundred MB for nothing.

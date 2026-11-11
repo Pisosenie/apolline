@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+- **Settings in eight pages**: Modes, Appearance, Windows, Bar and dock, Displays, Notifications, Lock and sleep, Input, System. Themes sit at the top of Appearance, window shape moved to Windows, the launcher to Bar and dock, keyboard, mouse and shortcuts are one page. The size, corners and glass of each surface, clock formats and card sizes are left to themes and the file, and your own colors open from one line. `settings --page` still takes the old names.
+- **Six themes in the box**: Fog, Ember, Night, Mocha, Paper and Glass. Tonal, Latte, Hardline and Minimal moved to the catalog, a click away with Try on.
+- The README is a short tour now; everything else is in `docs/CONFIG.md`, and building it in `CONTRIBUTING.md`.
 - **Coming from Hyprland**: `apolline import hyprland` brings a `hyprland.lua` or `hyprland.conf` over, binds, screens, window rules, keyboard, touchpad, looks, autostart and the wallpaper, with a note for every line and `--dry-run` and `--undo`.
 - **Windows in their places**: a mode remembers where windows stand, screen, workspace, column and width, and puts them back each time it comes on, starting what isn't open.
-- **Try a theme on**: Settings → Themes → More themes wears one for a minute; Keep it, or it goes back by itself, the config as it was and the fetched theme gone, also when Settings closes or the shell goes down.
+- **Try a theme on**: Settings → Appearance → More themes wears one for a minute; Keep it, or it goes back by itself, the config as it was and the fetched theme gone, also when Settings closes or the shell goes down.
 - **A theme can be a rice**: the bar's pieces, the dock, and a Wallpaper Engine scene by its Workshop id, worn when Steam has it. Save my look keeps the bar and dock too.
 - The catalog is checked against its index by the tests, and CI renders the themes a pull request brings, as the session shows them.
 - **Keys of your own** in `[keys]`, in every mode: a command, or one of niri's actions like `{ niri = "close-window" }`.
