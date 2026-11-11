@@ -989,6 +989,29 @@ pub struct ModeSettings {
     pub theme: Option<String>,
     // Seconds of the screen kept while the mode is on, for `apolline replay` to save; 0 is off.
     pub replay: u16,
+    // Where the mode puts windows when it comes on.
+    pub windows: Vec<Placed>,
+}
+
+// A window a mode puts in its place, found by its app id and, given one, a piece of its title;
+// `run` starts it when it isn't open. Windows given the same screen, workspace and column share
+// that column, top to bottom in this order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Placed {
+    pub app: String,
+    pub title: Option<String>,
+    pub run: Option<String>,
+    // A screen by name; none is the focused one.
+    pub screen: Option<String>,
+    // Both counted from 1.
+    pub workspace: u8,
+    pub column: u16,
+    // The column's width in percent of the screen.
+    pub width: Option<u8>,
+}
+
+impl Placed {
+    pub const WIDTHS: std::ops::RangeInclusive<u16> = 5..=100;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1375,6 +1398,7 @@ impl ModeSettings {
             when: Vec::new(),
             theme: None,
             replay: 0,
+            windows: Vec::new(),
         }
     }
 
@@ -1452,6 +1476,33 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_mode_places_its_windows_and_writes_them_one_to_a_line() {
+        let text = "[[mode]]\nname = \"Work\"\nwindows = [\n    { app = \"kitty\", run = \"kitty\", screen = \"DP-1\", workspace = 1, column = 1, width = 50 },\n    { app = \"firefox\", title = \"Mail\", column = 2 },\n    { app = \"\" },\n    { app = \"code\", width = 3 },\n]\n";
+        let (config, problems) = super::Config::parse(text);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        let windows = &config.modes[0].windows;
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0].screen.as_deref(), Some("DP-1"));
+        assert_eq!(windows[0].width, Some(50));
+        assert_eq!(windows[1].title.as_deref(), Some("Mail"));
+        assert_eq!((windows[1].workspace, windows[1].column), (1, 2));
+        assert_eq!(windows[2].width, None, "3% is refused");
+
+        let mut editor = super::Editor::parse("[[mode]]\nname = \"Work\"\n").unwrap();
+        editor.set_mode_windows(0, &windows[..2]);
+        let written = editor.text();
+        assert!(
+            written.contains("windows = [\n    { app = \"kitty\", run = \"kitty\", screen = \"DP-1\", workspace = 1, column = 1, width = 50 },\n"),
+            "{written}"
+        );
+        let (again, problems) = super::Config::parse(&written);
+        assert_eq!(problems, vec![]);
+        assert_eq!(again.modes[0].windows, windows[..2]);
+        editor.set_mode_windows(0, &[]);
+        assert!(!editor.text().contains("windows"));
+    }
+
     #[test]
     fn keys_take_commands_and_niri_actions_and_say_what_is_wrong() {
         let (config, problems) = super::Config::parse(

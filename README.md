@@ -432,6 +432,20 @@ When the reason ends, the mode you had before comes back. Triggers act only when
 
 A mode can also wear a theme (`theme = "Glass"`): its look applies while the mode is on and leaves with it, without touching the config; the mode's own wallpaper and accent still win. A switch recolors window borders, opens the mode's apps that aren't running yet and rewrites the mode's keys into niri.
 
+A mode can also put **windows in their places**: lay them out once, then Settings → Modes → Windows in their places → Remember. Each time the mode comes on, the windows that are open move to their screen, workspace and column, with the column's width, and the rest start and are placed as niri opens them, for a minute while slow apps bring their own windows back. Windows the mode doesn't list stay where they are, to the right. By hand:
+
+```toml
+[[mode]]
+name = "Work"
+windows = [
+    { app = "kitty", run = "kitty", screen = "DP-1", workspace = 1, column = 1, width = 40 },
+    { app = "foot", run = "foot", screen = "DP-1", workspace = 1, column = 1 },   # under kitty
+    { app = "firefox", title = "Mail", run = "firefox", workspace = 2, column = 1, width = 70 },
+]
+```
+
+`app` is the app id niri shows, `title` picks one of several windows by a piece of its title, and a window without `run` is only moved, never started.
+
 Performance turns off animations and window shadows, lets games (Steam and Proton, gamescope, Wine) drive the monitor's variable refresh rate, and sets the power profile to performance — and back to what it was when you leave, unless you changed it yourself in between. Variable refresh rate is set for monitors your niri config doesn't already describe; for those, add `variable-refresh-rate on-demand=true` to their `output` block.
 
 ## Lock screen

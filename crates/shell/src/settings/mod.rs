@@ -13,6 +13,7 @@ mod input;
 mod launcher_finds;
 mod lock;
 mod looks;
+mod mode_windows;
 mod modes;
 mod notifications;
 mod panel_layout;
@@ -493,6 +494,8 @@ enum Message {
     PutThemeBack,
     // A Workshop scene's page in Steam, by its id.
     OpenScene(String),
+    RememberWindows,
+    ForgetWindow(usize),
     GreetPreview,
     GreetInstall,
     GreetDone(Result<(), String>),
@@ -576,6 +579,7 @@ struct Settings {
     catalog_pictures: std::collections::HashMap<String, image::Handle>,
     catalog_busy: Option<String>,
     trying: Option<crate::tryon::Trying>,
+    windows_note: Option<String>,
     // The search over every page, and the row it last led to.
     query: String,
     spot: Option<(Page, String)>,
@@ -692,6 +696,7 @@ impl Settings {
             catalog_pictures: std::collections::HashMap::new(),
             catalog_busy: None,
             trying,
+            windows_note: None,
             query: String::new(),
             spot: None,
             color_drafts: std::collections::HashMap::new(),

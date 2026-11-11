@@ -593,6 +593,9 @@ impl Settings {
             | Message::CatalogTried(_)
             | Message::KeepTheme
             | Message::PutThemeBack) => return self.browse(message),
+            message @ (Message::RememberWindows | Message::ForgetWindow(_)) => {
+                self.place_windows(message)
+            }
             Message::Plugin(ask) => return self.ask_plugins(ask),
             message => return self.tweak(message),
         }

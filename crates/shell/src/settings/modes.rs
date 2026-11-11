@@ -268,6 +268,7 @@ impl Settings {
                 )]
             ),
             group("Open when this mode starts", vec![padded(apps)]),
+            self.mode_windows(mode),
             group(
                 "Theme",
                 vec![padded(

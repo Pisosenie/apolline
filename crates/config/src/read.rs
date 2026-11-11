@@ -1,5 +1,6 @@
 mod dock;
 mod keys;
+mod placed;
 
 use std::ops::{Range, RangeInclusive};
 
@@ -64,7 +65,7 @@ const MODULE_OPTIONS: [&str; 8] = [
     "scroll_down",
 ];
 
-const MODE_OPTIONS: [&str; 12] = [
+const MODE_OPTIONS: [&str; 13] = [
     "name",
     "icon",
     "wallpaper",
@@ -77,6 +78,7 @@ const MODE_OPTIONS: [&str; 12] = [
     "when",
     "theme",
     "replay",
+    "windows",
 ];
 
 const WINDOW_OPTIONS: [&str; 13] = [
@@ -1559,6 +1561,11 @@ impl Reader<'_> {
                 "open" => {
                     if let Some(v) = self.strings(key, value) {
                         settings.open = v
+                    }
+                }
+                "windows" => {
+                    if let Some(v) = self.placed(key, value) {
+                        settings.windows = v
                     }
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),

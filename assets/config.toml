@@ -110,3 +110,6 @@ suspend_after = 0
 # performance = true       # power profile, games drive the refresh rate, effects off
 # keep_awake = true
 # keys = { "Mod+G" = "steam", "Mod+Shift+D" = "discord" }
+# windows = [              # put back where they were: Settings → Modes → Remember
+#     { app = "steam", run = "steam", workspace = 2, column = 1, width = 100 },
+# ]

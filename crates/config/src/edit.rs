@@ -3,7 +3,7 @@ use std::{fs, io};
 
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
-use crate::{Accent, Calendar, KeyAction, ModeSettings, Notifications, Rule};
+use crate::{Accent, Calendar, KeyAction, ModeSettings, Notifications, Placed, Rule};
 
 #[derive(Debug)]
 pub struct Editor {
@@ -97,6 +97,9 @@ impl Editor {
         if !mode.keys.is_empty() {
             table.insert("keys", Item::Value(keys(&mode.keys).into()));
         }
+        if !mode.windows.is_empty() {
+            table.insert("windows", Item::Value(placed(&mode.windows).into()));
+        }
         let modes = self.modes();
         modes.push(table);
         modes.len() - 1
@@ -157,6 +160,14 @@ impl Editor {
             self.unset_mode(index, "keys");
         } else {
             self.set_mode(index, "keys", keys(list));
+        }
+    }
+
+    pub fn set_mode_windows(&mut self, index: usize, windows: &[Placed]) {
+        if windows.is_empty() {
+            self.unset_mode(index, "windows");
+        } else {
+            self.set_mode(index, "windows", placed(windows));
         }
     }
 
@@ -455,6 +466,38 @@ fn notifications_text(notifications: Notifications) -> &'static str {
         Notifications::Mentions => "mentions",
         Notifications::Hold => "hold",
     }
+}
+
+// One window to a line, the way a person would write them.
+fn placed(windows: &[Placed]) -> Array {
+    let mut array: Array = windows
+        .iter()
+        .map(|window| {
+            let mut table = InlineTable::new();
+            table.insert("app", window.app.as_str().into());
+            for (key, value) in [
+                ("title", &window.title),
+                ("run", &window.run),
+                ("screen", &window.screen),
+            ] {
+                if let Some(value) = value {
+                    table.insert(key, value.as_str().into());
+                }
+            }
+            table.insert("workspace", i64::from(window.workspace).into());
+            table.insert("column", i64::from(window.column).into());
+            if let Some(width) = window.width {
+                table.insert("width", i64::from(width).into());
+            }
+            Value::InlineTable(table)
+        })
+        .collect();
+    for value in array.iter_mut() {
+        value.decor_mut().set_prefix("\n    ");
+    }
+    array.set_trailing_comma(true);
+    array.set_trailing("\n");
+    array
 }
 
 fn keys(list: &[(String, String)]) -> InlineTable {

@@ -45,6 +45,10 @@ jobs:
           useradd -m ci
           su ci -c "tools/niri-session.sh /tmp/session.jsonl"
           APOLLINE_NIRI_SESSION=/tmp/session.jsonl cargo test -p apolline-niri live_session
+      - name: A mode puts windows in their places in this niri
+        run: |
+          bin=$(cargo test -p apolline-shell --bin apolline --no-run 2>&1 | grep -o 'target/debug/deps/apolline-[0-9a-f]*' | head -1)
+          su ci -c "tools/niri-place.sh $bin"
 
   package:
     runs-on: ubuntu-latest

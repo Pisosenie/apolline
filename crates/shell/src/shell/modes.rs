@@ -108,7 +108,52 @@ impl Shell {
         self.sync();
         self.release_held();
         let note = self.keep_replay();
-        Task::batch([self.load_wallpaper(), self.open_apps(), profile, note])
+        Task::batch([
+            self.load_wallpaper(),
+            self.open_apps(),
+            self.arrange(),
+            profile,
+            note,
+        ])
+    }
+
+    // The mode's windows to their places: those open now, the rest as they open.
+    pub(super) fn arrange(&mut self) -> Task<Message> {
+        self.arranging = None;
+        self.arrange_later = false;
+        let (Some(state), Some(mode)) = (&self.niri, self.current()) else {
+            return Task::none();
+        };
+        if mode.windows.is_empty() || self.demo {
+            return Task::none();
+        }
+        if !state.windows_known() {
+            self.arrange_later = true;
+            return Task::none();
+        }
+        let (arranging, asked, run) = crate::places::Arranging::start(mode.windows.clone(), state);
+        // What the mode opens anyway isn't started twice.
+        let started: Vec<Task<Message>> = run
+            .into_iter()
+            .filter(|command| !mode.open.contains(command))
+            .map(|command| niri::send(apolline_niri::Request::Spawn(command)))
+            .collect();
+        self.arranging = (!arranging.done()).then_some(arranging);
+        Task::batch(started.into_iter().chain([niri::send_all(asked)]))
+    }
+
+    pub(super) fn arrange_opened(&mut self, window: u64) -> Task<Message> {
+        let (Some(arranging), Some(state)) = (&mut self.arranging, &self.niri) else {
+            return Task::none();
+        };
+        let asked = state
+            .window(window)
+            .map(|w| arranging.opened(w, state))
+            .unwrap_or_default();
+        if arranging.done() {
+            self.arranging = None;
+        }
+        niri::send_all(asked)
     }
 
     // Keeps the last moments while the mode wants them, for as long as it says.

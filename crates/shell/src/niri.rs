@@ -40,6 +40,25 @@ pub fn send(request: Request) -> Task<Message> {
     }
 }
 
+// Asked one after another and never mixed with another batch: placing a window takes the focus
+// for a moment, and two placements at once would move each other's columns.
+pub fn send_all(requests: Vec<Request>) -> Task<Message> {
+    static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let Some(path) = apolline_niri::socket().filter(|_| !requests.is_empty()) else {
+        return Task::none();
+    };
+    Task::perform(
+        async move {
+            let _turn = ONE_AT_A_TIME.lock().await;
+            for request in requests {
+                ask(path.clone(), request).await?;
+            }
+            Ok(())
+        },
+        Message::NiriReply,
+    )
+}
+
 fn stream() -> impl Stream<Item = Message> {
     iced::stream::channel(64, async |mut output| {
         let Some(path) = apolline_niri::socket() else {

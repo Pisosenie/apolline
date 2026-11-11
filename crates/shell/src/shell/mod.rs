@@ -380,6 +380,10 @@ pub struct Shell {
     replay: Option<crate::capture::Replay>,
     // The window niri's keys can't leave, while `apolline stay` holds them.
     staying: Option<u64>,
+    // The mode's windows still to put in their places.
+    arranging: Option<crate::places::Arranging>,
+    // A mode came on before niri said which windows are open.
+    arrange_later: bool,
     marks: Option<crate::marks::Marks>,
     shot: Option<String>,
     ticks: u64,
@@ -527,6 +531,8 @@ impl Shell {
             recording: None,
             replay: None,
             staying: None,
+            arranging: None,
+            arrange_later: false,
             marks: None,
             shot: None,
             ticks: 0,

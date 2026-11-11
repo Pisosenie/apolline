@@ -29,13 +29,23 @@ impl Shell {
             }
             Message::Niri(event) => {
                 let switched = matches!(event, apolline_niri::Event::KeyboardLayoutSwitched { .. });
+                let opened = match &event {
+                    apolline_niri::Event::WindowOpenedOrChanged { window } => Some(window.id),
+                    _ => None,
+                };
                 let state = self.niri.get_or_insert_default();
                 state.apply(event);
                 if switched && let Some(name) = state.layout().map(str::to_owned) {
                     return self.show(Osd::Layout(name));
                 }
-                let state = self.niri.get_or_insert_default();
                 let mut tasks = vec![];
+                if let Some(window) = opened {
+                    tasks.push(self.arrange_opened(window));
+                }
+                if self.arrange_later && self.niri.as_ref().is_some_and(|s| s.windows_known()) {
+                    tasks.push(self.arrange());
+                }
+                let state = self.niri.get_or_insert_default();
                 // The window it stayed in is gone: the keys come back with it.
                 if let Some(window) = self.staying
                     && !state.recent().iter().any(|w| w.id == window)
