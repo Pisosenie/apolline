@@ -188,19 +188,26 @@ impl Page {
     }
 
     // `settings --page` takes the names pages had before they were put together too.
+    const OLD_NAMES: [(&'static str, Page); 6] = [
+        ("themes", Page::Appearance),
+        ("keyboard", Page::Input),
+        ("pointer", Page::Input),
+        ("shortcuts", Page::Input),
+        ("about", Page::System),
+        ("plugins", Page::System),
+    ];
+
     fn named(key: &str) -> Option<Page> {
-        let page = match key {
-            "themes" => Page::Appearance,
-            "keyboard" | "pointer" | "shortcuts" => Page::Input,
-            "about" | "plugins" => Page::System,
-            _ => {
-                return Self::ALL
-                    .into_iter()
-                    .chain([Page::Welcome])
-                    .find(|p| p.key() == key);
-            }
-        };
-        Some(page)
+        Self::ALL
+            .into_iter()
+            .chain([Page::Welcome])
+            .find(|page| page.key() == key)
+            .or_else(|| {
+                Self::OLD_NAMES
+                    .iter()
+                    .find(|(old, _)| *old == key)
+                    .map(|(_, page)| *page)
+            })
     }
 
     fn title(self) -> &'static str {
@@ -267,7 +274,14 @@ impl Page {
             Page::Displays => &["night", "bar.skip", "bar.screens"],
             Page::Notifications => &["notifications"],
             Page::Lock => &["lock", "idle"],
-            Page::Input => &["keyboard", "touchpad", "mouse", "shortcuts", "keys"],
+            Page::Input => &[
+                "keyboard",
+                "touchpad",
+                "mouse",
+                "shortcuts",
+                "keys",
+                "apps.terminal",
+            ],
             Page::System => &["plugins"],
         }
     }
