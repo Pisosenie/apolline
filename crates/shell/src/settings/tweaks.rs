@@ -446,6 +446,16 @@ impl Settings {
                     return self.custom_thumb();
                 }
             }
+            Message::OpenScene(id) => {
+                let link = format!("steam://url/CommunityFilePage/{id}");
+                return Task::future(async move {
+                    let _ = tokio::process::Command::new("xdg-open")
+                        .arg(link)
+                        .status()
+                        .await;
+                })
+                .discard();
+            }
             Message::OpenThemes => {
                 let _ = std::fs::create_dir_all(themes::dir());
                 let opener = if cfg!(target_os = "macos") {
@@ -549,6 +559,7 @@ impl Settings {
                 {
                     self.put_displays_back();
                 }
+                self.watch_trial();
                 if self.page == Page::Displays
                     && self.outputs_may_change()
                     && crate::niri::connected()

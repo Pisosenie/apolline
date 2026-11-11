@@ -86,6 +86,7 @@ mod themes;
 mod timers;
 mod tray;
 mod tray_menu;
+mod tryon;
 mod updates;
 mod usage;
 mod vpn;

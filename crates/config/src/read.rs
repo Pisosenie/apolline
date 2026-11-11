@@ -386,14 +386,35 @@ impl Reader<'_> {
                     if let Some(t) = self.section(key, value) {
                         let mut name = None;
                         let mut author = None;
+                        let mut scene = None;
                         for (key, value) in t.iter() {
                             match key.get_ref().as_ref() {
                                 "name" => name = self.string(key, value).map(str::to_owned),
                                 "author" => author = self.string(key, value).map(str::to_owned),
-                                _ => self.unknown(key, "option", &["name", "author"]),
+                                "scene" => match self.string(key, value) {
+                                    Some(id)
+                                        if !id.is_empty()
+                                            && id.bytes().all(|b| b.is_ascii_digit()) =>
+                                    {
+                                        scene = Some(id.to_owned())
+                                    }
+                                    Some(_) => {
+                                        self.wrong::<()>(
+                                            key,
+                                            value,
+                                            "a Workshop item's id, the number in its link",
+                                        );
+                                    }
+                                    None => {}
+                                },
+                                _ => self.unknown(key, "option", &["name", "author", "scene"]),
                             }
                         }
-                        config.theme = name.map(|name| (name, author));
+                        config.theme = name.map(|name| crate::About {
+                            name,
+                            author,
+                            scene,
+                        });
                     }
                 }
                 "windows" => {

@@ -16,7 +16,7 @@ pub use dock::Dock;
 pub use edit::Editor;
 pub use pieces::{Piece, TrayItem};
 pub use plugin::{Kind, Plugin, Plugins, Setting, Source, Tile, env_name, valid_name};
-pub use theme::Theme;
+pub use theme::{Pieces, Theme};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
@@ -27,7 +27,7 @@ pub struct Config {
     pub panel: Panel,
     pub clock: Clock,
     pub launcher: Launcher,
-    pub theme: Option<(String, Option<String>)>,
+    pub theme: Option<About>,
     pub desktop: Desktop,
     pub layout: Layout,
     pub bar: Bar,
@@ -1431,6 +1431,15 @@ pub fn xdg_dir(variable: &str, default: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))
+}
+
+// What a theme file says of itself in [theme].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct About {
+    pub name: String,
+    pub author: Option<String>,
+    // A Wallpaper Engine scene by its Workshop id, worn instead of the wallpaper when it's there.
+    pub scene: Option<String>,
 }
 
 pub fn config_home() -> PathBuf {

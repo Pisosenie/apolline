@@ -391,6 +391,10 @@ pub struct Shell {
 impl Shell {
     pub fn new(mode: Option<String>, demo: bool) -> (Self, Task<Message>) {
         let config_path = apolline_config::default_path();
+        // A theme still on trial when the shell went down is what took it down, or nobody kept it.
+        if !demo && let Err(err) = crate::tryon::put_back(&config_path, &crate::themes::dir()) {
+            eprintln!("apolline: could not put the tried theme back: {err}");
+        }
         let (config, diagnostics) = Config::load(&config_path);
 
         let mode = match mode {

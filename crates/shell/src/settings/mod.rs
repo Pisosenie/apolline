@@ -133,10 +133,16 @@ pub fn run(screenshot: Option<PathBuf>, page: Option<String>) -> iced::Result {
         },
         ..window::Settings::default()
     });
-    fonts::ALL
+    let ran = fonts::ALL
         .into_iter()
         .fold(app, |app, font| app.font(font))
-        .run()
+        .run();
+    // Closed while a theme was on trial: nobody said keep.
+    let config = apolline_config::default_path();
+    if let Err(err) = crate::tryon::put_back(&config, &themes::dir()) {
+        eprintln!("apolline: could not put the tried theme back: {err}");
+    }
+    ran
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -480,6 +486,13 @@ enum Message {
     CatalogPicture(String, Option<image::Handle>),
     CatalogInstall(usize),
     CatalogInstalled(Result<String, String>),
+    // Fetched and worn for a minute.
+    CatalogTry(usize),
+    CatalogTried(Result<String, String>),
+    KeepTheme,
+    PutThemeBack,
+    // A Workshop scene's page in Steam, by its id.
+    OpenScene(String),
     GreetPreview,
     GreetInstall,
     GreetDone(Result<(), String>),
@@ -562,6 +575,7 @@ struct Settings {
     catalog: Option<Result<Vec<crate::catalog::Entry>, String>>,
     catalog_pictures: std::collections::HashMap<String, image::Handle>,
     catalog_busy: Option<String>,
+    trying: Option<crate::tryon::Trying>,
     // The search over every page, and the row it last led to.
     query: String,
     spot: Option<(Page, String)>,
@@ -651,6 +665,8 @@ impl Settings {
     fn open(path: PathBuf, screenshot: Option<PathBuf>) -> (Self, Task<Message>) {
         let editor = Editor::load(&path);
         let (config, diagnostics) = Config::load(&path);
+        // A trial an earlier Settings left running goes on here, or ends at the first tick.
+        let trying = crate::tryon::pending(&path);
         let settings = Self {
             stamp: stamp(&path),
             path,
@@ -675,6 +691,7 @@ impl Settings {
             catalog: None,
             catalog_pictures: std::collections::HashMap::new(),
             catalog_busy: None,
+            trying,
             query: String::new(),
             spot: None,
             color_drafts: std::collections::HashMap::new(),

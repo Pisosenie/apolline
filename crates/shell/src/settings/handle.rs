@@ -588,7 +588,11 @@ impl Settings {
             | Message::Catalog(_)
             | Message::CatalogPicture(..)
             | Message::CatalogInstall(_)
-            | Message::CatalogInstalled(_)) => return self.browse(message),
+            | Message::CatalogInstalled(_)
+            | Message::CatalogTry(_)
+            | Message::CatalogTried(_)
+            | Message::KeepTheme
+            | Message::PutThemeBack) => return self.browse(message),
             Message::Plugin(ask) => return self.ask_plugins(ask),
             message => return self.tweak(message),
         }

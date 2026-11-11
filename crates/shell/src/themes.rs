@@ -64,6 +64,10 @@ fn read(file: &Path) -> Option<Theme> {
     if !theme.wallpaper.contains('/') && own.is_file() {
         theme.wallpaper = crate::wallpaper::shorten(&own);
     }
+    // The scene when Steam has it, the theme's own picture otherwise.
+    if let Some(scene) = theme.scene.as_deref().and_then(crate::live::workshop) {
+        theme.wallpaper = scene;
+    }
     Some(theme)
 }
 

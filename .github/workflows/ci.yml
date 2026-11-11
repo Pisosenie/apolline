@@ -64,3 +64,37 @@ jobs:
           su builder -c "cd /home/builder/pkg && makepkg --noconfirm --nocheck --nodeps"
           pacman -Udd --noconfirm /home/builder/pkg/apolline-git-*.pkg.tar.zst
           su builder -c "apolline check"
+
+  catalog:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install the toolchain, a headless sway and grim
+        run: pacman -Syu --noconfirm --needed rust gcc clang pkgconf pam libxkbcommon wayland git niri sway grim ttf-dejavu mesa
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - name: Each theme brought here, as the session shows it
+        run: |
+          git config --global --add safe.directory "$PWD"
+          base=$(git merge-base HEAD origin/main)
+          changed=$(git diff --name-only "$base" HEAD -- catalog tools/preview.sh .github/workflows/ci.yml)
+          if echo "$changed" | grep -qv '^catalog/'; then
+            folders=$(ls -d catalog/*/)
+          else
+            folders=$(echo "$changed" | grep '^catalog/.*/' | cut -d/ -f1-2 | sort -u)
+          fi
+          useradd -m ci
+          mkdir previews
+          chown ci previews
+          for folder in $folders; do
+            [ -f "$folder/theme.toml" ] || continue
+            su ci -c "tools/preview.sh $folder previews/$(basename "$folder").jpg"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: previews
+          path: previews
+          if-no-files-found: ignore

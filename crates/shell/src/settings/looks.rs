@@ -306,6 +306,19 @@ impl Settings {
         let mut line = row![icon(Icon::Layers, 15.0, palette.accent), words]
             .spacing(10)
             .align_y(Alignment::Center);
+        // Its scene isn't here: Steam has it to subscribe to, and then the theme wears it.
+        if let Some(scene) = theme.and_then(|(_, (t, _))| {
+            t.scene
+                .as_ref()
+                .filter(|_| crate::live::source(&t.wallpaper).is_none())
+        }) {
+            line = line.push(
+                button(text("Get its scene").size(12))
+                    .padding([6, 12])
+                    .style(style::secondary)
+                    .on_press(Message::OpenScene(scene.clone())),
+            );
+        }
         if let Some((index, (theme, _))) = theme.filter(|_| !tweaks.is_empty()) {
             line = line.push(
                 button(
@@ -366,15 +379,15 @@ impl Settings {
                 .into(),
             None => space().into(),
         };
-        column![
-            gallery,
-            self.catalog(),
-            group(
+        Column::with_children(self.trial())
+            .push(gallery)
+            .push(self.catalog())
+            .push(group(
                 "Make your own",
                 vec![
                     setting(
                         "Save my look",
-                        "Wallpaper, accent, corners, gaps, borders, shadows, opacity, animations and the bar",
+                        "Wallpaper, accent, corners, gaps, borders, shadows, opacity, animations, the bar and the dock",
                         row![
                             text_input(crate::i18n::t("Name it"), &self.theme_name)
                                 .on_input(Message::ThemeName)
@@ -434,8 +447,7 @@ impl Settings {
                 .into_iter()
                 .chain(self.theme_note.is_some().then(|| padded(note)))
                 .collect()
-            ),
-        ]
+            ))
         .spacing(22)
         .into()
     }

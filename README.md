@@ -330,7 +330,11 @@ apolline theme install ~/Downloads/dune   # a theme.toml, or a folder with one a
 apolline theme install https://example.com/dune.toml   # or straight from a link
 ```
 
-Settings → Themes → More themes browses the catalog, themes people made with their wallpapers, and installs one with a click; nothing is fetched until you ask. The catalog is the `catalog/` folder of this repository: a theme is a folder there with its `theme.toml`, its pictures and a `preview.jpg`, listed in `catalog/index.toml`, and a pull request adds yours. `APOLLINE_CATALOG=http://127.0.0.1:8000` points Settings at a local copy while you make one.
+Settings → Themes → More themes browses the catalog, themes people made with their wallpapers; nothing is fetched until you ask. **Try on** wears one for a minute: Keep, and it stays; Go back, close Settings or let the minute run out, and your config comes back as it was and the theme is gone again. The config from before waits in `config.toml.trying`, so even a shell that goes down wearing it starts again in yours.
+
+A theme can be a whole setup, a rice: besides the looks, `[bar] left`, `center`, `right` and `tray` place the bar's pieces and `[dock]` sets the dock up. A theme without them leaves yours be. A Wallpaper Engine scene goes in by its Workshop id, `[theme] scene = "2847562910"`: with the scene in your Steam library the theme wears it, without it the theme's own picture stands in, and Settings offers the scene's page in Steam. Scenes are never copied into a theme; they're their authors'. Save my look saves all of it, bar and dock too.
+
+The catalog is the `catalog/` folder of this repository: a theme is a folder there with its `theme.toml`, its pictures and a `preview.jpg`, listed in `catalog/index.toml`, and a pull request adds yours. The tests check every folder against the index, and CI renders each theme a pull request brings with `tools/preview.sh`, the real session under a headless sway, into the run's `previews`, so the picture in the catalog is what you'll get. `APOLLINE_CATALOG=http://127.0.0.1:8000` points Settings at a local copy while you make one.
 
 A theme can be a folder: `theme.toml` next to its wallpaper, named without a path (`wallpaper = "sand.jpg"`), so the picture travels with the look. A `niri.kdl` in the folder adds niri's own looks while the theme is on: `layout`, `animations` (custom shaders too), `window-rule`, `layer-rule` and `overview`. Anything else in it, such as `spawn-at-startup`, `binds` or `environment`, is dropped, so a theme can't run a program or rebind keys, and a part niri won't accept is left out.
 
@@ -491,6 +495,7 @@ cargo run -p apolline-shell -- lock --preview  # the lock screen in a window
 cargo run -p apolline-shell -- check           # validate ~/.config/apolline/config.toml
 cargo run -p apolline-shell -- --mode play --screenshot shot.png
 tools/headless.sh shot.png --mode play         # Linux: the real session under a headless sway, saved with grim
+tools/preview.sh catalog/dracula dracula.jpg  # Linux: a catalog theme the same way, as CI renders its preview
 tools/fake-controls.sh ~/fakebin               # stand-in wpctl and brightnessctl for quick settings
 tools/fake-bus.sh                              # fake NetworkManager, BlueZ, fprintd, UPower and power profiles on a bus of their own
 ```

@@ -609,3 +609,44 @@ fn keys_of_your_own_are_added_and_taken_away() {
     assert_eq!(settings.config.keys.len(), 1);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_theme_on_trial_goes_back_unless_kept() {
+    let dir = std::env::temp_dir().join(format!("apolline-trial-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    let mine = "# mine\n[layout]\ngaps = 3\n";
+    std::fs::write(&path, mine).unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let ember = crate::catalog::Entry {
+        name: "Ember".into(),
+        author: String::new(),
+        about: String::new(),
+        folder: "ember".into(),
+        files: vec!["theme.toml".into()],
+        preview: None,
+    };
+    settings.catalog = Some(Ok(vec![ember]));
+
+    let _ = settings.update(Message::CatalogTry(0));
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+    assert!(settings.trying.is_some());
+    let _ = settings.update(Message::PutThemeBack);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
+    assert_eq!(settings.config.layout.gaps, 3);
+    assert!(settings.trying.is_none());
+
+    let _ = settings.update(Message::CatalogTry(0));
+    let _ = settings.update(Message::KeepTheme);
+    let _ = settings.update(Message::Tick);
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+    assert!(!dir.join("config.toml.trying").exists());
+
+    // The shell put it back after a crash: Settings follows.
+    let _ = settings.update(Message::CatalogTry(0));
+    crate::tryon::put_back(&path, &dir).unwrap();
+    let _ = settings.update(Message::Tick);
+    assert!(settings.trying.is_none());
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
