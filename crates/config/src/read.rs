@@ -458,7 +458,12 @@ impl Reader<'_> {
                         config.language = (code != "auto").then(|| code.to_owned());
                     }
                 }
-                _ => self.unknown(key, "option", &["mode", "language"]),
+                "check_updates" => {
+                    if let Some(on) = self.boolean(key, value) {
+                        config.check_updates = on;
+                    }
+                }
+                _ => self.unknown(key, "option", &["mode", "language", "check_updates"]),
             }
         }
     }

@@ -45,17 +45,26 @@ impl Shell {
             Message::Listening(apps) => self.listening = apps,
             Message::Sound(heard) => return self.hear_sound(heard),
             Message::CheckUpdates | Message::Control(Command::Updates) => {
-                return Task::perform(crate::updates::check(), Message::Updates);
+                let releases = self.config.check_updates && !self.demo;
+                return Task::perform(crate::updates::check(releases), Message::Updates);
             }
             // A look that failed, offline say, keeps the last count rather than hiding it.
             Message::Updates(updates) => {
+                let said = updates
+                    .as_ref()
+                    .and_then(|u| u.apolline.clone())
+                    .map_or_else(Task::none, |version| self.release_out(&version));
                 if updates.is_some() {
                     self.updates = updates;
                 }
+                return said;
             }
             Message::Upgrade => {
-                let line =
-                    crate::terminal::running(&self.config.terminal, &crate::updates::command());
+                let apolline = self.updates.as_ref().is_some_and(|u| u.apolline.is_some());
+                let line = crate::terminal::running(
+                    &self.config.terminal,
+                    &crate::updates::command(apolline),
+                );
                 return self.spawn(&line);
             }
             Message::MachineSort(by_memory) => {

@@ -4,6 +4,7 @@
 
 [general]
 mode = ""                  # the mode to start in, by name; empty means none
+# check_updates = false    # Apolline looks once a day for a newer release and says so once
 
 [desktop]
 wallpaper = "fog.jpg"      # fog.jpg, ember.jpg, night.jpg, a path to your own, or a video, shader or Wallpaper Engine folder

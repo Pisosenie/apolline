@@ -204,6 +204,20 @@ impl Shell {
         self.show(Osd::Note(note))
     }
 
+    // A card for a new release, once for each version; the bar's count keeps it after that.
+    pub(super) fn release_out(&mut self, version: &str) -> Task<Message> {
+        let Some(told) = apolline_config::xdg_dir("XDG_STATE_HOME", ".local/state")
+            .map(|state| state.join("apolline/release-told"))
+        else {
+            return Task::none();
+        };
+        if std::fs::read_to_string(&told).is_ok_and(|said| said.trim() == version) {
+            return Task::none();
+        }
+        let _ = std::fs::write(&told, version);
+        self.update(Message::Notify(crate::notify::release_card(version)))
+    }
+
     pub(super) fn save_replay(&mut self) -> Task<Message> {
         let saved = self
             .replay

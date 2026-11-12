@@ -236,6 +236,14 @@ impl Shell {
             }
             // The watching process starts the shell again, as usual this time.
             Message::Activate(notify::SAFE_CARD) => std::process::exit(crate::guard::AGAIN),
+            Message::Activate(notify::RELEASE_CARD) => {
+                self.forget(notify::RELEASE_CARD);
+                let line = crate::terminal::running(
+                    &self.config.terminal,
+                    &format!("{} update", crate::control::me()),
+                );
+                return self.spawn(&line);
+            }
             Message::Activate(notify::SHOT_CARD) => {
                 self.forget(notify::SHOT_CARD);
                 return self.open_marks();

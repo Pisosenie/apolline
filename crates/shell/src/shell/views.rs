@@ -224,7 +224,7 @@ impl Shell {
                 .map(|t| (t.id, t.label.as_deref(), t.left()))
                 .collect(),
             listening: &self.listening,
-            updates: self.updates,
+            updates: self.updates.clone(),
             casting: self
                 .niri
                 .as_ref()

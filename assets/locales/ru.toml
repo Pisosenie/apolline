@@ -1046,3 +1046,6 @@
 "Choose" = "Выбрать"
 "Shown as" = "Показывать"
 "Try one on for a minute, or install it" = "Примерьте на минуту или установите"
+"Apolline {version} is out" = "Вышла Apolline {version}"
+"Click to update it in the terminal" = "Нажмите, чтобы обновить в терминале"
+"Apolline {version}" = "Apolline {version}"

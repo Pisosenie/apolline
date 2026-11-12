@@ -4,6 +4,7 @@
 # APOLLINE_FROM=git builds the newest commit instead of the latest release.
 # APOLLINE_GREETER=keep leaves the display manager you have; otherwise greetd shows apolline greet.
 # APOLLINE_LIVE=no skips apolline-wall, which draws live wallpapers: videos, shaders, Wallpaper Engine.
+# APOLLINE_UPDATE=1 only builds the installed packages again and restarts the shell: apolline update.
 set -euo pipefail
 
 # All in a function, so a download cut short runs nothing at all.
@@ -12,6 +13,7 @@ main() {
 from=${APOLLINE_FROM:-release}
 greeter=${APOLLINE_GREETER:-apolline}
 live=${APOLLINE_LIVE:-yes}
+update=${APOLLINE_UPDATE:-0}
 work=${APOLLINE_WORK:-$HOME/.cache/apolline-install}
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -21,8 +23,10 @@ die() { printf '\033[1;31m==>\033[0m %s\n' "$*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] || die "run it as your user, it asks for sudo when it needs it"
 command -v sudo >/dev/null || die "install sudo and add yourself to it first"
 
-say "Tools to build with"
-sudo pacman -Syu --needed --noconfirm base-devel git
+if [[ $update != 1 ]]; then
+  say "Tools to build with"
+  sudo pacman -Syu --needed --noconfirm base-devel git
+fi
 
 mkdir -p "$work"
 fetch() {
@@ -56,6 +60,27 @@ swap() {
   sudo pacman -Rdd --noconfirm "$old"
   sudo pacman -U --noconfirm "${built[@]}"
 }
+
+# An update builds what's installed again and leaves the rest of the system alone.
+if [[ $update == 1 ]]; then
+  fetch apolline
+  if [[ $from == git ]]; then
+    swap "$work/apolline/packaging/arch/apolline-git" apolline
+  else
+    swap "$work/apolline/packaging/arch/apolline" apolline-git
+  fi
+  if pacman -Q apolline-wall-git &>/dev/null; then
+    fetch apolline-wall
+    build "$work/apolline-wall/packaging/arch"
+  fi
+  if [[ -n ${NIRI_SOCKET:-} ]]; then
+    say "Starting the new shell"
+    pkill -x apolline || true
+    niri msg action spawn -- apolline
+  fi
+  say "Up to date."
+  return
+fi
 
 fetch vif
 build "$work/vif/packaging/arch/vif-bin"

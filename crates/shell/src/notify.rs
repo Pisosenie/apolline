@@ -26,6 +26,7 @@ pub const REMINDER_CARD: u32 = CONFIG_CARD + 3;
 const REMINDERS: u32 = 1000;
 // Past the reminders and the timers.
 pub const SAFE_CARD: u32 = CONFIG_CARD + 3000;
+pub const RELEASE_CARD: u32 = CONFIG_CARD + 3001;
 
 pub fn is_reminder(id: u32) -> bool {
     (REMINDER_CARD..REMINDER_CARD + REMINDERS).contains(&id)
@@ -259,6 +260,27 @@ pub fn reminder_card(
         body: said.join(" · "),
         urgency: Urgency::Normal,
         timeout: Some(shown_for),
+        received: SystemTime::now(),
+        sound: Heard::Nothing,
+    }
+}
+
+// A newer Apolline is out: said once, quietly, and gone by itself.
+pub fn release_card(version: &str) -> Notification {
+    Notification {
+        id: RELEASE_CARD,
+        app: "Apolline".into(),
+        desktop: None,
+        actions: Vec::new(),
+        image: None,
+        progress: None,
+        transient: false,
+        resident: false,
+        reply: None,
+        summary: crate::i18n::fill("Apolline {version} is out", &[("version", &version)]),
+        body: crate::i18n::t("Click to update it in the terminal").into(),
+        urgency: Urgency::Low,
+        timeout: Some(Duration::from_secs(10)),
         received: SystemTime::now(),
         sound: Heard::Nothing,
     }

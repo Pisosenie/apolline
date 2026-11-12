@@ -126,7 +126,7 @@ const USAGE: &str = "usage: apolline [--mode NAME]
        apolline volume up|down|mute | mic mute | brightness up|down
        apolline plugin list | install PATH|LINK | remove NAME | enable NAME | disable NAME
        apolline lock
-       apolline setup | check [FILE] | doctor | report | version";
+       apolline setup | update | check [FILE] | doctor | report | version";
 
 // glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
 // allocates holds whole huge pages; for a shell that's a couple of hundred MB for nothing.
@@ -232,6 +232,7 @@ fn main() -> ExitCode {
             return greet::main(&args[1..]);
         }
         Some("setup") => return setup(),
+        Some("update") => return update(),
         Some("import") => return hypr::main(&args[1..]),
         Some("fragment") => {
             let path = args
@@ -491,6 +492,29 @@ fn lock_screen(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+// Builds the installed packages again from their repositories, through the installer's update
+// mode, and starts the new shell. The installer takes over this process, so its restart of the
+// shell doesn't end it.
+fn update() -> ExitCode {
+    use std::os::unix::process::CommandExt;
+    const INSTALLER: &str = "https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh";
+    let git = std::process::Command::new("pacman")
+        .args(["-Q", "apolline-git"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    let from = if git { "git" } else { "release" };
+    let script = format!(
+        "set -o pipefail; curl -fsSL {INSTALLER} | APOLLINE_UPDATE=1 APOLLINE_FROM={from} bash"
+    );
+    let err = std::process::Command::new("bash")
+        .args(["-c", &script])
+        .exec();
+    eprintln!("apolline: {err}");
+    ExitCode::FAILURE
 }
 
 fn setup() -> ExitCode {

@@ -405,7 +405,7 @@ pub fn watching<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>>
 
 // How many packages wait, when any do; a click runs the update in the terminal.
 pub fn updates<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>> {
-    let updates = bar.updates.filter(|u| u.total() > 0)?;
+    let updates = bar.updates.as_ref().filter(|u| u.total() > 0)?;
     let glyph = icon(Icon::Download, 13.0, neutral::muted());
     let figure = text(updates.total().to_string())
         .size(if across { 12 } else { 10 })
@@ -426,6 +426,10 @@ pub fn updates<'a>(bar: &Bar<'a>, across: bool) -> Option<Element<'a, Message>> 
     if updates.aur > 0 {
         let aur = crate::i18n::fill("{n} from the AUR", &[("n", &updates.aur)]);
         said = format!("{said} · {aur}");
+    }
+    if let Some(version) = &updates.apolline {
+        let ours = crate::i18n::fill("Apolline {version}", &[("version", version)]);
+        said = format!("{said} · {ours}");
     }
     Some(
         iced::widget::tooltip(

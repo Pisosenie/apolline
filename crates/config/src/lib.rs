@@ -23,6 +23,8 @@ pub struct Config {
     pub mode: Option<String>,
     // "ru", "en" or none for the system's.
     pub language: Option<String>,
+    // Look once a day whether a newer Apolline is out, and say so once.
+    pub check_updates: bool,
     pub colors: Colors,
     pub panel: Panel,
     pub clock: Clock,
@@ -1210,6 +1212,7 @@ impl Default for Config {
         Self {
             mode: None,
             language: None,
+            check_updates: true,
             colors: Colors::default(),
             panel: Panel::default(),
             clock: Clock::default(),
