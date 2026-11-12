@@ -234,7 +234,15 @@ impl Settings {
                     }
                     grid = grid.push(line);
                 }
-                vec![padded(grid)]
+                // The row stays over the cards, so a search still finds it.
+                vec![
+                    setting(
+                        "Themes people made",
+                        "Try one on for a minute, or install it",
+                        browse("Look again"),
+                    ),
+                    padded(grid),
+                ]
             }
         };
         group("More themes", rows)

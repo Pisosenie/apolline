@@ -98,8 +98,11 @@ pub fn me() -> String {
     std::env::current_exe()
         .ok()
         .and_then(|path| {
-            path.to_str()
-                .map(|p| format!("'{}'", p.replace('\'', r"'\''")))
+            // An upgrade replaces the binary under a running shell, and Linux then names it
+            // "… (deleted)": the new one at the same path is the one to start.
+            let path = path.to_str()?;
+            let path = path.strip_suffix(" (deleted)").unwrap_or(path);
+            Some(format!("'{}'", path.replace('\'', r"'\''")))
         })
         .unwrap_or_else(|| "apolline".to_owned())
 }

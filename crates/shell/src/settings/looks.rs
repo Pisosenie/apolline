@@ -210,16 +210,12 @@ impl Settings {
             );
         }
         caption = caption.push(space::horizontal());
+        // A tick, not a word: six cards to a row leave no room for one beside a long name.
         if on {
             caption = caption.push(
-                container(
-                    text("Applied")
-                        .size(11)
-                        .font(style::semibold())
-                        .color(style::color(look.on_accent)),
-                )
-                .padding([3, 9])
-                .style(style::pill(look.accent)),
+                container(icon(Icon::Check, 12.0, look.on_accent))
+                    .padding(4)
+                    .style(style::pill(look.accent)),
             );
         }
         button(
