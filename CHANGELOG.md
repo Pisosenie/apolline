@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-11-12
 
+- **`apolline update`**: builds Apolline and apolline-wall again from their repositories and starts the new shell. A newer release shows on the bar's updates button and once as a quiet card; `[general] check_updates = false` stops the daily look.
 - **Safe mode**: a crashed shell starts again by itself, and after three crashes in a minute it starts on the defaults and the CPU without touching your files; a card starts it as usual again. Crashes go to `~/.local/state/apolline/crashes.log`.
 - **`apolline report`**: one file for an issue with the versions, the GPU and screens, what doctor says, the latest crashes, the shell's log and the config, with links, the home folder and the user name taken out.
-- **The overview over a soft wallpaper**: while niri's overview is open the wallpaper blurs and dims behind the workspaces, and comes back sharp as it closes. A live one softens to its poster. Nothing to set; performance modes leave it sharp.
+- **The overview over a soft wallpaper**: while niri's overview is open the wallpaper blurs and dims behind the workspaces, and comes back sharp as it closes. A live one softens to its poster, in the backdrop over apolline-wall. Nothing to set; performance modes leave it sharp.
 - **Settings in eight pages**: Modes, Appearance, Windows, Bar and dock, Displays, Notifications, Lock and sleep, Input, System. Themes sit at the top of Appearance, window shape moved to Windows, the launcher to Bar and dock, keyboard, mouse and shortcuts are one page. The size, corners and glass of each surface, clock formats and card sizes are left to themes and the file, and your own colors open from one line. `settings --page` still takes the old names.
 - **Six themes in the box**: Fog, Ember, Night, Mocha, Paper and Glass. Tonal, Latte, Hardline and Minimal moved to the catalog, a click away with Try on.
 - The README is a short tour now; everything else is in `docs/CONFIG.md`, and building it in `CONTRIBUTING.md`.
@@ -20,6 +21,8 @@
 - A lock screen picture that won't load, a video without its frame yet say, gives way to the desktop's, then Apolline's own.
 - A live wallpaper on one screen no longer stops the others from changing their pictures or puts their desktop a layer up.
 - The installer builds the new package before it removes the old one, leaves a file manager you chose and a network set up with iwd or systemd-networkd alone, and never writes over an earlier copy of your greetd config.
+
+- The settings button works again after an upgrade replaced the shell's binary under it, Try on brings Keep and Go back into view, and a live wallpaper's poster is never read half written.
 
 ## 0.3.0 — 2026-11-07
 

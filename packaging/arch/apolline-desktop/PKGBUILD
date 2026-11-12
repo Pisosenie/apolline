@@ -1,6 +1,6 @@
 # Maintainer: Danil Zorin <45851636+Pisosenie@users.noreply.github.com>
 pkgname=apolline-desktop
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc='The whole Apolline desktop on a bare Arch: the shell, niri, sound, network, Bluetooth, login screen, files and fonts'
 arch=('any')
