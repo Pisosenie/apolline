@@ -2,16 +2,12 @@ use std::path::{Path, PathBuf};
 
 use apolline_config::{Theme, slug};
 
-const BUNDLED: [&str; 10] = [
+const BUNDLED: [&str; 6] = [
     include_str!("../../../assets/themes/fog.toml"),
     include_str!("../../../assets/themes/ember.toml"),
     include_str!("../../../assets/themes/night.toml"),
-    include_str!("../../../assets/themes/tonal.toml"),
     include_str!("../../../assets/themes/mocha.toml"),
-    include_str!("../../../assets/themes/latte.toml"),
-    include_str!("../../../assets/themes/hardline.toml"),
     include_str!("../../../assets/themes/paper.toml"),
-    include_str!("../../../assets/themes/minimal.toml"),
     include_str!("../../../assets/themes/glass.toml"),
 ];
 
@@ -63,6 +59,10 @@ fn read(file: &Path) -> Option<Theme> {
     let own = file.parent()?.join(&theme.wallpaper);
     if !theme.wallpaper.contains('/') && own.is_file() {
         theme.wallpaper = crate::wallpaper::shorten(&own);
+    }
+    // The scene when Steam has it, the theme's own picture otherwise.
+    if let Some(scene) = theme.scene.as_deref().and_then(crate::live::workshop) {
+        theme.wallpaper = scene;
     }
     Some(theme)
 }
@@ -154,13 +154,7 @@ mod tests {
             .iter()
             .map(|text| Theme::parse(text).unwrap().name)
             .collect();
-        assert_eq!(
-            names,
-            [
-                "Fog", "Ember", "Night", "Tonal", "Mocha", "Latte", "Hardline", "Paper", "Minimal",
-                "Glass"
-            ]
-        );
+        assert_eq!(names, ["Fog", "Ember", "Night", "Mocha", "Paper", "Glass"]);
     }
 
     #[test]

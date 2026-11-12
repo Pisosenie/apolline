@@ -75,12 +75,12 @@ impl Settings {
                 Message::Switch,
             ),
         )];
-        switch_rows.push(note("Any other keys: Shortcuts → Next keyboard layout."));
+        switch_rows.push(note("Any other keys: Next keyboard layout, below."));
         if keyboard.switch == Some(Switch::SuperSpace)
             && keys::same(&self.config.shortcuts.launcher, "Mod+Space")
         {
             switch_rows.push(warning(
-                "Super+Space also opens the launcher. Pick another key here or in Shortcuts.",
+                "Super+Space also opens the launcher. Pick another key here or below.",
             ));
         }
 
@@ -275,7 +275,25 @@ impl Settings {
                 .into(),
             );
         }
-        let mut form = column![group("Apolline", rows)].spacing(22);
+        let mut yours = self.key_rows(
+            self.config
+                .keys
+                .iter()
+                .map(|(combo, action)| (combo.as_str(), key_action(action)))
+                .collect(),
+            "Replaces {action} from your niri config",
+            Message::RemoveKey,
+            Message::AddKey,
+            palette,
+        );
+        yours.push(note(
+            "A command, or one of niri's actions written as niri: close-window. Yours win over niri's config; Apolline's keys above and a mode's own win over yours.",
+        ));
+        let mut form = column![
+            group("Apolline", rows),
+            group("Your keys, in every mode", yours),
+        ]
+        .spacing(22);
         if !known.is_empty() {
             form = form.push(group(
                 "Already in your niri config",
@@ -283,6 +301,108 @@ impl Settings {
             ));
         }
         form.into()
+    }
+}
+
+impl Settings {
+    // Keys and what they do, each with a word on what it takes over, then a row to add one: a
+    // mode's keys and your own in [keys] alike.
+    pub(super) fn key_rows<'a>(
+        &'a self,
+        bound: Vec<(&'a str, String)>,
+        replaces: &'static str,
+        remove: fn(usize) -> Message,
+        add: Message,
+        palette: Palette,
+    ) -> Vec<Element<'a, Message>> {
+        let mut rows = Vec::new();
+        for (k, (combo, does)) in bound.into_iter().enumerate() {
+            let taken = Shortcut::ALL
+                .into_iter()
+                .find(|&s| keys::same(self.config.shortcuts.get(s), combo));
+            let replaced = self
+                .niri_binds
+                .iter()
+                .find(|(bind, _)| keys::same(bind, combo));
+            let about = match (taken, replaced) {
+                (Some(shortcut), _) => Some(format!(
+                    "Taken by “{}”, so it won't work; pick other keys",
+                    fragment::action(shortcut).0
+                )),
+                (None, Some((_, action))) => {
+                    Some(crate::i18n::fill(replaces, &[("action", &action)]))
+                }
+                _ => None,
+            };
+            let mut words = column![text(does).size(13).font(style::mono())].spacing(3);
+            if let Some(about) = about {
+                let tint = if taken.is_some() {
+                    style::WARN
+                } else {
+                    style::faint()
+                };
+                words = words.push(text(about).size(12).color(style::color(tint)));
+            }
+            rows.push(
+                row![
+                    container(keycaps(combo)).width(Length::Fixed(200.0)),
+                    words.width(Fill),
+                    button(icon(Icon::X, 14.0, style::faint()))
+                        .padding(6)
+                        .style(style::ghost(8.0))
+                        .on_press(remove(k)),
+                ]
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .padding([10, 16])
+                .into(),
+            );
+        }
+        let capture: Element<'_, Message> = match (&self.key_combo, self.recording_key) {
+            (_, true) => container(
+                text("Press the keys…")
+                    .size(13)
+                    .color(style::color(palette.accent)),
+            )
+            .padding([6, 12])
+            .style(style::pill(palette.accent_soft))
+            .into(),
+            (Some(combo), false) => button(keycaps(combo))
+                .padding(2)
+                .style(style::ghost(8.0))
+                .on_press(Message::RecordKey)
+                .into(),
+            (None, false) => button(text("Choose keys").size(13))
+                .padding([7, 14])
+                .style(style::secondary)
+                .on_press(Message::RecordKey)
+                .into(),
+        };
+        let ready = self.key_combo.is_some() && !self.key_command.trim().is_empty();
+        rows.push(
+            row![
+                container(capture).width(Length::Fixed(200.0)),
+                text_input(
+                    crate::i18n::t("command, like  steam  or  niri msg action fullscreen-window"),
+                    &self.key_command
+                )
+                .on_input(Message::KeyCommand)
+                .on_submit_maybe(ready.then(|| add.clone()))
+                .padding([8, 12])
+                .size(13)
+                .font(style::mono())
+                .style(style::field(palette)),
+                button(text("Add").size(13))
+                    .padding([8, 14])
+                    .style(style::primary(palette))
+                    .on_press_maybe(ready.then_some(add)),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .padding([12, 16])
+            .into(),
+        );
+        rows
     }
 }
 
@@ -309,6 +429,22 @@ pub(super) fn keycaps<'a>(combo: &str) -> Element<'a, Message> {
     .spacing(4)
     .align_y(Alignment::Center)
     .into()
+}
+
+fn key_action(action: &apolline_config::KeyAction) -> String {
+    match action {
+        apolline_config::KeyAction::Run(command) => command.clone(),
+        apolline_config::KeyAction::Niri(niri) => format!("niri: {niri}"),
+    }
+}
+
+// What the field says, as a key of yours: "niri: close-window" is niri's action, the rest a
+// command. None for an action niri wouldn't read.
+pub(super) fn typed_action(text: &str) -> Option<apolline_config::KeyAction> {
+    match text.trim().strip_prefix("niri:") {
+        Some(niri) => apolline_config::KeyAction::niri(niri),
+        None => Some(apolline_config::KeyAction::Run(text.trim().to_owned())),
+    }
 }
 
 pub(super) fn read_niri_binds() -> Vec<(String, String)> {

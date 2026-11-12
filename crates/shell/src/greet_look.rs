@@ -80,7 +80,7 @@ pub fn text(config: &Config, picture: &str) -> String {
         out.set("general", "language", language.as_str());
     }
     format!(
-        "# Written by Apolline Settings → Lock screen. The login screen reads it.\n\n{}",
+        "# Written by Apolline Settings → Lock and sleep. The login screen reads it.\n\n{}",
         out.text()
     )
 }

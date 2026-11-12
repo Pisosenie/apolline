@@ -45,6 +45,15 @@ impl Settings {
         group(
             "The launcher",
             vec![
+                setting(
+                    "Shown as",
+                    "A list with details, or a grid of big icons moved through with the arrows",
+                    segmented(
+                        [(false, "List", None), (true, "Grid", None)],
+                        self.config.style.grid,
+                        Message::LauncherGrid,
+                    ),
+                ),
                 labelled("What it looks through", chips),
                 setting(
                     "Web search",

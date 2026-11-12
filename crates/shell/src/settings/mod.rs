@@ -13,6 +13,7 @@ mod input;
 mod launcher_finds;
 mod lock;
 mod looks;
+mod mode_windows;
 mod modes;
 mod notifications;
 mod panel_layout;
@@ -80,7 +81,6 @@ const CLOCK_SPOTS: [(&str, &str); 8] = [
     ("bottom-right", "Bottom right"),
 ];
 const BUILT_IN_FONT: &str = "Geist, built in";
-const SAME_FONT: &str = "The desktop's font";
 const WALLS: usize = 11;
 const PER_ROW: usize = 4;
 const WIDE: f32 = 1120.0;
@@ -133,81 +133,94 @@ pub fn run(screenshot: Option<PathBuf>, page: Option<String>) -> iced::Result {
         },
         ..window::Settings::default()
     });
-    fonts::ALL
+    let ran = fonts::ALL
         .into_iter()
         .fold(app, |app, font| app.font(font))
-        .run()
+        .run();
+    // Closed while a theme was on trial: nobody said keep.
+    let config = apolline_config::default_path();
+    if let Err(err) = crate::tryon::put_back(&config, &themes::dir()) {
+        eprintln!("apolline: could not put the tried theme back: {err}");
+    }
+    ran
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Modes,
-    Themes,
     Appearance,
     Windows,
-    Displays,
     Bar,
-    Lock,
+    Displays,
     Notifications,
-    Keyboard,
-    Pointer,
-    Shortcuts,
-    Plugins,
-    About,
+    Lock,
+    Input,
+    System,
     Welcome,
 }
 
 impl Page {
-    const ALL: [Page; 13] = [
+    const ALL: [Page; 9] = [
         Page::Modes,
-        Page::Themes,
         Page::Appearance,
         Page::Windows,
-        Page::Displays,
         Page::Bar,
-        Page::Lock,
+        Page::Displays,
         Page::Notifications,
-        Page::Keyboard,
-        Page::Pointer,
-        Page::Shortcuts,
-        Page::Plugins,
-        Page::About,
+        Page::Lock,
+        Page::Input,
+        Page::System,
     ];
 
     fn key(self) -> &'static str {
         match self {
             Page::Modes => "modes",
-            Page::Themes => "themes",
             Page::Appearance => "appearance",
             Page::Windows => "windows",
-            Page::Displays => "displays",
             Page::Bar => "bar",
-            Page::Lock => "lock",
+            Page::Displays => "displays",
             Page::Notifications => "notifications",
-            Page::Keyboard => "keyboard",
-            Page::Pointer => "pointer",
-            Page::Shortcuts => "shortcuts",
-            Page::Plugins => "plugins",
-            Page::About => "about",
+            Page::Lock => "lock",
+            Page::Input => "input",
+            Page::System => "system",
             Page::Welcome => "welcome",
         }
+    }
+
+    // `settings --page` takes the names pages had before they were put together too.
+    const OLD_NAMES: [(&'static str, Page); 6] = [
+        ("themes", Page::Appearance),
+        ("keyboard", Page::Input),
+        ("pointer", Page::Input),
+        ("shortcuts", Page::Input),
+        ("about", Page::System),
+        ("plugins", Page::System),
+    ];
+
+    fn named(key: &str) -> Option<Page> {
+        Self::ALL
+            .into_iter()
+            .chain([Page::Welcome])
+            .find(|page| page.key() == key)
+            .or_else(|| {
+                Self::OLD_NAMES
+                    .iter()
+                    .find(|(old, _)| *old == key)
+                    .map(|(_, page)| *page)
+            })
     }
 
     fn title(self) -> &'static str {
         match self {
             Page::Modes => "Modes",
-            Page::Themes => "Themes",
             Page::Appearance => "Appearance",
             Page::Windows => "Windows",
+            Page::Bar => "Bar and dock",
             Page::Displays => "Displays",
-            Page::Bar => "Bar",
-            Page::Lock => "Lock screen",
             Page::Notifications => "Notifications",
-            Page::Keyboard => "Keyboard",
-            Page::Pointer => "Mouse & touchpad",
-            Page::Shortcuts => "Shortcuts",
-            Page::Plugins => "Plugins",
-            Page::About => "About",
+            Page::Lock => "Lock and sleep",
+            Page::Input => "Input",
+            Page::System => "System",
             Page::Welcome => "Welcome to Apolline",
         }
     }
@@ -215,24 +228,14 @@ impl Page {
     fn subtitle(self) -> &'static str {
         match self {
             Page::Modes => "One key changes wallpaper, apps, notifications and performance.",
-            Page::Themes => "A whole look in one click, and yours in one file to share.",
-            Page::Appearance => "Gaps, corners, borders and shadows of every window.",
-            Page::Windows => {
-                "How windows open, move, fade and animate, for all of them or one app."
-            }
+            Page::Appearance => "Themes to try on, the wallpaper, the accent and the fonts.",
+            Page::Windows => "Their shape, and how they open, move, fade and animate.",
+            Page::Bar => "Where the bar and the dock sit, what they show, and the launcher.",
             Page::Displays => "Resolution, refresh rate, scale and where each screen sits.",
-            Page::Bar => "Where the bar and the dock sit and what they show.",
-            Page::Lock => "What the screen shows while you're away, and when it locks.",
             Page::Notifications => "When popups show up and how long they stay.",
-            Page::Keyboard => {
-                "The language, keyboard layouts, how to switch them and how keys repeat."
-            }
-            Page::Pointer => "Tapping, scrolling and pointer speed.",
-            Page::Shortcuts => "Keys that open Apolline, and what they replace.",
-            Page::Plugins => {
-                "Bar pieces, tiles, widgets and searches others wrote, in any language."
-            }
-            Page::About => "Version, setup and a health check of your config.",
+            Page::Lock => "When the screen locks, goes dark and sleeps, and what it shows.",
+            Page::Input => "Keyboard layouts, the touchpad and mouse, and every key Apolline has.",
+            Page::System => "How Apolline sits in niri, a check of your config, and plugins.",
             Page::Welcome => {
                 "Four quick steps, all optional. Everything here can be changed later."
             }
@@ -242,38 +245,44 @@ impl Page {
     fn icon(self) -> Icon {
         match self {
             Page::Modes => Icon::Layers,
-            Page::Themes => Icon::Brush,
             Page::Appearance => Icon::Palette,
             Page::Windows => Icon::AppWindow,
-            Page::Displays => Icon::Monitor,
             Page::Bar => Icon::PanelTop,
-            Page::Lock => Icon::Lock,
+            Page::Displays => Icon::Monitor,
             Page::Notifications => Icon::Bell,
-            Page::Keyboard => Icon::Keyboard,
-            Page::Pointer => Icon::Pointer,
-            Page::Shortcuts => Icon::Command,
-            Page::Plugins => Icon::Zap,
-            Page::About => Icon::Info,
+            Page::Lock => Icon::Lock,
+            Page::Input => Icon::Keyboard,
+            Page::System => Icon::Info,
             Page::Welcome => Icon::Sparkles,
         }
     }
 
     fn sections(self) -> &'static [&'static str] {
         match self {
-            Page::Modes | Page::About | Page::Welcome => &[],
-            Page::Themes => &[
-                "desktop", "colors", "layout", "windows", "bar", "lock", "style",
+            Page::Modes | Page::Welcome => &[],
+            Page::Appearance => &["desktop", "colors", "apps"],
+            Page::Windows => &["layout", "windows"],
+            Page::Bar => &[
+                "bar",
+                "style.bar",
+                "dock",
+                "style.dock",
+                "clock",
+                "panel",
+                "launcher",
             ],
-            Page::Appearance => &["desktop", "colors", "layout", "apps", "style", "launcher"],
-            Page::Windows => &["windows"],
             Page::Displays => &["night", "bar.skip", "bar.screens"],
-            Page::Bar => &["bar", "style.bar", "dock", "style.dock", "clock", "panel"],
-            Page::Lock => &["lock", "idle"],
             Page::Notifications => &["notifications"],
-            Page::Keyboard => &["keyboard"],
-            Page::Pointer => &["touchpad", "mouse"],
-            Page::Shortcuts => &["shortcuts"],
-            Page::Plugins => &["plugins"],
+            Page::Lock => &["lock", "idle"],
+            Page::Input => &[
+                "keyboard",
+                "touchpad",
+                "mouse",
+                "shortcuts",
+                "keys",
+                "apps.terminal",
+            ],
+            Page::System => &["plugins"],
         }
     }
 }
@@ -311,7 +320,6 @@ enum Message {
     Palette(String),
     DesktopClock(String),
     DesktopWidget(String, bool),
-    WallpaperElsewhere(bool),
     WallpaperDraft(String),
     UseWallpaper,
     AllWallpapers,
@@ -374,9 +382,14 @@ enum Message {
     DropTrigger(usize),
     StartHere(bool),
     KeyCommand(String),
-    RecordModeKey,
+    RecordKey,
     AddModeKey,
     RemoveModeKey(usize),
+    AddKey,
+    RemoveKey(usize),
+    ImportHyprland,
+    Imported(Result<Vec<String>, String>),
+    UndoHyprland,
     Draft(String),
     Add,
     Remove(usize),
@@ -386,8 +399,6 @@ enum Message {
     NightDraft(String),
     SetNight,
     NightWarmth(u16),
-    Style(Part, Knob, u16),
-    SurfaceFont(Part, String),
     LauncherGrid(bool),
     CardsCorner(Corner),
     Radius(u16),
@@ -413,15 +424,12 @@ enum Message {
     BarFloating(bool),
     BarAutohide(bool),
     BarShape(apolline_config::Shape),
-    BarOpacity(u16),
     BarBlur(bool),
     Dock(DockSet),
     Date(bool),
     BatteryPercent(bool),
     DoNotDisturb(bool),
     PopupSeconds(u16),
-    Cards(u16),
-    CardWidth(u16),
     SoundKind(&'static str),
     SoundDraft(String),
     SoundSet,
@@ -459,14 +467,13 @@ enum Message {
     Language(&'static str),
     Find(String),
     ColorDraft(&'static str, String),
-    ClockDraft(&'static str, String),
-    ClockSet(&'static str),
     LauncherFinds(&'static str, bool),
     WebDraft(String),
     WebSet,
     Terminal(String),
     ColorSet(&'static str),
     ColorReset(&'static str),
+    OwnColors,
     FoundSetting(Page, String),
     Machine(Vec<crate::doctor::Line>),
     CheckMachine,
@@ -475,6 +482,15 @@ enum Message {
     CatalogPicture(String, Option<image::Handle>),
     CatalogInstall(usize),
     CatalogInstalled(Result<String, String>),
+    // Fetched and worn for a minute.
+    CatalogTry(usize),
+    CatalogTried(Result<String, String>),
+    KeepTheme,
+    PutThemeBack,
+    // A Workshop scene's page in Steam, by its id.
+    OpenScene(String),
+    RememberWindows,
+    ForgetWindow(usize),
     GreetPreview,
     GreetInstall,
     GreetDone(Result<(), String>),
@@ -550,19 +566,21 @@ struct Settings {
     name_draft: Option<String>,
     key_combo: Option<String>,
     key_command: String,
-    recording_mode_key: bool,
+    recording_key: bool,
     rule: Rule,
     themes: Vec<(Look, Option<PathBuf>)>,
     // None until asked; an empty error while it's on its way.
     catalog: Option<Result<Vec<crate::catalog::Entry>, String>>,
     catalog_pictures: std::collections::HashMap<String, image::Handle>,
     catalog_busy: Option<String>,
+    trying: Option<crate::tryon::Trying>,
+    windows_note: Option<String>,
     // The search over every page, and the row it last led to.
     query: String,
     spot: Option<(Page, String)>,
     // A color being typed, by role, until Enter.
     color_drafts: std::collections::HashMap<&'static str, String>,
-    clock_drafts: std::collections::HashMap<&'static str, String>,
+    colors_open: bool,
     web_draft: Option<String>,
     sound_draft: Option<String>,
     quiet_draft: Option<String>,
@@ -617,6 +635,9 @@ struct Settings {
     sample: Status,
     controls: Controls,
     setup_log: Vec<String>,
+    // A Hyprland config is here to bring over, and whether it was already.
+    hyprland: (bool, bool),
+    import_log: Vec<String>,
     tested: Option<Result<(), String>>,
     greet_note: Option<Result<(), String>>,
     error: Option<String>,
@@ -629,12 +650,7 @@ struct Settings {
 impl Settings {
     fn new(screenshot: Option<PathBuf>, page: Option<&str>) -> (Self, Task<Message>) {
         let (mut settings, task) = Self::open(apolline_config::default_path(), screenshot);
-        if let Some(page) = page.and_then(|p| {
-            Page::ALL
-                .into_iter()
-                .chain([Page::Welcome])
-                .find(|page| page.key() == p)
-        }) {
+        if let Some(page) = page.and_then(Page::named) {
             settings.page = page;
         }
         (settings, task)
@@ -643,6 +659,8 @@ impl Settings {
     fn open(path: PathBuf, screenshot: Option<PathBuf>) -> (Self, Task<Message>) {
         let editor = Editor::load(&path);
         let (config, diagnostics) = Config::load(&path);
+        // A trial an earlier Settings left running goes on here, or ends at the first tick.
+        let trying = crate::tryon::pending(&path);
         let settings = Self {
             stamp: stamp(&path),
             path,
@@ -656,7 +674,7 @@ impl Settings {
             name_draft: None,
             key_combo: None,
             key_command: String::new(),
-            recording_mode_key: false,
+            recording_key: false,
             rule: Rule {
                 app: String::new(),
                 floating: Some(true),
@@ -667,10 +685,12 @@ impl Settings {
             catalog: None,
             catalog_pictures: std::collections::HashMap::new(),
             catalog_busy: None,
+            trying,
+            windows_note: None,
             query: String::new(),
             spot: None,
             color_drafts: std::collections::HashMap::new(),
-            clock_drafts: std::collections::HashMap::new(),
+            colors_open: false,
             web_draft: None,
             sound_draft: None,
             quiet_draft: None,
@@ -727,6 +747,8 @@ impl Settings {
             sample: Status::sample(),
             controls: Controls::sample(),
             setup_log: Vec::new(),
+            hyprland: crate::hypr::found(),
+            import_log: Vec::new(),
             tested: None,
             greet_note: None,
             error: None,

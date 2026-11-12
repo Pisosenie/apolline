@@ -3,7 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use apolline_config::{
-    Appear, Blur, Center, Config, Keyboard, Motion, Mouse, Rule, Shortcut, Touchpad, Width, Windows,
+    Appear, Blur, Center, Config, KeyAction, Keyboard, Motion, Mouse, Rule, Shortcut, Touchpad,
+    Width, Windows,
 };
 
 const TEMPLATE: &str = include_str!("../../../assets/niri.kdl");
@@ -69,6 +70,53 @@ pub fn held(niri_config: &str, config: &Config, mode_keys: &[String]) -> Vec<Str
         }
     }
     held
+}
+
+fn key_bind(combo: &str, action: &KeyAction) -> String {
+    match action {
+        KeyAction::Run(command) => format!(
+            "{combo} hotkey-overlay-title=\"{}\" {{ spawn-sh \"{}\"; }}",
+            quote(command),
+            quote(command)
+        ),
+        KeyAction::Niri(niri) => {
+            let words: Vec<String> = niri
+                .split_whitespace()
+                .enumerate()
+                .map(|(i, word)| match word.split_once('=') {
+                    _ if i == 0 => word.to_owned(),
+                    Some((name, value)) => format!("{name}={}", niri_value(value)),
+                    None => niri_value(word),
+                })
+                .collect();
+            // A wheel flicks past many workspaces without a pause, as in niri's own config.
+            let cooldown = if combo.contains("Wheel") {
+                " cooldown-ms=150"
+            } else {
+                ""
+            };
+            format!("{combo}{cooldown} {{ {}; }}", words.join(" "))
+        }
+    }
+}
+
+// Numbers and true/false bare, anything else in quotes.
+fn niri_value(word: &str) -> String {
+    if word.parse::<i64>().is_ok() || word == "true" || word == "false" {
+        word.to_owned()
+    } else {
+        format!("\"{}\"", quote(word))
+    }
+}
+
+// Keys of yours that act in place, like Apolline's own kept ones.
+fn kept_while_staying(action: &KeyAction) -> bool {
+    match action {
+        KeyAction::Niri(niri) => {
+            niri.starts_with("screenshot") || niri.starts_with("switch-layout")
+        }
+        KeyAction::Run(_) => false,
+    }
 }
 
 fn shortcut_bind(config: &Config, shortcut: Shortcut) -> String {
@@ -329,8 +377,16 @@ window-rule {{
     let config = fragment.config;
     if fragment.stay {
         let mode_keys: Vec<String> = mode
-            .map(|mode| mode.keys.iter().map(|(combo, _)| combo.clone()).collect())
-            .unwrap_or_default();
+            .into_iter()
+            .flat_map(|mode| mode.keys.iter().map(|(combo, _)| combo.clone()))
+            .chain(
+                config
+                    .keys
+                    .iter()
+                    .filter(|(_, action)| !kept_while_staying(action))
+                    .map(|(combo, _)| combo.clone()),
+            )
+            .collect();
         let niri = fs::read_to_string(niri_config()).unwrap_or_default();
         let mut binds = vec![format!(
             "{} hotkey-overlay-title=\"Let go of this window\" {{ spawn \"apolline\" \"stay\"; }}",
@@ -370,12 +426,27 @@ window-rule {{
             args.join(" ")
         )
     }));
+    let free = |combo: &String| {
+        !Shortcut::ALL
+            .into_iter()
+            .any(|s| crate::keys::same(config.shortcuts.get(s), combo))
+    };
+    // Yours work in every mode, unless the mode has its own on that key.
+    let in_mode = |combo: &String| {
+        mode.is_some_and(|mode| {
+            mode.keys
+                .iter()
+                .any(|(own, _)| crate::keys::same(own, combo))
+        })
+    };
+    binds.extend(
+        config
+            .keys
+            .iter()
+            .filter(|(combo, _)| free(combo) && !in_mode(combo))
+            .map(|(combo, action)| key_bind(combo, action)),
+    );
     if let Some(mode) = mode {
-        let free = |combo: &String| {
-            !Shortcut::ALL
-                .into_iter()
-                .any(|s| crate::keys::same(config.shortcuts.get(s), combo))
-        };
         binds.extend(
             mode.keys
                 .iter()
@@ -911,6 +982,32 @@ mod tests {
         }
     }
 
+    const KEYS: &str = "[keys]\n\"Mod+Return\" = \"kitty --single-instance\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width +10%\" }\n\"Mod+Shift+3\" = { niri = \"move-column-to-workspace 3 focus=false\" }\n\"Mod+Space\" = \"rofi -show drun\"\n\"Mod+P\" = \"x\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+P\" = \"y\" }\n";
+
+    #[test]
+    fn your_keys_bind_everywhere_but_where_apolline_or_the_mode_has_its_own() {
+        let (config, problems) = Config::parse(KEYS);
+        assert!(problems.is_empty(), "{problems:?}");
+        let text = render(&look(&config, None));
+        for line in [
+            "Mod+Return hotkey-overlay-title=\"kitty --single-instance\" { spawn-sh \"kitty --single-instance\"; }",
+            "Mod+C { close-window; }",
+            "Mod+Ctrl+Right { set-column-width \"+10%\"; }",
+            "Mod+Shift+3 { move-column-to-workspace 3 focus=false; }",
+            "Mod+P hotkey-overlay-title=\"x\"",
+        ] {
+            assert!(text.contains(line), "{line} missing:\n{text}");
+        }
+        assert!(!text.contains("rofi"), "the launcher keeps Mod+Space");
+        let text = render(&look(&config, Some(0)));
+        assert!(text.contains("Work: y") && !text.contains("hotkey-overlay-title=\"x\""));
+        let staying = render(&Fragment {
+            stay: true,
+            ..look(&config, None)
+        });
+        assert!(staying.contains("Mod+C hotkey-overlay-title=null { spawn \"true\"; }"));
+    }
+
     #[test]
     fn staying_holds_every_key_that_leaves_the_window_but_its_own_and_the_sound() {
         let config = Config::default();
@@ -1080,6 +1177,7 @@ mod tests {
             "",
             "[shortcuts]\nlauncher = \"Mod+D\"\nlayout = \"Mod+Space\"\n\n[keyboard]\nlayouts = [\"us\", \"ru\"]\nswitch = \"caps\"\n",
             "[[display]]\nname = \"DP-1\"\nmode = \"2560x1440@164.999\"\ntransform = \"270\"\nposition = [-1080, 0]\n",
+            KEYS,
         ];
         let dir = std::env::temp_dir().join(format!("apolline-niri-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("a temp dir");

@@ -1,13 +1,18 @@
 use super::*;
 use iced::widget::column;
 
+// Pages made of what used to be pages of their own, one under the other.
+fn parts(parts: Vec<Element<'_, Message>>) -> Element<'_, Message> {
+    Column::with_children(parts).spacing(22).into()
+}
+
 impl Settings {
     pub(super) fn view(&self) -> Element<'_, Message> {
         responsive(move |size| {
             let wide = size.width >= WIDE;
             let compact = size.width < NARROW;
             let content = match (&self.editor, self.page) {
-                (Err(err), page) if page != Page::About => broken(err),
+                (Err(err), page) if page != Page::System => broken(err),
                 _ if !self.query.trim().is_empty() => self.results(),
                 (_, page) => self.spotlight(|| self.page_view(page, wide)),
             };
@@ -27,18 +32,19 @@ impl Settings {
     pub(super) fn form(&self, page: Page) -> Element<'_, Message> {
         match page {
             Page::Modes => self.modes(),
-            Page::Themes => self.themes(),
-            Page::Appearance => self.appearance(),
+            Page::Appearance => parts(vec![self.themes(), self.appearance()]),
             Page::Windows => self.windows(),
+            Page::Bar => parts(vec![self.bar(), self.launcher_finds()]),
             Page::Displays => self.displays(),
-            Page::Bar => self.bar(),
-            Page::Lock => self.lock(),
             Page::Notifications => self.notifications(),
-            Page::Keyboard => self.keyboard(),
-            Page::Pointer => self.pointer(),
-            Page::Shortcuts => self.shortcuts(),
-            Page::Plugins => self.plugins(),
-            Page::About => self.about(),
+            Page::Lock => self.lock(),
+            Page::Input => parts(vec![
+                self.keyboard(),
+                self.pointer(),
+                self.shortcuts(),
+                self.terminal_group(),
+            ]),
+            Page::System => parts(vec![self.about(), self.plugins()]),
             Page::Welcome => self.welcome(),
         }
     }
@@ -46,7 +52,7 @@ impl Settings {
     pub(super) fn page_view(&self, page: Page, wide: bool) -> Element<'_, Message> {
         let form = self.form(page);
         let writes = match (&self.editor, page) {
-            (_, Page::About | Page::Welcome) => None,
+            (_, Page::Welcome) => None,
             (Ok(editor), Page::Modes) if self.selected < self.config.modes.len() => {
                 Some(editor.mode_section(self.selected))
             }
@@ -80,7 +86,7 @@ impl Settings {
             .width(Fill)
         ]
         .align_y(Alignment::Start);
-        if self.editor.is_ok() && !matches!(page, Page::About | Page::Welcome) {
+        if self.editor.is_ok() && !matches!(page, Page::System | Page::Welcome) {
             let history = |glyph, label, enabled: bool, message| {
                 let tint = if enabled {
                     neutral::text()
@@ -219,7 +225,7 @@ impl Settings {
             .padding([8, 12])
             .width(Fill)
             .style(style::ghost(10.0))
-            .on_press(Message::Page(Page::About));
+            .on_press(Message::Page(Page::System));
 
         let mut top = column![brand, space().height(18)].spacing(2);
         if !compact {

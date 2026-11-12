@@ -47,13 +47,136 @@ impl Settings {
                 )));
                 return self.scan_library();
             }
-            Message::CatalogInstalled(Err(err)) => {
+            Message::CatalogInstalled(Err(err)) | Message::CatalogTried(Err(err)) => {
                 self.catalog_busy = None;
                 self.theme_note = Some(Err(err));
             }
+            Message::CatalogTry(index) => {
+                let Some(Ok(entries)) = &self.catalog else {
+                    return Task::none();
+                };
+                let Some(entry) = entries.get(index).cloned() else {
+                    return Task::none();
+                };
+                if self.has_theme(&entry.name) {
+                    return self.try_on(&entry.name, None);
+                }
+                self.catalog_busy = Some(entry.folder.clone());
+                return Task::perform(crate::catalog::install(entry), Message::CatalogTried);
+            }
+            Message::CatalogTried(Ok(name)) => {
+                self.catalog_busy = None;
+                self.themes = themes::all();
+                return Task::batch([
+                    self.try_on(&name, Some(apolline_config::slug(&name))),
+                    self.scan_library(),
+                ]);
+            }
+            Message::KeepTheme => {
+                crate::tryon::keep(&self.path);
+                if let Some(trying) = self.trying.take() {
+                    self.theme_note = Some(Ok(crate::i18n::fill(
+                        "{theme} is yours now",
+                        &[("theme", &trying.theme)],
+                    )));
+                }
+            }
+            Message::PutThemeBack => self.put_theme_back(),
             _ => {}
         }
         Task::none()
+    }
+
+    fn has_theme(&self, name: &str) -> bool {
+        let wanted = apolline_config::slug(name);
+        self.themes
+            .iter()
+            .any(|(theme, _)| apolline_config::slug(&theme.name) == wanted)
+    }
+
+    // Worn now, with the config as it was kept aside for a minute.
+    fn try_on(&mut self, name: &str, fetched: Option<String>) -> Task<Message> {
+        let wanted = apolline_config::slug(name);
+        let Some((theme, _)) = self
+            .themes
+            .iter()
+            .find(|(theme, _)| apolline_config::slug(&theme.name) == wanted)
+            .cloned()
+        else {
+            return Task::none();
+        };
+        let before = std::fs::read_to_string(&self.path).unwrap_or_default();
+        match crate::tryon::start(&self.path, &themes::dir(), &theme.name, &before, fetched) {
+            Ok(trying) => {
+                self.trying = Some(trying);
+                self.themes = themes::all();
+                self.theme_note = None;
+                self.edit(|e| theme.apply(e));
+                self.custom_thumb()
+            }
+            Err(err) => {
+                self.theme_note = Some(Err(err));
+                Task::none()
+            }
+        }
+    }
+
+    pub(super) fn put_theme_back(&mut self) {
+        self.trying = None;
+        match crate::tryon::put_back(&self.path, &themes::dir()) {
+            Ok(_) => self.theme_note = Some(Ok(crate::i18n::t("Back as it was").to_owned())),
+            Err(err) => self.theme_note = Some(Err(err)),
+        }
+        self.themes = themes::all();
+        self.reload();
+    }
+
+    // Each second: the minute is up, or the shell put it back after a crash.
+    pub(super) fn watch_trial(&mut self) {
+        let Some(trying) = &self.trying else {
+            return;
+        };
+        if crate::tryon::pending(&self.path).is_none() {
+            self.trying = None;
+            self.themes = themes::all();
+            self.reload();
+        } else if trying.left().is_zero() {
+            self.put_theme_back();
+        }
+    }
+
+    pub(super) fn trial(&self) -> Option<Element<'_, Message>> {
+        let trying = self.trying.as_ref()?;
+        let palette = self.palette();
+        Some(
+            container(
+                row![
+                    icon(Icon::Sparkles, 16.0, palette.accent),
+                    text(crate::i18n::fill(
+                        "Wearing {theme}. Keep it? Going back in {seconds} s",
+                        &[
+                            ("theme", &trying.theme),
+                            ("seconds", &trying.left().as_secs()),
+                        ]
+                    ))
+                    .size(13)
+                    .width(Fill),
+                    button(text("Go back").size(13))
+                        .padding([7, 14])
+                        .style(style::secondary)
+                        .on_press(Message::PutThemeBack),
+                    button(text("Keep").size(13))
+                        .padding([7, 16])
+                        .style(style::primary(palette))
+                        .on_press(Message::KeepTheme),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+            )
+            .padding([10, 14])
+            .style(style::pill(palette.accent_soft))
+            .into(),
+        )
     }
 
     pub(super) fn catalog(&self) -> Element<'_, Message> {
@@ -131,11 +254,18 @@ impl Settings {
                 .style(|_| container::background(style::color(neutral::ink())))
                 .into(),
         };
-        let installed = self.themes.iter().any(|(theme, _)| {
-            apolline_config::slug(&theme.name) == apolline_config::slug(&entry.name)
-        });
+        let installed = self.has_theme(&entry.name);
         let busy = self.catalog_busy.as_deref() == Some(entry.folder.as_str());
-        let action: Element<'a, Message> = if installed {
+        let on_trial = self
+            .trying
+            .as_ref()
+            .is_some_and(|t| apolline_config::slug(&t.theme) == apolline_config::slug(&entry.name));
+        let action: Element<'a, Message> = if on_trial {
+            text("On trial")
+                .size(12)
+                .color(style::color(palette.accent))
+                .into()
+        } else if installed {
             row![
                 icon(Icon::Check, 13.0, style::faint()),
                 text("Installed")
@@ -146,13 +276,19 @@ impl Settings {
             .align_y(Alignment::Center)
             .into()
         } else {
-            button(text(if busy { "Installing…" } else { "Install" }).size(12))
-                .padding([6, 12])
-                .style(style::primary(palette))
-                .on_press_maybe(
-                    (self.catalog_busy.is_none()).then_some(Message::CatalogInstall(index)),
-                )
-                .into()
+            let free = self.catalog_busy.is_none();
+            row![
+                button(text("Try on").size(12))
+                    .padding([6, 12])
+                    .style(style::secondary)
+                    .on_press_maybe(free.then_some(Message::CatalogTry(index))),
+                button(text(if busy { "Fetching…" } else { "Install" }).size(12))
+                    .padding([6, 12])
+                    .style(style::primary(palette))
+                    .on_press_maybe(free.then_some(Message::CatalogInstall(index))),
+            ]
+            .spacing(6)
+            .into()
         };
         let mut card = column![
             picture,

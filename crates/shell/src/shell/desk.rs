@@ -132,6 +132,7 @@ impl Shell {
         let shown = &self.shown;
         self.wallpapers
             .retain(|(n, _)| wanted.contains(n) || shown.iter().any(|s| s.name == *n));
+        self.blurred.retain(|(n, _)| wanted.contains(n));
     }
 
     pub(super) fn picture(&self, name: &str) -> Option<&image::Handle> {
@@ -157,7 +158,7 @@ impl Shell {
     }
 
     pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
-        let picture = self.wallpaper_picture(output);
+        let picture = self.softened(self.wallpaper_name(output), self.wallpaper_picture(output));
         let shown = self.desktop_clock(self.config.desktop.clock);
         match shown {
             Some(shown) => stack![picture, shown].into(),

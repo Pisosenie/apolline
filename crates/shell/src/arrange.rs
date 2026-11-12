@@ -409,6 +409,35 @@ pub fn fastest_modes(
         .collect()
 }
 
+// A mode written by hand, "2560x1440@165" say, as the screen has it exactly: the closest refresh
+// at that size, or the fastest when none was given. None when the screen isn't here.
+pub fn exact_mode(outputs: &[apolline_niri::Output], name: &str, wanted: &str) -> Option<String> {
+    let (size, rate) = wanted
+        .split_once('@')
+        .map_or((wanted, None), |(size, rate)| {
+            (size, rate.parse::<f64>().ok())
+        });
+    let (width, height) = size.split_once('x')?;
+    let (width, height): (u32, u32) = (width.parse().ok()?, height.parse().ok()?);
+    let output = outputs.iter().find(|output| output.name == name)?;
+    let sized = output
+        .modes
+        .iter()
+        .filter(|m| m.width == width && m.height == height);
+    let best = match rate {
+        Some(rate) => {
+            sized.min_by_key(|m| (f64::from(m.refresh_rate) - rate * 1000.0).abs() as u64)
+        }
+        None => sized.max_by_key(|m| m.refresh_rate),
+    }?;
+    Some(format!(
+        "{}x{}@{:.3}",
+        best.width,
+        best.height,
+        f64::from(best.refresh_rate) / 1000.0
+    ))
+}
+
 #[cfg(test)]
 mod fastest {
     use super::*;

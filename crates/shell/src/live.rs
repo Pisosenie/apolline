@@ -105,6 +105,18 @@ pub fn projects() -> Vec<String> {
 
 const LIBRARY: usize = 300;
 
+// A Workshop scene by its id, when Steam has it in one of its libraries.
+pub fn workshop(id: &str) -> Option<String> {
+    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    steam_libraries()
+        .into_iter()
+        .map(|library| library.join("steamapps/workshop/content/431960").join(id))
+        .find(|folder| drawn(folder))
+        .map(|folder| crate::wallpaper::shorten(&folder))
+}
+
 // Scenes and videos; web pages and programs need Wallpaper Engine itself.
 fn drawn(project: &Path) -> bool {
     let Ok(file) = std::fs::File::open(project.join("project.json")) else {

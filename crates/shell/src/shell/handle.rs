@@ -267,6 +267,9 @@ impl Shell {
                 return Task::batch(named);
             }
             Message::Frame => {
+                if !self.softening() {
+                    self.overview_at = None;
+                }
                 let length = self.speed().time(FADE);
                 for shown in &mut self.shown {
                     if shown

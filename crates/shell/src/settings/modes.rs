@@ -174,95 +174,15 @@ impl Settings {
             .spacing(8),
         );
 
-        let mut keys = vec![];
-        for (k, (combo, command)) in mode.keys.iter().enumerate() {
-            let taken = Shortcut::ALL
-                .into_iter()
-                .find(|&s| keys::same(self.config.shortcuts.get(s), combo));
-            let replaced = self
-                .niri_binds
+        let keys = self.key_rows(
+            mode.keys
                 .iter()
-                .find(|(bind, _)| keys::same(bind, combo));
-            let about = match (taken, replaced) {
-                (Some(shortcut), _) => Some(format!(
-                    "Taken by “{}”, so it won't work; pick other keys",
-                    fragment::action(shortcut).0
-                )),
-                (None, Some((_, action))) => Some(crate::i18n::fill(
-                    "Replaces {action} while this mode is on",
-                    &[("action", &action)],
-                )),
-                _ => None,
-            };
-            let mut words = column![text(command.as_str()).size(13).font(style::mono())].spacing(3);
-            if let Some(about) = about {
-                let tint = if taken.is_some() {
-                    style::WARN
-                } else {
-                    style::faint()
-                };
-                words = words.push(text(about).size(12).color(style::color(tint)));
-            }
-            keys.push(
-                row![
-                    container(keycaps(combo)).width(Length::Fixed(200.0)),
-                    words.width(Fill),
-                    button(icon(Icon::X, 14.0, style::faint()))
-                        .padding(6)
-                        .style(style::ghost(8.0))
-                        .on_press(Message::RemoveModeKey(k)),
-                ]
-                .spacing(12)
-                .align_y(Alignment::Center)
-                .padding([10, 16])
-                .into(),
-            );
-        }
-        let capture: Element<'_, Message> = match (&self.key_combo, self.recording_mode_key) {
-            (_, true) => container(
-                text("Press the keys…")
-                    .size(13)
-                    .color(style::color(palette.accent)),
-            )
-            .padding([6, 12])
-            .style(style::pill(palette.accent_soft))
-            .into(),
-            (Some(combo), false) => button(keycaps(combo))
-                .padding(2)
-                .style(style::ghost(8.0))
-                .on_press(Message::RecordModeKey)
-                .into(),
-            (None, false) => button(text("Choose keys").size(13))
-                .padding([7, 14])
-                .style(style::secondary)
-                .on_press(Message::RecordModeKey)
-                .into(),
-        };
-        keys.push(
-            row![
-                container(capture).width(Length::Fixed(200.0)),
-                text_input(
-                    crate::i18n::t("command, like  steam  or  niri msg action fullscreen-window"),
-                    &self.key_command
-                )
-                .on_input(Message::KeyCommand)
-                .on_submit(Message::AddModeKey)
-                .padding([8, 12])
-                .size(13)
-                .font(style::mono())
-                .style(style::field(palette)),
-                button(text("Add").size(13))
-                    .padding([8, 14])
-                    .style(style::primary(palette))
-                    .on_press_maybe(
-                        (self.key_combo.is_some() && !self.key_command.trim().is_empty())
-                            .then_some(Message::AddModeKey)
-                    ),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center)
-            .padding([12, 16])
-            .into(),
+                .map(|(combo, command)| (combo.as_str(), command.clone()))
+                .collect(),
+            "Replaces {action} while this mode is on",
+            Message::RemoveModeKey,
+            Message::AddModeKey,
+            palette,
         );
 
         let starts_here = self.config.start() == Some(index);
@@ -348,6 +268,7 @@ impl Settings {
                 )]
             ),
             group("Open when this mode starts", vec![padded(apps)]),
+            self.mode_windows(mode),
             group(
                 "Theme",
                 vec![padded(

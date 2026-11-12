@@ -9,10 +9,6 @@ impl Settings {
                 self.color_drafts.insert(role, text);
             }
             Message::ColorSet(role) => self.set_color(role),
-            Message::ClockDraft(key, text) => {
-                self.clock_drafts.insert(key, text);
-            }
-            Message::ClockSet(key) => self.set_clock(key),
             Message::LauncherFinds(name, on) => self.set_finds(name, on),
             Message::WebDraft(text) => self.web_draft = Some(text),
             Message::WebSet => self.set_web(),
@@ -23,6 +19,7 @@ impl Settings {
                     e.set("apps", "terminal", terminal.as_str());
                 }
             }),
+            Message::OwnColors => self.colors_open = true,
             Message::ColorReset(role) => {
                 self.color_drafts.remove(role);
                 self.edit(|e| e.unset("colors", role));
@@ -33,9 +30,9 @@ impl Settings {
                 self.query.clear();
                 self.spot = None;
                 self.recording = None;
-                self.recording_mode_key = false;
+                self.recording_key = false;
                 self.armed = false;
-                if page == Page::About && self.machine.is_none() {
+                if page == Page::System && self.machine.is_none() {
                     return Task::perform(crate::doctor::gather(), Message::Machine);
                 }
             }
@@ -209,14 +206,6 @@ impl Settings {
             }
             Message::DesktopAccent(accent) => self.edit(|e| e.set_accent(accent)),
             Message::DesktopWidget(name, on) => self.set_desktop_widget(name, on),
-            Message::WallpaperElsewhere(on) => {
-                let name = if on {
-                    apolline_config::NO_WALLPAPER.to_owned()
-                } else {
-                    apolline_config::Config::default().desktop.wallpaper
-                };
-                self.edit(|e| e.set("desktop", "wallpaper", name.as_str()));
-            }
             Message::DesktopClock(label) => {
                 let spot = CLOCK_SPOTS
                     .iter()
@@ -516,8 +505,8 @@ impl Settings {
                 });
             }
             Message::KeyCommand(command) => self.key_command = command,
-            Message::RecordModeKey => {
-                self.recording_mode_key = true;
+            Message::RecordKey => {
+                self.recording_key = true;
                 self.recording = None;
             }
             Message::AddModeKey => {
@@ -537,6 +526,40 @@ impl Settings {
                     self.key_command.clear();
                 }
             }
+            Message::AddKey => {
+                let Some(combo) = self.key_combo.clone() else {
+                    return Task::none();
+                };
+                match typed_action(&self.key_command) {
+                    Some(action) => {
+                        let mut keys: Vec<_> = self
+                            .config
+                            .keys
+                            .iter()
+                            .filter(|(c, _)| !keys::same(c, &combo))
+                            .cloned()
+                            .collect();
+                        keys.push((combo, action));
+                        self.edit(|e| e.set_keys(&keys));
+                        self.key_combo = None;
+                        self.key_command.clear();
+                        self.shortcut_error = None;
+                    }
+                    None => {
+                        self.shortcut_error = Some(
+                            crate::i18n::t("niri: wants one of niri's actions, like close-window")
+                                .to_owned(),
+                        );
+                    }
+                }
+            }
+            Message::RemoveKey(k) => {
+                let mut keys = self.config.keys.clone();
+                if k < keys.len() {
+                    keys.remove(k);
+                    self.edit(|e| e.set_keys(&keys));
+                }
+            }
             Message::RemoveModeKey(k) => {
                 if let Some(mode) = self.config.modes.get(index) {
                     let mut keys = mode.keys.clone();
@@ -554,7 +577,14 @@ impl Settings {
             | Message::Catalog(_)
             | Message::CatalogPicture(..)
             | Message::CatalogInstall(_)
-            | Message::CatalogInstalled(_)) => return self.browse(message),
+            | Message::CatalogInstalled(_)
+            | Message::CatalogTry(_)
+            | Message::CatalogTried(_)
+            | Message::KeepTheme
+            | Message::PutThemeBack) => return self.browse(message),
+            message @ (Message::RememberWindows | Message::ForgetWindow(_)) => {
+                self.place_windows(message)
+            }
             Message::Plugin(ask) => return self.ask_plugins(ask),
             message => return self.tweak(message),
         }

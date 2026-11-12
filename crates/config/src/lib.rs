@@ -16,7 +16,7 @@ pub use dock::Dock;
 pub use edit::Editor;
 pub use pieces::{Piece, TrayItem};
 pub use plugin::{Kind, Plugin, Plugins, Setting, Source, Tile, env_name, valid_name};
-pub use theme::Theme;
+pub use theme::{Pieces, Theme};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
@@ -27,7 +27,7 @@ pub struct Config {
     pub panel: Panel,
     pub clock: Clock,
     pub launcher: Launcher,
-    pub theme: Option<(String, Option<String>)>,
+    pub theme: Option<About>,
     pub desktop: Desktop,
     pub layout: Layout,
     pub bar: Bar,
@@ -45,6 +45,8 @@ pub struct Config {
     // The terminal Mod+T opens and terminal apps run in, as a command.
     pub terminal: String,
     pub windows: Windows,
+    // Keys of yours that work in every mode.
+    pub keys: Vec<(String, KeyAction)>,
     pub rules: Vec<Rule>,
     pub displays: Vec<Display>,
     pub modules: Vec<Module>,
@@ -360,6 +362,38 @@ pub const TRANSFORMS: [&str; 8] = [
     "flipped-180",
     "flipped-270",
 ];
+
+// What a key of yours does: a command, or one of niri's own actions with its arguments and
+// properties, written the way niri's config writes them, without the quotes ("focus-workspace 3",
+// "set-column-width +10%", "move-column-to-workspace 2 focus=false").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeyAction {
+    Run(String),
+    Niri(String),
+}
+
+impl KeyAction {
+    // An action's name and plain arguments, spaced once; None for anything else.
+    pub fn niri(text: &str) -> Option<Self> {
+        let mut words = text.split_whitespace();
+        let name = words.next()?;
+        let named = name.starts_with(|c: char| c.is_ascii_lowercase())
+            && name.chars().all(|c| c.is_ascii_lowercase() || c == '-');
+        let plain = |word: &str| {
+            word.chars()
+                .all(|c| c.is_ascii_alphanumeric() || "+-%._=".contains(c))
+        };
+        let args: Vec<&str> = words.collect();
+        (named && args.iter().all(|word| plain(word))).then(|| {
+            Self::Niri(
+                std::iter::once(name)
+                    .chain(args)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        })
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Rule {
@@ -955,6 +989,29 @@ pub struct ModeSettings {
     pub theme: Option<String>,
     // Seconds of the screen kept while the mode is on, for `apolline replay` to save; 0 is off.
     pub replay: u16,
+    // Where the mode puts windows when it comes on.
+    pub windows: Vec<Placed>,
+}
+
+// A window a mode puts in its place, found by its app id and, given one, a piece of its title;
+// `run` starts it when it isn't open. Windows given the same screen, workspace and column share
+// that column, top to bottom in this order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Placed {
+    pub app: String,
+    pub title: Option<String>,
+    pub run: Option<String>,
+    // A screen by name; none is the focused one.
+    pub screen: Option<String>,
+    // Both counted from 1.
+    pub workspace: u8,
+    pub column: u16,
+    // The column's width in percent of the screen.
+    pub width: Option<u8>,
+}
+
+impl Placed {
+    pub const WIDTHS: std::ops::RangeInclusive<u16> = 5..=100;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1260,6 +1317,7 @@ impl Default for Config {
                 blur: None,
                 switcher: true,
             },
+            keys: Vec::new(),
             rules: Vec::new(),
             displays: Vec::new(),
             modules: Vec::new(),
@@ -1340,6 +1398,7 @@ impl ModeSettings {
             when: Vec::new(),
             theme: None,
             replay: 0,
+            windows: Vec::new(),
         }
     }
 
@@ -1398,6 +1457,15 @@ pub fn xdg_dir(variable: &str, default: &str) -> Option<PathBuf> {
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))
 }
 
+// What a theme file says of itself in [theme].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct About {
+    pub name: String,
+    pub author: Option<String>,
+    // A Wallpaper Engine scene by its Workshop id, worn instead of the wallpaper when it's there.
+    pub scene: Option<String>,
+}
+
 pub fn config_home() -> PathBuf {
     xdg_dir("XDG_CONFIG_HOME", ".config").unwrap_or_default()
 }
@@ -1408,6 +1476,59 @@ pub fn default_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_mode_places_its_windows_and_writes_them_one_to_a_line() {
+        let text = "[[mode]]\nname = \"Work\"\nwindows = [\n    { app = \"kitty\", run = \"kitty\", screen = \"DP-1\", workspace = 1, column = 1, width = 50 },\n    { app = \"firefox\", title = \"Mail\", column = 2 },\n    { app = \"\" },\n    { app = \"code\", width = 3 },\n]\n";
+        let (config, problems) = super::Config::parse(text);
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        let windows = &config.modes[0].windows;
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0].screen.as_deref(), Some("DP-1"));
+        assert_eq!(windows[0].width, Some(50));
+        assert_eq!(windows[1].title.as_deref(), Some("Mail"));
+        assert_eq!((windows[1].workspace, windows[1].column), (1, 2));
+        assert_eq!(windows[2].width, None, "3% is refused");
+
+        let mut editor = super::Editor::parse("[[mode]]\nname = \"Work\"\n").unwrap();
+        editor.set_mode_windows(0, &windows[..2]);
+        let written = editor.text();
+        assert!(
+            written.contains("windows = [\n    { app = \"kitty\", run = \"kitty\", screen = \"DP-1\", workspace = 1, column = 1, width = 50 },\n"),
+            "{written}"
+        );
+        let (again, problems) = super::Config::parse(&written);
+        assert_eq!(problems, vec![]);
+        assert_eq!(again.modes[0].windows, windows[..2]);
+        editor.set_mode_windows(0, &[]);
+        assert!(!editor.text().contains("windows"));
+    }
+
+    #[test]
+    fn keys_take_commands_and_niri_actions_and_say_what_is_wrong() {
+        let (config, problems) = super::Config::parse(
+            "[keys]\n\"Mod+Return\" = \"kitty\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width  +10%\" }\n\"Mod+B\" = { niri = \"spawn \\\"x\\\"\" }\n\"Hyper+?\" = \"y\"\n\"Mod+D\" = 3\n",
+        );
+        assert_eq!(
+            config.keys,
+            [
+                (
+                    "Mod+C".to_owned(),
+                    super::KeyAction::Niri("close-window".into())
+                ),
+                (
+                    "Mod+Ctrl+Right".to_owned(),
+                    super::KeyAction::Niri("set-column-width +10%".into())
+                ),
+                (
+                    "Mod+Return".to_owned(),
+                    super::KeyAction::Run("kitty".into())
+                ),
+            ]
+        );
+        let lines: Vec<usize> = problems.iter().map(|p| p.line).collect();
+        assert_eq!(lines, [5, 6, 7], "{problems:?}");
+    }
+
     #[test]
     fn desktop_widgets_name_what_there_is() {
         let (config, problems) = super::Config::parse(

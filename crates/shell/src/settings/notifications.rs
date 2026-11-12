@@ -60,16 +60,6 @@ impl Settings {
                         "Urgent ones stay until you close them",
                         value_slider(2..=30, alerts.seconds, Message::PopupSeconds, "s", palette),
                     ),
-                    setting(
-                        "Cards at once",
-                        "Newer ones push the oldest out; the one you're answering stays",
-                        value_slider(1..=8, alerts.cards, Message::Cards, "", palette),
-                    ),
-                    setting(
-                        "Card width",
-                        "Wider cards show more of what was said",
-                        value_slider(280..=560, alerts.width, Message::CardWidth, "pt", palette),
-                    ),
                     self.sound_row(palette),
                     self.quiet_row(palette),
                     setting(

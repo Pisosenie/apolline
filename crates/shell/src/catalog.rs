@@ -224,6 +224,87 @@ files = ["theme.toml", "../evil"]
         assert!(parse("nothing = 1").is_err());
     }
 
+    // What a pull request to the catalog has to hold to: every folder listed, every file there,
+    // the theme reading, and no Workshop content copied in, only linked by its id.
+    #[test]
+    fn every_theme_in_the_catalog_reads_and_brings_what_it_lists() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../catalog");
+        let text = std::fs::read_to_string(root.join("index.toml")).unwrap();
+        let entries = parse(&text).unwrap();
+        assert_eq!(
+            entries.len(),
+            text.matches("[[theme]]").count(),
+            "an entry was dropped as unsafe"
+        );
+        let mut names: Vec<String> = entries.iter().map(|e| slug(&e.name)).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), entries.len(), "two themes share a name");
+        let mut folders: Vec<String> = std::fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        folders.sort();
+        let mut listed: Vec<String> = entries.iter().map(|e| e.folder.clone()).collect();
+        listed.sort();
+        assert_eq!(
+            folders, listed,
+            "a folder isn't in index.toml, or the other way"
+        );
+
+        for entry in &entries {
+            let folder = root.join(&entry.folder);
+            let there: Vec<String> = std::fs::read_dir(&folder)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            for file in &there {
+                let lower = file.to_lowercase();
+                assert!(
+                    !(lower == "project.json"
+                        || lower.ends_with(".pkg")
+                        || crate::live::source(&folder.join(file).to_string_lossy()).is_some()),
+                    "{}: {file} — a Workshop scene goes in by its id, [theme] scene",
+                    entry.folder
+                );
+                assert!(
+                    entry.files.contains(file) || entry.preview.as_ref() == Some(file),
+                    "{}: {file} isn't listed",
+                    entry.folder
+                );
+            }
+            assert!(entry.files.len() <= MOST_FILES, "{}", entry.folder);
+            let mut bytes = 0;
+            for file in &entry.files {
+                let path = folder.join(file);
+                assert!(path.is_file(), "{}: no {file}", entry.folder);
+                bytes += std::fs::metadata(path).unwrap().len();
+            }
+            assert!(bytes <= MOST_BYTES as u64, "{} is too big", entry.folder);
+            let preview = entry.preview.as_ref().expect("a preview to show");
+            assert!(
+                folder.join(preview).is_file(),
+                "{}: no {preview}",
+                entry.folder
+            );
+            let theme = Theme::parse(&std::fs::read_to_string(folder.join("theme.toml")).unwrap())
+                .unwrap_or_else(|err| panic!("{}: {err}", entry.folder));
+            assert_eq!(slug(&theme.name), slug(&entry.name), "{}", entry.folder);
+            let bundled = crate::wallpaper::bundled()
+                .iter()
+                .any(|(name, _)| *name == theme.wallpaper);
+            assert!(
+                bundled || entry.files.contains(&theme.wallpaper),
+                "{}: its wallpaper {} isn't one of its files",
+                entry.folder,
+                theme.wallpaper
+            );
+        }
+    }
+
     #[test]
     fn an_installed_theme_lands_in_a_folder_named_after_it() {
         let dir = std::env::temp_dir().join(format!("apolline-catalog-{}", std::process::id()));

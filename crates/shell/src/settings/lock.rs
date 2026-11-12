@@ -96,7 +96,7 @@ impl Settings {
                     ),
                     setting(
                         "Lock key",
-                        "Change it in Shortcuts",
+                        "Change it in Input",
                         keycaps(&self.config.shortcuts.lock),
                     ),
                     setting("Try it", "Your password unlocks it", lock_now),
@@ -177,7 +177,7 @@ impl Settings {
                     ),
                     setting(
                         "Weather",
-                        "From Settings → Bar → Weather",
+                        "From Settings → Bar and dock → Weather",
                         switch(lock.show_weather, Message::LockWeather, palette),
                     ),
                     setting(

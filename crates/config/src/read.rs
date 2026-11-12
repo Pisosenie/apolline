@@ -1,4 +1,6 @@
 mod dock;
+mod keys;
+mod placed;
 
 use std::ops::{Range, RangeInclusive};
 
@@ -21,7 +23,7 @@ const LANGUAGES: [(&str, &str); 3] = [("auto", "auto"), ("en", "en"), ("ru", "ru
 const WORKSPACES: [(&str, Workspaces); 2] =
     [("dots", Workspaces::Dots), ("numbers", Workspaces::Numbers)];
 
-const SECTIONS: [&str; 27] = [
+const SECTIONS: [&str; 28] = [
     "general",
     "theme",
     "desktop",
@@ -39,6 +41,7 @@ const SECTIONS: [&str; 27] = [
     "night",
     "style",
     "windows",
+    "keys",
     "rule",
     "display",
     "module",
@@ -62,7 +65,7 @@ const MODULE_OPTIONS: [&str; 8] = [
     "scroll_down",
 ];
 
-const MODE_OPTIONS: [&str; 12] = [
+const MODE_OPTIONS: [&str; 13] = [
     "name",
     "icon",
     "wallpaper",
@@ -75,6 +78,7 @@ const MODE_OPTIONS: [&str; 12] = [
     "when",
     "theme",
     "replay",
+    "windows",
 ];
 
 const WINDOW_OPTIONS: [&str; 13] = [
@@ -384,19 +388,45 @@ impl Reader<'_> {
                     if let Some(t) = self.section(key, value) {
                         let mut name = None;
                         let mut author = None;
+                        let mut scene = None;
                         for (key, value) in t.iter() {
                             match key.get_ref().as_ref() {
                                 "name" => name = self.string(key, value).map(str::to_owned),
                                 "author" => author = self.string(key, value).map(str::to_owned),
-                                _ => self.unknown(key, "option", &["name", "author"]),
+                                "scene" => match self.string(key, value) {
+                                    Some(id)
+                                        if !id.is_empty()
+                                            && id.bytes().all(|b| b.is_ascii_digit()) =>
+                                    {
+                                        scene = Some(id.to_owned())
+                                    }
+                                    Some(_) => {
+                                        self.wrong::<()>(
+                                            key,
+                                            value,
+                                            "a Workshop item's id, the number in its link",
+                                        );
+                                    }
+                                    None => {}
+                                },
+                                _ => self.unknown(key, "option", &["name", "author", "scene"]),
                             }
                         }
-                        config.theme = name.map(|name| (name, author));
+                        config.theme = name.map(|name| crate::About {
+                            name,
+                            author,
+                            scene,
+                        });
                     }
                 }
                 "windows" => {
                     if let Some(t) = self.section(key, value) {
                         self.windows(t, &mut config.windows)
+                    }
+                }
+                "keys" => {
+                    if let Some(t) = self.section(key, value) {
+                        self.global_keys(t, &mut config.keys)
                     }
                 }
                 "rule" => self.rules(key, value, config),
@@ -1531,6 +1561,11 @@ impl Reader<'_> {
                 "open" => {
                     if let Some(v) = self.strings(key, value) {
                         settings.open = v
+                    }
+                }
+                "windows" => {
+                    if let Some(v) = self.placed(key, value) {
+                        settings.windows = v
                     }
                 }
                 _ => self.unknown(key, "option", &MODE_OPTIONS),

@@ -1,5 +1,17 @@
 use crate::edit::accent_text;
-use crate::{Accent, Appear, Bar, Blur, Config, Editor, Layout, Lock, Motion, Styles, Surface};
+use crate::{
+    Accent, Appear, Bar, Blur, Config, Dock, Editor, Layout, Lock, Motion, Piece, Styles, Surface,
+    TrayItem,
+};
+
+// Where the bar's pieces go, for a theme that places them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pieces {
+    pub left: Vec<Piece>,
+    pub center: Vec<Piece>,
+    pub right: Vec<Piece>,
+    pub tray: Vec<TrayItem>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Theme {
@@ -21,6 +33,11 @@ pub struct Theme {
     pub style: Styles,
     pub lock: Lock,
     pub clock: Option<crate::Spot>,
+    // A whole setup, a rice, also places the bar's pieces and sets the dock up; a theme without
+    // them leaves yours be.
+    pub pieces: Option<Pieces>,
+    pub dock: Option<Dock>,
+    pub scene: Option<String>,
 }
 
 impl Theme {
@@ -29,11 +46,28 @@ impl Theme {
         if let Some(problem) = problems.first() {
             return Err(format!("line {}: {problem}", problem.line));
         }
-        let (name, author) = config
+        let about = config
             .theme
             .clone()
             .ok_or("a theme needs [theme] with a name")?;
-        Ok(Self::of(&config, &name, author))
+        let table: toml::Table = text
+            .parse()
+            .map_err(|err: toml::de::Error| err.to_string())?;
+        let has = |section: &str, keys: &[&str]| {
+            table
+                .get(section)
+                .and_then(toml::Value::as_table)
+                .is_some_and(|t| keys.iter().any(|key| t.contains_key(*key)))
+        };
+        let mut theme = Self::of(&config, &about.name, about.author);
+        theme.scene = about.scene;
+        if !has("bar", &["left", "center", "right", "tray"]) {
+            theme.pieces = None;
+        }
+        if !has("dock", &Dock::OPTIONS) {
+            theme.dock = None;
+        }
+        Ok(theme)
     }
 
     pub fn of(config: &Config, name: &str, author: Option<String>) -> Self {
@@ -55,6 +89,18 @@ impl Theme {
             style: config.style,
             lock: config.lock.clone(),
             clock: config.desktop.clock,
+            pieces: Some(Pieces {
+                left: config.bar.left.clone(),
+                center: config.bar.center.clone(),
+                right: config.bar.right.clone(),
+                tray: config.bar.tray.clone(),
+            }),
+            // Screen names belong to one machine.
+            dock: Some(Dock {
+                skip: Vec::new(),
+                ..config.dock.clone()
+            }),
+            scene: None,
         }
     }
 
@@ -63,6 +109,9 @@ impl Theme {
         editor.set("theme", "name", self.name.as_str());
         if let Some(author) = &self.author {
             editor.set("theme", "author", author.as_str());
+        }
+        if let Some(scene) = &self.scene {
+            editor.set("theme", "scene", scene.as_str());
         }
         self.write(&mut editor);
         editor.text()
@@ -133,6 +182,16 @@ impl Theme {
                 && set(self.style.cards, now.style.cards)
                 && set(self.style.osd, now.style.osd),
         );
+        differ(
+            "bar pieces",
+            self.pieces.is_none() || self.pieces == now.pieces,
+        );
+        differ(
+            "dock",
+            self.dock
+                .as_ref()
+                .is_none_or(|dock| now.dock.as_ref().is_some_and(|now| same_dock(dock, now))),
+        );
         changed
     }
 
@@ -167,6 +226,18 @@ impl Theme {
         config.desktop.clock = self.clock;
         config.lock.centered = self.lock.centered;
         config.lock.blur = self.lock.blur;
+        if let Some(pieces) = &self.pieces {
+            config.bar.left = pieces.left.clone();
+            config.bar.center = pieces.center.clone();
+            config.bar.right = pieces.right.clone();
+            config.bar.tray = pieces.tray.clone();
+        }
+        if let Some(dock) = &self.dock {
+            config.dock = Dock {
+                skip: config.dock.skip.clone(),
+                ..dock.clone()
+            };
+        }
     }
 
     fn write(&self, editor: &mut Editor) {
@@ -260,6 +331,23 @@ impl Theme {
                 editor.set_in(&path, "font", font.name());
             }
         }
+        if let Some(pieces) = &self.pieces {
+            let names = |side: &[Piece]| -> Vec<String> {
+                side.iter().map(|piece| piece.name().to_owned()).collect()
+            };
+            editor.set_list("bar", "left", &names(&pieces.left));
+            editor.set_list("bar", "center", &names(&pieces.center));
+            editor.set_list("bar", "right", &names(&pieces.right));
+            let tray: Vec<String> = pieces.tray.iter().map(|t| t.name().to_owned()).collect();
+            editor.set_list("bar", "tray", &tray);
+        }
+        if let Some(dock) = &self.dock {
+            editor.set("dock", "show", dock.show);
+            editor.set("dock", "position", dock.position.key());
+            editor.set("dock", "autohide", dock.autohide);
+            editor.set("dock", "size", i64::from(dock.size));
+            editor.set("dock", "magnify", dock.magnify);
+        }
         for (key, value) in [
             ("motion", self.motion.map(Motion::key)),
             ("appear", self.appear.map(Appear::key)),
@@ -271,6 +359,11 @@ impl Theme {
             }
         }
     }
+}
+
+fn same_dock(a: &Dock, b: &Dock) -> bool {
+    (a.show, a.position, a.autohide, a.size, a.magnify)
+        == (b.show, b.position, b.autohide, b.size, b.magnify)
 }
 
 fn round(value: f32) -> f64 {
@@ -385,6 +478,48 @@ mod tests {
         let (config, _) = Config::parse(&editor.text());
         let now = Theme::of(&config, "now", None);
         assert_eq!(theme.tweaks(&now), ["gaps"]);
+    }
+
+    #[test]
+    fn a_rice_places_the_bar_and_the_dock_and_a_plain_theme_leaves_yours() {
+        let rice = Theme::parse(
+            "[theme]\nname = \"Den\"\nscene = \"2847562910\"\n\n[bar]\nleft = [\"workspaces\"]\ncenter = []\nright = [\"clock\", \"tray\"]\ntray = [\"volume\"]\n\n[dock]\nshow = true\nposition = \"left\"\n",
+        )
+        .unwrap();
+        assert_eq!(rice.scene.as_deref(), Some("2847562910"));
+        assert_eq!(Theme::parse(&rice.text()).unwrap(), rice);
+
+        let mine =
+            "[bar]\nleft = [\"mode\", \"clock\"]\n\n[dock]\nsize = 64\nskip = [\"HDMI-A-1\"]\n";
+        let mut editor = Editor::parse(mine).unwrap();
+        rice.apply(&mut editor);
+        let (config, problems) = Config::parse(&editor.text());
+        assert_eq!(problems, vec![]);
+        assert_eq!(config.bar.left, [Piece::named("workspaces")]);
+        assert!(config.bar.center.is_empty());
+        assert_eq!(config.bar.tray, [TrayItem::named("volume").unwrap()]);
+        assert!(config.dock.show);
+        assert_eq!(config.dock.size, 48, "the rice's dock is all of it");
+        assert_eq!(config.dock.skip, ["HDMI-A-1"], "but screens stay yours");
+        let (mut dressed, _) = Config::parse(mine);
+        rice.dress(&mut dressed);
+        assert_eq!(dressed.bar.left, config.bar.left);
+        assert_eq!(dressed.dock, config.dock);
+
+        let plain = Theme::parse(GLASS).unwrap();
+        assert_eq!((plain.pieces.as_ref(), plain.dock.as_ref()), (None, None));
+        let mut editor = Editor::parse(mine).unwrap();
+        plain.apply(&mut editor);
+        let (config, _) = Config::parse(&editor.text());
+        assert_eq!(config.bar.left.len(), 2);
+        assert_eq!(config.dock.size, 64);
+        let now = Theme::of(&config, "now", None);
+        assert!(!plain.tweaks(&now).contains(&"bar pieces"));
+        assert!(rice.tweaks(&now).contains(&"bar pieces"));
+        assert!(
+            Theme::parse("[theme]\nname = \"X\"\nscene = \"../evil\"\n").is_err(),
+            "a scene is only ever an id"
+        );
     }
 
     #[test]

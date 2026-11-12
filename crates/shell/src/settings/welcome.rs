@@ -31,6 +31,32 @@ impl Settings {
                     .color(style::color(style::faint())),
             );
         }
+        let (hyprland, imported) = self.hyprland;
+        if hyprland {
+            let mut over = row![
+                button(text("Bring over your Hyprland setup").size(13))
+                    .padding([8, 16])
+                    .style(style::secondary)
+                    .on_press(Message::ImportHyprland)
+            ]
+            .spacing(8);
+            if imported {
+                over = over.push(
+                    button(text("Put it back").size(13))
+                        .padding([8, 16])
+                        .style(style::secondary)
+                        .on_press(Message::UndoHyprland),
+                );
+            }
+            connect = connect.push(over);
+            for line in &self.import_log {
+                connect = connect.push(
+                    text(line.as_str())
+                        .size(12)
+                        .color(style::color(style::faint())),
+                );
+            }
+        }
 
         let looks = Row::with_children(
             self.themes

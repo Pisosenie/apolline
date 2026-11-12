@@ -3,7 +3,7 @@ use std::{fs, io};
 
 use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
-use crate::{Accent, Calendar, ModeSettings, Notifications, Rule};
+use crate::{Accent, Calendar, KeyAction, ModeSettings, Notifications, Placed, Rule};
 
 #[derive(Debug)]
 pub struct Editor {
@@ -97,6 +97,9 @@ impl Editor {
         if !mode.keys.is_empty() {
             table.insert("keys", Item::Value(keys(&mode.keys).into()));
         }
+        if !mode.windows.is_empty() {
+            table.insert("windows", Item::Value(placed(&mode.windows).into()));
+        }
         let modes = self.modes();
         modes.push(table);
         modes.len() - 1
@@ -157,6 +160,43 @@ impl Editor {
             self.unset_mode(index, "keys");
         } else {
             self.set_mode(index, "keys", keys(list));
+        }
+    }
+
+    pub fn set_mode_windows(&mut self, index: usize, windows: &[Placed]) {
+        if windows.is_empty() {
+            self.unset_mode(index, "windows");
+        } else {
+            self.set_mode(index, "windows", placed(windows));
+        }
+    }
+
+    // [keys]; none removes the section.
+    pub fn set_keys(&mut self, keys: &[(String, KeyAction)]) {
+        if keys.is_empty() {
+            self.doc.remove("keys");
+            return;
+        }
+        let section = table(self.doc.as_table_mut(), "keys");
+        // Keys still wanted keep their place and comments; the rest go.
+        let gone: Vec<String> = section
+            .iter()
+            .map(|(combo, _)| combo.to_owned())
+            .filter(|combo| !keys.iter().any(|(wanted, _)| wanted == combo))
+            .collect();
+        for combo in gone {
+            section.remove(&combo);
+        }
+        for (combo, action) in keys {
+            let value = match action {
+                KeyAction::Run(command) => Value::from(command.as_str()),
+                KeyAction::Niri(niri) => {
+                    let mut inline = InlineTable::new();
+                    inline.insert("niri", niri.as_str().into());
+                    Value::InlineTable(inline)
+                }
+            };
+            put(section, combo, value);
         }
     }
 
@@ -428,6 +468,38 @@ fn notifications_text(notifications: Notifications) -> &'static str {
     }
 }
 
+// One window to a line, the way a person would write them.
+fn placed(windows: &[Placed]) -> Array {
+    let mut array: Array = windows
+        .iter()
+        .map(|window| {
+            let mut table = InlineTable::new();
+            table.insert("app", window.app.as_str().into());
+            for (key, value) in [
+                ("title", &window.title),
+                ("run", &window.run),
+                ("screen", &window.screen),
+            ] {
+                if let Some(value) = value {
+                    table.insert(key, value.as_str().into());
+                }
+            }
+            table.insert("workspace", i64::from(window.workspace).into());
+            table.insert("column", i64::from(window.column).into());
+            if let Some(width) = window.width {
+                table.insert("width", i64::from(width).into());
+            }
+            Value::InlineTable(table)
+        })
+        .collect();
+    for value in array.iter_mut() {
+        value.decor_mut().set_prefix("\n    ");
+    }
+    array.set_trailing_comma(true);
+    array.set_trailing("\n");
+    array
+}
+
 fn keys(list: &[(String, String)]) -> InlineTable {
     let mut table = InlineTable::new();
     for (combo, command) in list {
@@ -501,6 +573,35 @@ fn put(table: &mut Table, key: &str, mut value: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_of_your_own_are_written_and_read_back() {
+        let mut editor =
+            Editor::parse("[keys]\n# mine\n\"Mod+Return\" = \"foot\"\n\"Mod+X\" = \"x\"\n")
+                .unwrap();
+        let keys = vec![
+            ("Mod+Return".to_owned(), KeyAction::Run("kitty".into())),
+            ("Mod+C".to_owned(), KeyAction::niri("close-window").unwrap()),
+        ];
+        editor.set_keys(&keys);
+        let text = editor.text();
+        assert!(
+            text.contains("# mine\n\"Mod+Return\" = \"kitty\""),
+            "{text}"
+        );
+        assert!(
+            text.contains("\"Mod+C\" = { niri = \"close-window\" }"),
+            "{text}"
+        );
+        assert!(!text.contains("Mod+X"));
+        let (config, problems) = crate::Config::parse(&text);
+        assert!(problems.is_empty(), "{problems:?}");
+        let mut sorted = keys.clone();
+        sorted.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(config.keys, sorted);
+        editor.set_keys(&[]);
+        assert!(!editor.text().contains("keys"));
+    }
     use crate::Config;
     use apolline_theme::Rgba;
 

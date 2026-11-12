@@ -29,13 +29,27 @@ impl Shell {
             }
             Message::Niri(event) => {
                 let switched = matches!(event, apolline_niri::Event::KeyboardLayoutSwitched { .. });
+                let opened = match &event {
+                    apolline_niri::Event::WindowOpenedOrChanged { window } => Some(window.id),
+                    _ => None,
+                };
+                let overview = matches!(event, apolline_niri::Event::OverviewOpenedOrClosed { .. });
                 let state = self.niri.get_or_insert_default();
                 state.apply(event);
                 if switched && let Some(name) = state.layout().map(str::to_owned) {
                     return self.show(Osd::Layout(name));
                 }
-                let state = self.niri.get_or_insert_default();
                 let mut tasks = vec![];
+                if overview {
+                    tasks.push(self.overview_changed());
+                }
+                if let Some(window) = opened {
+                    tasks.push(self.arrange_opened(window));
+                }
+                if self.arrange_later && self.niri.as_ref().is_some_and(|s| s.windows_known()) {
+                    tasks.push(self.arrange());
+                }
+                let state = self.niri.get_or_insert_default();
                 // The window it stayed in is gone: the keys come back with it.
                 if let Some(window) = self.staying
                     && !state.recent().iter().any(|w| w.id == window)
@@ -58,8 +72,15 @@ impl Shell {
                 self.wallpapers.push((name, handle));
                 self.show_wallpapers();
                 self.sync();
+                // Ready before the overview first opens.
+                return self.load_blurred();
             }
             Message::Wallpaper(_, Err(err)) => eprintln!("apolline: wallpaper: {err}"),
+            Message::Blurred(name, Ok(handle)) if self.wanted_wallpapers().contains(&name) => {
+                self.blurred.retain(|(n, _)| *n != name);
+                self.blurred.push((name, handle));
+            }
+            Message::Blurred(..) => {}
             Message::Live(event) => return self.on_live(event),
             Message::Battery(battery) => {
                 self.system.get_or_insert_default().battery = battery;

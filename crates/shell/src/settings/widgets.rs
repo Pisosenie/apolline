@@ -369,8 +369,3 @@ pub(super) fn broken(err: &str) -> Element<'_, Message> {
     .spacing(16)
     .into()
 }
-
-// 87 % as 0.87, the way the file keeps fractions.
-pub(super) fn hundredths(percent: u16) -> f64 {
-    f64::from(percent) / 100.0
-}

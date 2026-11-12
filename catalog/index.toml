@@ -1,5 +1,7 @@
-# The theme catalog Settings → Themes → More themes reads.
+# The theme catalog Settings → Appearance → More themes reads.
 # A theme is a folder here with its theme.toml and pictures; add yours with a pull request.
+# Its preview.jpg is what CI renders of it: take it from the run's previews.
+# A Wallpaper Engine scene goes in by its Workshop id, [theme] scene = "…", never as files.
 
 [[theme]]
 name = "Rosé Dawn"
@@ -47,4 +49,36 @@ author = "Apolline"
 about = "Neon night, the bar down the right"
 folder = "dracula"
 files = ["theme.toml", "dusk.jpg"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Tonal"
+author = "Apolline"
+about = "Colors from the wallpaper, the bar as islands"
+folder = "tonal"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Latte"
+author = "Apolline"
+about = "Catppuccin, light"
+folder = "latte"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Hardline"
+author = "Apolline"
+about = "Gruvbox, square and flat"
+folder = "hardline"
+files = ["theme.toml"]
+preview = "preview.jpg"
+
+[[theme]]
+name = "Minimal"
+author = "Apolline"
+about = "Nothing in the way"
+folder = "minimal"
+files = ["theme.toml"]
 preview = "preview.jpg"

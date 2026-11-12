@@ -364,7 +364,7 @@ pub fn view<'a>(
             .size(16)
             .padding(0)
             .style(style::bare_field(palette)),
-        text("Change Apolline's in Settings → Shortcuts")
+        text("Change Apolline's in Settings → Input")
             .size(12)
             .color(style::color(style::faint())),
     ]

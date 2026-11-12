@@ -1,5 +1,6 @@
 use apolline_config::{Config, Edge, Editor, ModeSettings, Notifications, Trigger};
 mod actions;
+mod backdrop;
 mod cards;
 mod config_watch;
 mod desk;
@@ -66,6 +67,7 @@ pub enum Message {
     NiriReply(Result<(), String>),
     Control(Command),
     Wallpaper(String, Result<image::Handle, String>),
+    Blurred(String, Result<image::Handle, String>),
     Battery(Option<Battery>),
     Media(Option<Track>),
     Lyrics(String, Option<crate::lyrics::Lyrics>),
@@ -349,6 +351,10 @@ pub struct Shell {
     thumbs: HashMap<String, image::Handle>,
     workspace: usize,
     wallpapers: Vec<(String, image::Handle)>,
+    // The same, soft, for behind the overview.
+    blurred: Vec<(String, image::Handle)>,
+    // When the overview last opened or closed, while the wallpaper softens or sharpens.
+    overview_at: Option<Instant>,
     // apolline-wall while a screen shows a live wallpaper: where its commands go, what each
     // screen was last told, the accent it has, and what it couldn't draw.
     live: Option<iced::futures::channel::mpsc::UnboundedSender<String>>,
@@ -380,6 +386,10 @@ pub struct Shell {
     replay: Option<crate::capture::Replay>,
     // The window niri's keys can't leave, while `apolline stay` holds them.
     staying: Option<u64>,
+    // The mode's windows still to put in their places.
+    arranging: Option<crate::places::Arranging>,
+    // A mode came on before niri said which windows are open.
+    arrange_later: bool,
     marks: Option<crate::marks::Marks>,
     shot: Option<String>,
     ticks: u64,
@@ -391,7 +401,16 @@ pub struct Shell {
 impl Shell {
     pub fn new(mode: Option<String>, demo: bool) -> (Self, Task<Message>) {
         let config_path = apolline_config::default_path();
-        let (config, diagnostics) = if crate::guard::safe() {
+        // A theme still on trial when the shell went down is what took it down, or nobody kept it.
+        // Safe mode leaves every file alone, that one too.
+        let safe = crate::guard::safe();
+        if !demo
+            && !safe
+            && let Err(err) = crate::tryon::put_back(&config_path, &crate::themes::dir())
+        {
+            eprintln!("apolline: could not put the tried theme back: {err}");
+        }
+        let (config, diagnostics) = if safe {
             (Config::default(), Vec::new())
         } else {
             Config::load(&config_path)
@@ -498,6 +517,8 @@ impl Shell {
             handed: Vec::new(),
             config,
             wallpapers: Vec::new(),
+            blurred: Vec::new(),
+            overview_at: None,
             live: None,
             live_told: std::collections::BTreeMap::new(),
             live_here: Vec::new(),
@@ -527,6 +548,8 @@ impl Shell {
             recording: None,
             replay: None,
             staying: None,
+            arranging: None,
+            arrange_later: false,
             marks: None,
             shot: None,
             ticks: 0,
@@ -896,7 +919,7 @@ impl Shell {
         } else {
             clipboard::subscription().map(Message::Clip)
         };
-        let fading = if self.shown.iter().any(|s| s.from.is_some()) {
+        let fading = if self.shown.iter().any(|s| s.from.is_some()) || self.softening() {
             iced::time::every(crate::motion::FRAME).map(|_| Message::Frame)
         } else {
             iced::Subscription::none()

@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::json;
 
+mod place;
+pub use place::{Spot, place};
+
 pub fn socket() -> Option<PathBuf> {
     std::env::var_os("NIRI_SOCKET").map(PathBuf::from)
 }
@@ -15,6 +18,14 @@ pub enum Request {
     FocusWindow(u64),
     CloseWindow(u64),
     Spawn(String),
+    // The window to a workspace by its id, on whichever screen that is, without following it.
+    MoveWindowToWorkspace { window: u64, workspace: u64 },
+    // The focused column to this place, counted from 1.
+    MoveColumnToIndex(usize),
+    // Into the column on its left, below what's there.
+    ConsumeOrExpelWindowLeft(u64),
+    // The focused column's width, in percent of the screen.
+    SetColumnWidth(u8),
 }
 
 impl Request {
@@ -27,6 +38,20 @@ impl Request {
             Request::FocusWindow(id) => json!({ "Action": { "FocusWindow": { "id": id } } }),
             Request::CloseWindow(id) => json!({ "Action": { "CloseWindow": { "id": id } } }),
             Request::Spawn(command) => json!({ "Action": { "SpawnSh": { "command": command } } }),
+            Request::MoveWindowToWorkspace { window, workspace } => json!({
+                "Action": { "MoveWindowToWorkspace": {
+                    "window_id": window, "reference": { "Id": workspace }, "focus": false
+                } }
+            }),
+            Request::MoveColumnToIndex(index) => {
+                json!({ "Action": { "MoveColumnToIndex": { "index": index } } })
+            }
+            Request::ConsumeOrExpelWindowLeft(id) => {
+                json!({ "Action": { "ConsumeOrExpelWindowLeft": { "id": id } } })
+            }
+            Request::SetColumnWidth(percent) => {
+                json!({ "Action": { "SetColumnWidth": { "change": { "SetProportion": percent } } } })
+            }
         };
         format!("{value}\n")
     }
@@ -94,6 +119,15 @@ pub fn largest_mode(outputs: &str) -> Option<(u32, u32)> {
         .max_by_key(|(w, h)| u64::from(*w) * u64::from(*h))
 }
 
+// What `niri msg -j windows` and `niri msg -j workspaces` print, or a request's reply holds.
+pub fn windows(json: &str) -> Vec<Window> {
+    serde_json::from_str(json).unwrap_or_default()
+}
+
+pub fn workspaces(json: &str) -> Vec<Workspace> {
+    serde_json::from_str(json).unwrap_or_default()
+}
+
 pub fn is_ok(reply: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(reply).is_ok_and(|v| v.get("Ok").is_some())
 }
@@ -126,11 +160,16 @@ pub struct Window {
     pub layout: Option<WindowLayout>,
     #[serde(default)]
     pub focus_timestamp: Option<Timestamp>,
+    #[serde(default)]
+    pub pid: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct WindowLayout {
     pub pos_in_scrolling_layout: Option<(usize, usize)>,
+    // Width and height with the border; an older niri doesn't say.
+    #[serde(default)]
+    pub tile_size: Option<(f64, f64)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
@@ -201,6 +240,9 @@ pub enum Event {
     CastStopped {
         stream_id: u64,
     },
+    OverviewOpenedOrClosed {
+        is_open: bool,
+    },
 }
 
 impl Event {
@@ -216,6 +258,9 @@ pub struct State {
     last: Option<u64>,
     layouts: Option<KeyboardLayouts>,
     casts: BTreeMap<u64, Cast>,
+    // niri has said which windows are open; until then none are known, not none open.
+    windows_known: bool,
+    overview: bool,
 }
 
 impl State {
@@ -244,6 +289,7 @@ impl State {
                     .map(|w| w.id)
                     .or(self.last);
                 self.windows = windows.into_iter().map(|w| (w.id, w)).collect();
+                self.windows_known = true;
             }
             Event::WindowOpenedOrChanged { window } => {
                 if window.is_focused {
@@ -297,6 +343,7 @@ impl State {
             Event::CastStopped { stream_id } => {
                 self.casts.remove(&stream_id);
             }
+            Event::OverviewOpenedOrClosed { is_open } => self.overview = is_open,
         }
     }
 
@@ -350,6 +397,26 @@ impl State {
             .values()
             .filter_map(|w| w.app_id.as_deref())
             .any(|app| app.eq_ignore_ascii_case(name))
+    }
+
+    pub fn overview(&self) -> bool {
+        self.overview
+    }
+
+    pub fn windows_known(&self) -> bool {
+        self.windows_known
+    }
+
+    pub fn window(&self, id: u64) -> Option<&Window> {
+        self.windows.get(&id)
+    }
+
+    pub fn all_windows(&self) -> Vec<&Window> {
+        self.windows.values().collect()
+    }
+
+    pub fn workspace(&self, id: u64) -> Option<&Workspace> {
+        self.workspaces.iter().find(|w| w.id == id)
     }
 
     pub fn recent(&self) -> Vec<&Window> {
@@ -526,6 +593,15 @@ mod tests {
     }
 
     #[test]
+    fn the_overview_opens_and_closes() {
+        let mut state = State::default();
+        state.apply(Event::parse(r#"{"OverviewOpenedOrClosed":{"is_open":true}}"#).unwrap());
+        assert!(state.overview());
+        state.apply(Event::parse(r#"{"OverviewOpenedOrClosed":{"is_open":false}}"#).unwrap());
+        assert!(!state.overview());
+    }
+
+    #[test]
     fn replies_are_ok_or_err() {
         assert!(is_ok(r#"{"Ok":"Handled"}"#));
         assert!(!is_ok(r#"{"Err":"error parsing request"}"#));
@@ -564,7 +640,7 @@ mod tests {
     // shows up in the tests instead of as a quietly stale bar. Returns the state at the
     // end, and whether the focused window read as floating when the screenshot was taken.
     fn replay_session(session: &str) -> (State, bool) {
-        const KNOWN: [&str; 10] = [
+        const KNOWN: [&str; 11] = [
             "WorkspacesChanged",
             "WorkspaceActivated",
             "WindowsChanged",
@@ -575,6 +651,7 @@ mod tests {
             "KeyboardLayoutsChanged",
             "KeyboardLayoutSwitched",
             "ScreenshotCaptured",
+            "OverviewOpenedOrClosed",
         ];
         let mut state = State::default();
         let mut floated = false;
@@ -617,6 +694,10 @@ mod tests {
         };
         let session = std::fs::read_to_string(file).expect("the recorded session");
         assert!(session.lines().count() > 10, "too little was recorded");
+        assert!(
+            session.contains("\"OverviewOpenedOrClosed\""),
+            "the overview opening was heard"
+        );
         let (state, floated) = replay_session(&session);
         assert!(floated, "the window made floating reads as floating");
         assert!(!state.is_running("session-one") && !state.is_running("session-two"));

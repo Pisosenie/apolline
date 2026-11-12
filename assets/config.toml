@@ -58,6 +58,12 @@ replay = "Mod+Alt+R"       # save the last moments, in a mode that keeps them
 stay = "Mod+Shift+G"       # keep a game from losing the focus to a stray key; again to let go
 layout = ""                # next keyboard layout on any keys, like "Mod+Space"; empty leaves it to [keyboard] switch
 
+# Keys of your own, in every mode: a command, or one of niri's actions. They win over the same
+# keys in niri's config; Apolline's own above and a mode's keys win over them.
+# [keys]
+# "Mod+Return" = "kitty"
+# "Mod+C" = { niri = "close-window" }
+
 [lock]
 before_sleep = true        # lock when the laptop goes to sleep
 show_media = true          # what's playing, with a pause button
@@ -104,3 +110,6 @@ suspend_after = 0
 # performance = true       # power profile, games drive the refresh rate, effects off
 # keep_awake = true
 # keys = { "Mod+G" = "steam", "Mod+Shift+D" = "discord" }
+# windows = [              # put back where they were: Settings → Modes → Remember
+#     { app = "steam", run = "steam", workspace = 2, column = 1, width = 100 },
+# ]

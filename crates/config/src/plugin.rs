@@ -529,7 +529,7 @@ impl Reader<'_> {
                     self.say(
                         line,
                         &format!("“{name}” is a secret and isn't read from this file"),
-                        Some("set it in Settings → Plugins, which keeps it in the keyring".into()),
+                        Some("set it in Settings → System, which keeps it in the keyring".into()),
                     );
                 }
                 _ => {
@@ -769,7 +769,7 @@ kind = "switch"
                 "no plugin called “weathr” is installed — `apolline plugin list` shows what's installed",
                 "unknown choice “nope” — known: ifconfig.me, icanhazip.com",
                 "“ipv6” should be true or false",
-                "“token” is a secret and isn't read from this file — set it in Settings → Plugins, which keeps it in the keyring",
+                "“token” is a secret and isn't read from this file — set it in Settings → System, which keeps it in the keyring",
                 "unknown setting “servise” — did you mean “service”?",
             ]
         );

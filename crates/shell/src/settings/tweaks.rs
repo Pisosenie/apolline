@@ -66,18 +66,6 @@ impl Settings {
             Message::NightWarmth(kelvin) => {
                 self.stage(|e| e.set("night", "temperature", i64::from(kelvin)))
             }
-            Message::SurfaceFont(look, family) => self.edit(|e| {
-                if family == SAME_FONT {
-                    e.unset_in(&["style", look.key()], "font");
-                } else {
-                    e.set_in(&["style", look.key()], "font", family.as_str());
-                }
-            }),
-            Message::Style(look, knob, v) => self.stage(|e| match knob {
-                Knob::Corners => e.set_in(&["style", look.key()], "radius", i64::from(v)),
-                Knob::Glass => e.set_in(&["style", look.key()], "opacity", hundredths(v)),
-                Knob::Size => e.set_in(&["style", look.key()], "size", hundredths(v)),
-            }),
             Message::LauncherGrid(on) => {
                 self.edit(|e| e.set_in(&["style", "launcher"], "grid", on))
             }
@@ -166,7 +154,6 @@ impl Settings {
                 apolline_config::Shape::Bar => e.unset("bar", "shape"),
                 shape => e.set("bar", "shape", shape.key()),
             }),
-            Message::BarOpacity(v) => self.stage(|e| e.set("bar", "opacity", f64::from(v) / 100.0)),
             Message::BarBlur(on) => self.edit(|e| {
                 if on {
                     e.set("bar", "blur", true);
@@ -182,8 +169,6 @@ impl Settings {
             Message::PopupSeconds(v) => {
                 self.stage(|e| e.set("notifications", "seconds", i64::from(v)))
             }
-            Message::Cards(v) => self.stage(|e| e.set("notifications", "cards", i64::from(v))),
-            Message::CardWidth(v) => self.stage(|e| e.set("notifications", "width", i64::from(v))),
             Message::SoundKind(kind) => self.set_sound_kind(kind),
             Message::SoundDraft(text) => self.sound_draft = Some(text),
             Message::SoundSet => self.set_sound_file(),
@@ -240,13 +225,13 @@ impl Settings {
                 self.shortcut_error = None;
             }
             Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. })
-                if self.recording_mode_key =>
+                if self.recording_key =>
             {
                 if key == keyboard::Key::Named(keyboard::key::Named::Escape) {
-                    self.recording_mode_key = false;
+                    self.recording_key = false;
                 } else if let Some(combo) = keys::combo(&key, modifiers) {
                     self.key_combo = Some(combo);
-                    self.recording_mode_key = false;
+                    self.recording_key = false;
                 }
             }
             Message::Key(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
@@ -446,6 +431,16 @@ impl Settings {
                     return self.custom_thumb();
                 }
             }
+            Message::OpenScene(id) => {
+                let link = format!("steam://url/CommunityFilePage/{id}");
+                return Task::future(async move {
+                    let _ = tokio::process::Command::new("xdg-open")
+                        .arg(link)
+                        .status()
+                        .await;
+                })
+                .discard();
+            }
             Message::OpenThemes => {
                 let _ = std::fs::create_dir_all(themes::dir());
                 let opener = if cfg!(target_os = "macos") {
@@ -466,6 +461,40 @@ impl Settings {
                 self.setup_log = crate::setup::run()
                     .unwrap_or_else(|err| vec![format!("could not set up: {err}")]);
                 self.reload();
+            }
+            // Run aside: a hyprland.lua can take a moment in its sandbox.
+            Message::ImportHyprland => {
+                self.save();
+                return Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| crate::hypr::import(true))
+                            .await
+                            .map_err(|err| err.to_string())
+                            .and_then(|imported| imported)
+                            .map(|imported| {
+                                let [came, here, left] = imported.counts;
+                                vec![
+                                    crate::i18n::fill(
+                                        "{came} came over, {here} were here already, {left} stay behind",
+                                        &[("came", &came), ("here", &here), ("left", &left)],
+                                    ),
+                                    crate::i18n::t("apolline import hyprland --dry-run lists each line and why")
+                                        .to_owned(),
+                                ]
+                            })
+                    },
+                    Message::Imported,
+                );
+            }
+            Message::Imported(done) => {
+                self.import_log = done.unwrap_or_else(|err| vec![err]);
+                self.reload();
+                self.hyprland = crate::hypr::found();
+            }
+            Message::UndoHyprland => {
+                self.import_log = crate::hypr::undo().unwrap_or_else(|err| vec![err]);
+                self.reload();
+                self.hyprland = crate::hypr::found();
             }
             Message::Finish => return iced::exit(),
             Message::OpenFile => {
@@ -515,6 +544,7 @@ impl Settings {
                 {
                     self.put_displays_back();
                 }
+                self.watch_trial();
                 if self.page == Page::Displays
                     && self.outputs_may_change()
                     && crate::niri::connected()

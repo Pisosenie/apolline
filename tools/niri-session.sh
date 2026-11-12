@@ -57,6 +57,8 @@ WAYLAND_DISPLAY=$inner foot -a session-two >/dev/null 2>&1 &
 two=$!
 window session-two
 act focus-column-left
+act toggle-overview
+act toggle-overview
 act focus-workspace 2
 act focus-workspace 1
 act move-window-to-workspace 2

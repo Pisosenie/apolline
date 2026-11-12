@@ -159,7 +159,7 @@ fn clicks_end_up_in_the_file_and_comments_survive() {
     let _ = settings.update(Message::ModeName("Night Owl".into()));
     let _ = settings.update(Message::ModeNameDone);
     let _ = settings.update(Message::StartHere(true));
-    let _ = settings.update(Message::RecordModeKey);
+    let _ = settings.update(Message::RecordKey);
     let _ = settings.update(Message::Key(keyboard::Event::KeyPressed {
         key: keyboard::Key::Character("n".into()),
         modified_key: keyboard::Key::Character("n".into()),
@@ -361,24 +361,6 @@ fn a_tile_dropped_off_the_board_leaves_quick_settings() {
 }
 
 #[test]
-fn a_clock_format_is_kept_only_when_chrono_reads_it() {
-    let dir = std::env::temp_dir().join(format!("apolline-clock-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("config.toml");
-    std::fs::write(&path, "").unwrap();
-    let (mut settings, _) = Settings::open(path.clone(), None);
-    let _ = settings.update(Message::ClockDraft("time", "%Q:%M".into()));
-    let _ = settings.update(Message::ClockSet("time"));
-    assert!(!std::fs::read_to_string(&path).unwrap().contains("clock"));
-    let _ = settings.update(Message::ClockDraft("time", "%-I:%M %p".into()));
-    let _ = settings.update(Message::ClockSet("time"));
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("[clock]\ntime = \"%-I:%M %p\""), "{text}");
-    assert_eq!(settings.config.clock.hours(), "%-I");
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
 fn the_launcher_sources_and_search_site_are_written_when_they_make_sense() {
     let dir = std::env::temp_dir().join(format!("apolline-finds-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -575,5 +557,78 @@ fn a_module_takes_a_name_and_a_rerun() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("\"wk\", \"modules\""), "{text}");
     assert!(!text.contains("week") && !text.contains("every"), "{text}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn keys_of_your_own_are_added_and_taken_away() {
+    let dir = std::env::temp_dir().join(format!("apolline-keys-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "").unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let add = |settings: &mut Settings, combo: &str, typed: &str| {
+        settings.key_combo = Some(combo.into());
+        settings.key_command = typed.into();
+        let _ = settings.update(Message::AddKey);
+    };
+    add(&mut settings, "Mod+C", "niri: close-window");
+    add(&mut settings, "Mod+Q", "kitty");
+    add(&mut settings, "Mod+X", "niri: spawn \"rm\"");
+    assert!(
+        settings.shortcut_error.is_some(),
+        "not an action niri reads"
+    );
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("\"Mod+C\" = { niri = \"close-window\" }"),
+        "{text}"
+    );
+    assert!(text.contains("\"Mod+Q\" = \"kitty\""), "{text}");
+    assert_eq!(settings.config.keys.len(), 2);
+    let _ = settings.shortcuts();
+    let _ = settings.update(Message::RemoveKey(0));
+    assert_eq!(settings.config.keys.len(), 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_theme_on_trial_goes_back_unless_kept() {
+    let dir = std::env::temp_dir().join(format!("apolline-trial-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    let mine = "# mine\n[layout]\ngaps = 3\n";
+    std::fs::write(&path, mine).unwrap();
+    let (mut settings, _) = Settings::open(path.clone(), None);
+    let ember = crate::catalog::Entry {
+        name: "Ember".into(),
+        author: String::new(),
+        about: String::new(),
+        folder: "ember".into(),
+        files: vec!["theme.toml".into()],
+        preview: None,
+    };
+    settings.catalog = Some(Ok(vec![ember]));
+
+    let _ = settings.update(Message::CatalogTry(0));
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+    assert!(settings.trying.is_some());
+    let _ = settings.update(Message::PutThemeBack);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
+    assert_eq!(settings.config.layout.gaps, 3);
+    assert!(settings.trying.is_none());
+
+    let _ = settings.update(Message::CatalogTry(0));
+    let _ = settings.update(Message::KeepTheme);
+    let _ = settings.update(Message::Tick);
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
+    assert!(!dir.join("config.toml.trying").exists());
+
+    // The shell put it back after a crash: Settings follows.
+    let _ = settings.update(Message::CatalogTry(0));
+    crate::tryon::put_back(&path, &dir).unwrap();
+    let _ = settings.update(Message::Tick);
+    assert!(settings.trying.is_none());
+    assert_eq!(settings.config.desktop.theme.as_deref(), Some("Ember"));
     std::fs::remove_dir_all(dir).unwrap();
 }
