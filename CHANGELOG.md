@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Safe mode**: a crashed shell starts again by itself, and after three crashes in a minute it starts on the defaults and the CPU without touching your files; a card starts it as usual again. Crashes go to `~/.local/state/apolline/crashes.log`.
+- **`apolline report`**: one file for an issue with the versions, the GPU and screens, what doctor says, the latest crashes, the shell's log and the config, with links, the home folder and the user name taken out.
 - A Wallpaper Engine scene's own preview keeps standing for it on the lock screen, in the switcher and in the accent once it plays: it's saved as a real PNG now, not a JPEG or GIF under a .png name.
 - `Mod+Shift+G` only gives niri's keys back and starts the shell when the shell is gone, not when it's slow, and it keeps your start mode and theme; staying still lets you save a replay and switch the keyboard layout, your own `switch-layout` keys too, and says so when niri didn't take the change.
 - The Set up button in Settings does all that `apolline setup` does: layouts from Hyprland, the fastest refresh, autostart; and both check the fragment with niri before writing it.

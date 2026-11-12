@@ -16,6 +16,7 @@ mod clipboard;
 mod clips;
 mod control;
 mod controls;
+mod crashes;
 mod deck;
 mod dock;
 mod dock_menu;
@@ -33,6 +34,7 @@ mod greet;
 mod greet_look;
 mod greetd;
 mod gsettings;
+mod guard;
 mod hypr;
 mod i18n;
 mod icon;
@@ -69,6 +71,7 @@ mod privacy;
 mod profile;
 mod rail;
 mod rates;
+mod report;
 mod secrets;
 mod settings;
 mod setup;
@@ -109,7 +112,7 @@ use std::process::ExitCode;
 
 use apolline_config::{Config, Editor, slug};
 
-const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
+const USAGE: &str = "usage: apolline [--mode NAME] [--safe] [--preview] [--open launcher|panel|wifi|bluetooth|switch|clipboard|keys|calendar|machine|polkit|osd] [--query TEXT] [--screenshot FILE]
        apolline mode NAME|next|none|off
        apolline switch | launcher | panel | clipboard | keys | replay | stay | terminal | machine | updates
        apolline module [NAME]
@@ -125,6 +128,7 @@ const USAGE: &str = "usage: apolline [--mode NAME] [--preview] [--open launcher|
        apolline lock [--preview] [--mode NAME] [--screenshot FILE]
        apolline check [FILE]
        apolline doctor
+       apolline report [-]
        apolline version";
 
 // glibc's malloc asks for 2 MB pages for each thread's arena, so every runtime thread that ever
@@ -140,6 +144,10 @@ fn small_pages() {
 #[derive(Default)]
 struct Options {
     mode: Option<String>,
+    // On the defaults and the CPU, as after a few crashes in a row.
+    safe: bool,
+    // Started by the process that watches the shell, rather than by a person.
+    watched: bool,
     preview: bool,
     screenshot: Option<PathBuf>,
     open: Vec<shell::Message>,
@@ -159,13 +167,23 @@ fn main() -> ExitCode {
     small_pages();
     logging();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (config, _) = Config::load(&apolline_config::default_path());
+    crashes::catch_panics(
+        args.first()
+            .filter(|arg| !arg.starts_with('-'))
+            .map_or_else(|| "shell".to_owned(), Clone::clone),
+    );
+    let (config, _) = if args.iter().any(|arg| arg == "--safe") {
+        (Config::default(), Vec::new())
+    } else {
+        Config::load(&apolline_config::default_path())
+    };
     apolline_theme::set_scheme(config.scheme(config.start()));
     style::choose_family(config.desktop.font);
     i18n::choose(config.language.as_deref());
     match args.first().map(String::as_str) {
         Some("check") => return check(args.get(1).map(PathBuf::from)),
         Some("doctor") => return doctor::main(),
+        Some("report") => return report::main(&args[1..]),
         Some("help" | "--help" | "-h") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -256,23 +274,29 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match run(options) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(err) => {
-            eprintln!("apolline: {err}");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn run(options: Options) -> Result<(), String> {
     let layered = !options.preview
         && options.screenshot.is_none()
         && std::env::var_os("WAYLAND_DISPLAY").is_some();
-    if layered {
+    if layered && !options.watched {
+        return guard::watch(&args, options.safe);
+    }
+    if options.safe {
+        guard::set_safe();
+    }
+    let ran = if layered {
         layers::run(options.mode)
     } else {
         preview::run(options.mode, options.screenshot, options.open).map_err(|err| err.to_string())
+    };
+    match ran {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("apolline: {err}");
+            if layered {
+                crashes::record(&format!("shell: {err}"));
+            }
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -284,6 +308,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--mode" => {
                 options.mode = Some(args.next().ok_or("--mode needs a name")?.clone());
             }
+            "--safe" => options.safe = true,
+            "--watched" => options.watched = true,
             "--preview" => options.preview = true,
             "--open" => {
                 let overlay = |overlay| shell::Message::Overlay(Some(overlay));

@@ -213,6 +213,8 @@ impl Shell {
                 }
                 return notify::closed(id, Closed::Dismissed);
             }
+            // The watching process starts the shell again, as usual this time.
+            Message::Activate(notify::SAFE_CARD) => std::process::exit(crate::guard::AGAIN),
             Message::Activate(notify::SHOT_CARD) => {
                 self.forget(notify::SHOT_CARD);
                 return self.open_marks();
