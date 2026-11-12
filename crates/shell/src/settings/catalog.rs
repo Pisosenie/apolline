@@ -112,7 +112,15 @@ impl Settings {
                 self.themes = themes::all();
                 self.theme_note = None;
                 self.edit(|e| theme.apply(e));
-                self.custom_thumb()
+                // Up to Keep and Go back, which sit at the top of the page, over the catalog.
+                let top = iced::widget::operation::scroll_to(
+                    super::find::PAGE,
+                    iced::widget::operation::AbsoluteOffset {
+                        x: None,
+                        y: Some(0.0),
+                    },
+                );
+                Task::batch([self.custom_thumb(), top])
             }
             Err(err) => {
                 self.theme_note = Some(Err(err));
