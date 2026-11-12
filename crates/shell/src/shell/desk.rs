@@ -158,7 +158,11 @@ impl Shell {
     }
 
     pub fn wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
-        let picture = self.softened(self.wallpaper_name(output), self.wallpaper_picture(output));
+        let picture = if self.wallpaper_elsewhere_on(output) {
+            self.wallpaper_picture(output)
+        } else {
+            self.softened(self.wallpaper_name(output), self.wallpaper_picture(output))
+        };
         let shown = self.desktop_clock(self.config.desktop.clock);
         match shown {
             Some(shown) => stack![picture, shown].into(),

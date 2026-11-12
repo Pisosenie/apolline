@@ -65,6 +65,8 @@ struct Screen {
     bar: Option<window::Id>,
     // Its wallpaper is drawn by another program, so this one sits a layer up and lets clicks by.
     elsewhere: bool,
+    // Over that program's, the wallpaper softened while niri's overview is open.
+    soft: Option<window::Id>,
 }
 
 struct Layers {
@@ -186,12 +188,45 @@ impl Layers {
             task,
             self.find_card(),
             self.fit_screens(),
+            self.fit_soft(),
             self.fit_bars(),
             self.fit_popups(),
             self.fit_overlay(),
             self.fit_osd(),
             self.fit_docks(),
         ])
+    }
+
+    fn fit_soft(&mut self) -> Task<Message> {
+        let mut tasks = Vec::new();
+        for (output, screen) in &mut self.screens {
+            let wanted = self.shell.soft_wanted(output.as_deref());
+            match (screen.soft, wanted) {
+                (None, true) => {
+                    let (id, open) = open(NewLayerShellSettings {
+                        layer: Layer::Background,
+                        anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
+                        exclusive_zone: Some(-1),
+                        keyboard_interactivity: KeyboardInteractivity::None,
+                        output_option: match output {
+                            Some(name) => OutputOption::OutputName(name.clone()),
+                            None => OutputOption::default(),
+                        },
+                        namespace: Some("apolline-wallpaper".into()),
+                        ..Default::default()
+                    });
+                    screen.soft = Some(id);
+                    tasks.push(open);
+                    tasks.extend(pass_through(id));
+                }
+                (Some(id), false) => {
+                    screen.soft = None;
+                    tasks.push(window::close(id));
+                }
+                _ => {}
+            }
+        }
+        Task::batch(tasks)
     }
 
     fn is_bar(&self, id: window::Id) -> bool {
@@ -595,6 +630,9 @@ impl Layers {
             if id == screen.wallpaper {
                 return self.shell.wallpaper(output.as_deref());
             }
+            if Some(id) == screen.soft {
+                return self.shell.soft_wallpaper(output.as_deref());
+            }
             if Some(id) == screen.bar {
                 if self.out.get(&id) == Some(&false) {
                     return space().into();
@@ -703,7 +741,9 @@ fn bar_margin(edge: Edge, floating: bool) -> (i32, i32, i32, i32) {
 
 // A hidden bar opens as its strip and takes no room from the windows.
 fn close_screen(screen: Screen) -> impl Iterator<Item = Task<Message>> {
-    std::iter::once(window::close(screen.wallpaper)).chain(screen.bar.map(window::close))
+    std::iter::once(window::close(screen.wallpaper))
+        .chain(screen.bar.map(window::close))
+        .chain(screen.soft.map(window::close))
 }
 
 // Clicks on the desktop go to the program drawing the wallpaper below; once now, and again once
@@ -763,6 +803,7 @@ fn open_screen(
             wallpaper,
             bar: None,
             elsewhere,
+            soft: None,
         };
         return (screen, open_wallpaper);
     }
@@ -787,6 +828,7 @@ fn open_screen(
             wallpaper,
             bar: Some(bar),
             elsewhere,
+            soft: None,
         },
         Task::batch([open_wallpaper, open_bar]),
     )

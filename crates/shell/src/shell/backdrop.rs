@@ -60,6 +60,23 @@ impl Shell {
         if open { eased } else { 1.0 - eased }
     }
 
+    // A screen whose wallpaper another program draws softens on a surface of its own, in the
+    // overview's backdrop over that program's: the desktop's surface there sits a layer up,
+    // where the overview shows it inside each workspace instead.
+    pub fn soft_wanted(&self, output: Option<&str>) -> bool {
+        let name = self.wallpaper_name(output);
+        self.wallpaper_elsewhere_on(output)
+            && self.softness() > 0.0
+            && self.blurred.iter().any(|(n, _)| n == name)
+    }
+
+    pub fn soft_wallpaper(&self, output: Option<&str>) -> Element<'_, Message> {
+        self.softened(
+            self.wallpaper_name(output),
+            space().width(Fill).height(Fill).into(),
+        )
+    }
+
     pub(super) fn softened<'a>(
         &'a self,
         name: &str,

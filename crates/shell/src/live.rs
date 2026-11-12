@@ -195,14 +195,22 @@ pub fn keep_poster(name: &str, from: &Path) -> bool {
 
 // A scene's poster is its project's own preview, often a JPEG or a GIF, and pictures are opened by
 // their extension: what isn't a PNG already becomes one.
+// Written aside and moved into place: the shell may be reading the last one as it lands.
 fn save_png(from: &Path, to: &Path) -> Result<(), String> {
     let bytes = std::fs::read(from).map_err(|err| format!("{}: {err}", from.display()))?;
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return std::fs::write(to, bytes).map_err(|err| err.to_string());
+    let aside = to.with_extension("png.part");
+    let written = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        std::fs::write(&aside, bytes).map_err(|err| err.to_string())
+    } else {
+        image::load_from_memory(&bytes)
+            .and_then(|picture| picture.save_with_format(&aside, image::ImageFormat::Png))
+            .map_err(|err| format!("{}: {err}", from.display()))
+    };
+    let moved = written.and_then(|()| std::fs::rename(&aside, to).map_err(|err| err.to_string()));
+    if moved.is_err() {
+        let _ = std::fs::remove_file(&aside);
     }
-    image::load_from_memory(&bytes)
-        .and_then(|picture| picture.save_with_format(to, image::ImageFormat::Png))
-        .map_err(|err| format!("{}: {err}", from.display()))
+    moved
 }
 
 pub fn show(output: Option<&str>, source: &Path) -> String {
