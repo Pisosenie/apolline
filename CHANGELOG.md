@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-11-13
+
+- A shell started while the old one is still on its way out waits for the control socket instead of leaving it to nobody, so the keys that go through `apolline` (the launcher, quick settings, the switcher) work after a restart or an update.
+
 ## 0.4.0 — 2026-11-12
 
 - **`apolline update`**: builds Apolline and apolline-wall again from their repositories and starts the new shell. A newer release shows on the bar's updates button and once as a quiet card; `[general] check_updates = false` stops the daily look.

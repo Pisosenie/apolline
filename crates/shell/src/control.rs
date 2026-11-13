@@ -214,12 +214,17 @@ pub fn send(line: &str) -> Result<(), String> {
 fn stream() -> impl Stream<Item = Message> {
     iced::stream::channel(16, async |output| {
         let path = socket();
-        if StdStream::connect(&path).is_ok() {
-            eprintln!(
-                "apolline: another instance is listening on {}",
-                path.display()
-            );
-            return;
+        // A shell restarted in one go can come up while the old one is still on its way out:
+        // it waits for the socket rather than leaving every key that goes through it dead.
+        let mut said = false;
+        while StdStream::connect(&path).is_ok() {
+            if !std::mem::replace(&mut said, true) {
+                eprintln!(
+                    "apolline: another instance is listening on {}; waiting for it",
+                    path.display()
+                );
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
         let _ = std::fs::remove_file(&path);
         let listener = match UnixListener::bind(&path) {

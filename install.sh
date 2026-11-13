@@ -76,6 +76,7 @@ if [[ $update == 1 ]]; then
   if [[ -n ${NIRI_SOCKET:-} ]]; then
     say "Starting the new shell"
     pkill -x apolline || true
+    for _ in $(seq 25); do pgrep -x apolline >/dev/null || break; sleep 0.2; done
     niri msg action spawn -- apolline
   fi
   say "Up to date."
