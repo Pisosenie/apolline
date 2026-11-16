@@ -5,15 +5,15 @@
       <stop offset="1" stop-color="#0d0f12"/>
     </linearGradient>
     <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f2b35c"/>
+      <stop offset="0" stop-color="#f6b75e"/>
       <stop offset="1" stop-color="#ff6a3d"/>
     </linearGradient>
-    <clipPath id="above">
-      <rect x="0" y="0" width="128" height="80"/>
-    </clipPath>
   </defs>
   <rect width="128" height="128" rx="28" fill="url(#sky)"/>
-  <circle cx="64" cy="78" r="30" fill="url(#sun)" clip-path="url(#above)"/>
-  <path d="M26 90h76" stroke="#86bdf0" stroke-width="5" stroke-linecap="round"/>
-  <path d="M44 102h40" stroke="#86bdf0" stroke-width="5" stroke-linecap="round" opacity="0.45"/>
+  <circle cx="64" cy="70" r="26" fill="url(#sun)"/>
+  <g fill="none" stroke="#f2ede7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27 30C36 31 40 41 34 54C25 74 31 100 54 104H74C97 100 103 74 94 54C88 41 92 31 101 30" stroke-width="7"/>
+    <path d="M35 41H93" stroke-width="6"/>
+    <path d="M52 41V103M60 41V103M68 41V103M76 41V103" stroke-width="2.6"/>
+  </g>
 </svg>
