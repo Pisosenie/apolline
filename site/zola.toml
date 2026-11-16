@@ -1,0 +1,19 @@
+base_url = "https://pisosenie.github.io/apolline"
+title = "Apolline"
+description = "A desktop shell for niri that looks finished on the first login."
+default_language = "en"
+generate_feeds = true
+feed_filenames = ["atom.xml"]
+author = "Apolline"
+skip_content_templating = ["docs/_index.md", "news/*.md"]
+
+[markdown]
+insert_anchor_links = "heading"
+smart_punctuation = false
+
+[markdown.highlighting]
+theme = "catppuccin-mocha"
+
+[extra]
+repo = "https://github.com/Pisosenie/apolline"
+install = "curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh | bash"

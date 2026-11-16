@@ -20,6 +20,13 @@ tools/fake-bus.sh                              # fake NetworkManager, BlueZ, fpr
 
 `cargo test --workspace` runs everything; tests never touch the niri you're in. [`docs/ROADMAP.md`](docs/ROADMAP.md) has what's next.
 
+## The site
+
+`site/` is the website, built with [Zola](https://www.getzola.org) 0.23 and published to GitHub Pages from `main`. It writes nothing twice: `site/prepare.py` turns `CHANGELOG.md` into the release pages and the feed, `docs/CONFIG.md` into the docs, and brings the catalog, screenshots, fonts and icons; a new release or theme shows up there by itself.
+
+```sh
+python3 site/prepare.py && zola --root site serve
+```
 
 ## Layout
 

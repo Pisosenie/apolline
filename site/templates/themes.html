@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block kind %}page{% endblock kind %}
+{% block at %}themes{% endblock at %}
+{% block title %}Themes · Apolline{% endblock title %}
+{% block about %}{{ section.description }}{% endblock about %}
+{% block content %}
+{%- set catalog = load_data(path="static/catalog/index.toml") -%}
+<section class="wrap page-head">
+  <span class="eyebrow">Catalog</span>
+  <h1>Themes</h1>
+  <p>Each one is the real session as CI renders it, not a mockup. Open Settings → Appearance → More themes and press <strong>Try on</strong>: it stays a minute, then goes back unless you keep it.</p>
+  <p class="in-box">In the box: {% for name in ["Fog", "Ember", "Night", "Mocha", "Paper", "Glass"] %}<span class="chip">{{ name }}</span>{% endfor %}</p>
+</section>
+<section class="wrap gallery">
+  {%- for theme in catalog.theme %}
+  <article class="theme" id="{{ theme.folder }}">
+    <a href="{{ config.extra.repo }}/tree/main/catalog/{{ theme.folder }}">
+      <img src="{{ get_url(path='catalog/' ~ theme.folder ~ '/' ~ theme.preview) }}" alt="{{ theme.name }}, as the session shows it" loading="lazy">
+    </a>
+    <div class="theme-text">
+      <h2>{{ theme.name }}</h2>
+      <p>{{ theme.about }}</p>
+      <span class="by">by {{ theme.author }}</span>
+    </div>
+  </article>
+  {%- endfor %}
+</section>
+<section class="wrap narrow block">
+  <div class="install-card">
+    <span class="eyebrow">Make your own</span>
+    <h2>A theme is one small file.</h2>
+    <p>Settings → Appearance → <em>Save my look</em> turns your setup into one. Put it in a folder under <code>catalog/</code> with its pictures, list it in <code>catalog/index.toml</code> and open a pull request: CI renders it under a headless session, and that picture is what people see here.</p>
+    {{<command text="apolline theme install https://example.com/dune.toml"/>}}
+    <p class="small"><a href="{{ get_url(path='@/docs/_index.md') }}#making-a-theme">How a theme file reads</a> · <a href="{{ config.extra.repo }}/blob/main/catalog/index.toml">The catalog's index</a></p>
+  </div>
+</section>
+{% endblock content %}
