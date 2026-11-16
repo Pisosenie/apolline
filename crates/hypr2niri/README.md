@@ -5,6 +5,7 @@ Hyprland it was written for reads it, from 0.30 to 0.57, and writes a niri `conf
 for every line: what came over, what niri does already, and what stays behind and why.
 
 ```sh
+cargo install hypr2niri
 hypr2niri                                  # ~/.config/hypr/hyprland.lua or hyprland.conf, to the screen
 hypr2niri hyprland.conf -o config.kdl      # then: niri validate -c config.kdl
 ```
