@@ -1,6 +1,6 @@
 pkgbase = apolline
 	pkgdesc = A desktop shell for niri: bar, launcher, quick settings, lock and login screens, themes and modes
-	pkgver = 0.4.1
+	pkgver = 0.5.0
 	pkgrel = 1
 	url = https://github.com/Pisosenie/apolline
 	install = apolline.install
@@ -37,7 +37,7 @@ pkgbase = apolline
 	conflicts = apolline-git
 	options = !lto
 	backup = etc/pam.d/apolline
-	source = apolline-0.4.1.tar.gz::https://github.com/Pisosenie/apolline/archive/v0.4.1.tar.gz
-	sha256sums = 198029818704e83aa4e69c1a258d08ca21ad07c02b9c290ee5717d7ea5534488
+	source = apolline-0.5.0.tar.gz::https://github.com/Pisosenie/apolline/archive/v0.5.0.tar.gz
+	sha256sums = 2571f05a3a675f3d6d856ad9595f6261540580cf6356b84ba06a33d75161dbdb
 
 pkgname = apolline
