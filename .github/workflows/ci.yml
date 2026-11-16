@@ -47,7 +47,9 @@ jobs:
           APOLLINE_NIRI_SESSION=/tmp/session.jsonl cargo test -p apolline-niri live_session
       - name: A mode puts windows in their places in this niri
         run: |
-          bin=$(cargo test -p apolline-shell --bin apolline --no-run 2>&1 | grep -o 'target/debug/deps/apolline-[0-9a-f]*' | head -1)
+          # Where cargo puts the test binary changes between versions; it says where.
+          bin=$(cargo test -p apolline-shell --bin apolline --no-run 2>&1 | sed -n 's/.*Executable unittests src\/main.rs (\(.*\))$/\1/p' | head -1)
+          test -x "$bin"
           su ci -c "tools/niri-place.sh $bin"
 
   package:

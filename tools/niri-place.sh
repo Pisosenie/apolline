@@ -46,5 +46,8 @@ for app in place-a place-b place-c; do
     done
 done
 sleep 0.5
-APOLLINE_NIRI_PLACE=1 "$test" places::tests::a_real_niri_puts_them_in_their_places --exact --nocapture
+# A name that matches nothing passes with "0 passed", so the run has to say it ran one.
+APOLLINE_NIRI_PLACE=1 "$test" places::live::a_real_niri_puts_them_in_their_places --exact --nocapture 2>&1 |
+    tee "$run/test.log"
+grep -q "test result: ok. 1 passed" "$run/test.log"
 niri msg windows
