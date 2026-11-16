@@ -14,6 +14,7 @@ from=${APOLLINE_FROM:-release}
 greeter=${APOLLINE_GREETER:-apolline}
 live=${APOLLINE_LIVE:-yes}
 update=${APOLLINE_UPDATE:-0}
+checks=
 work=${APOLLINE_WORK:-$HOME/.cache/apolline-install}
 
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -42,19 +43,37 @@ fetch() {
 build() {
   say "Building $(basename "$1")"
   # Tests inside a running session would see its niri, so they get none.
-  (cd "$1" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -si --needed --noconfirm "${@:2}")
+  (cd "$1" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -si --needed --noconfirm $checks "${@:2}")
+}
+
+# Installed under exactly that name: pacman -Q also answers for a package that only provides it,
+# as apolline-git provides apolline.
+installed() { pacman -Qq "$1" 2>/dev/null | grep -qx "$1"; }
+
+# A -git package built from the commit its clone now has, r352.9548436 against 9548436…, or a
+# release package at the version its PKGBUILD names: nothing to build.
+current() {
+  local name=$1 repo=$2 have
+  have=$(pacman -Q "$name" 2>/dev/null | awk '{print $2}') || return 1
+  if [[ $name == *-git ]]; then
+    have=${have#r*.}
+    have=${have%%-*}
+    [[ -n $have && $(git -C "$work/$repo" rev-parse HEAD) == "$have"* ]]
+  else
+    [[ ${have%-*} == "$(sed -n 's/^pkgver=//p' "$work/$repo/packaging/arch/$name/PKGBUILD")" ]]
+  fi
 }
 
 # The release and the git package conflict, and makepkg can't answer that question itself. The new
 # one is built first and the old one goes only then, so a failed build leaves a working desktop.
 swap() {
   local dir=$1 old=$2
-  if ! pacman -Q "$old" &>/dev/null; then
+  if ! installed "$old"; then
     build "$dir"
     return
   fi
   say "Building $(basename "$dir") to replace $old"
-  (cd "$dir" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -sf --noconfirm)
+  (cd "$dir" && env -u NIRI_SOCKET -u WAYLAND_DISPLAY makepkg -sf --noconfirm $checks)
   local built
   mapfile -t built < <(cd "$dir" && makepkg --packagelist)
   sudo pacman -Rdd --noconfirm "$old"
@@ -63,17 +82,32 @@ swap() {
 
 # An update builds what's installed again and leaves the rest of the system alone.
 if [[ $update == 1 ]]; then
+  # CI ran the tests on what's published; building them again here doubles the wait.
+  checks=--nocheck
+  built=0
   fetch apolline
   if [[ $from == git ]]; then
-    swap "$work/apolline/packaging/arch/apolline-git" apolline
+    if current apolline-git apolline; then
+      say "Apolline is up to date"
+    else
+      swap "$work/apolline/packaging/arch/apolline-git" apolline
+      built=1
+    fi
+  elif current apolline apolline; then
+    say "Apolline is up to date"
   else
     swap "$work/apolline/packaging/arch/apolline" apolline-git
+    built=1
   fi
-  if pacman -Q apolline-wall-git &>/dev/null; then
+  if installed apolline-wall-git; then
     fetch apolline-wall
-    build "$work/apolline-wall/packaging/arch"
+    if current apolline-wall-git apolline-wall; then
+      say "apolline-wall is up to date"
+    else
+      build "$work/apolline-wall/packaging/arch"
+    fi
   fi
-  if [[ -n ${NIRI_SOCKET:-} ]]; then
+  if [[ $built == 1 && -n ${NIRI_SOCKET:-} ]]; then
     say "Starting the new shell"
     pkill -x apolline || true
     for _ in $(seq 25); do pgrep -x apolline >/dev/null || break; sleep 0.2; done
