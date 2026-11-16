@@ -40,6 +40,12 @@ jobs:
               niri validate -c fragment.kdl
             done
           done
+      - name: hypr2niri turns a config of every Hyprland era into one this niri accepts
+        run: |
+          for config in crates/hypr2niri/tests/configs/*; do
+            ./target/debug/hypr2niri "$config" -o converted.kdl
+            niri validate -c converted.kdl
+          done
       - name: A session recorded from this niri still reads in full
         run: |
           useradd -m ci

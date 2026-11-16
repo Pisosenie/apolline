@@ -1,0 +1,13 @@
+[package]
+name = "hypr2niri-web"
+description = "hypr2niri for the browser: WebAssembly with a plain memory interface, no bindgen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hypr2niri = { workspace = true, default-features = false }

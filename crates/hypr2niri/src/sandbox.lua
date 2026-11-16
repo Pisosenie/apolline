@@ -1,16 +1,16 @@
 -- Runs before a hyprland.lua so that `hl` only takes notes. What it notes are the lines a
--- hyprland.conf would have had, in __apolline_notes, for Apolline to read back. Nothing here
+-- hyprland.conf would have had, in __import_notes, to be read back. Nothing here
 -- starts a program or writes a file.
 
 local notes = {}
-__apolline_notes = notes
+__import_notes = notes
 
 -- The line of the config that called, past this file's own frames.
 local function where()
   for level = 2, 40 do
     local info = debug.getinfo(level, "Sl")
     if not info then break end
-    if info.source ~= "=apolline-sandbox" and info.what ~= "C" then
+    if info.source ~= "=import-sandbox" and info.what ~= "C" then
       local file = (info.short_src or "?"):match("([^/]+)$") or "?"
       return file .. ":" .. tostring(info.currentline or 0)
     end
@@ -57,7 +57,7 @@ end
 package.loadlib = nil
 package.cpath = ""
 package.searchers = { package.searchers[1], package.searchers[2] }
-package.path = __apolline_dir .. "/?.lua;" .. __apolline_dir .. "/?/init.lua;" .. package.path
+package.path = __import_dir .. "/?.lua;" .. __import_dir .. "/?/init.lua;" .. package.path
 
 -- A module that breaks here, one asking hyprctl say, gives way to `anything` and the rest goes on.
 local real_require, real_dofile = require, dofile
@@ -177,6 +177,23 @@ local function flatten(prefix, table_, parent)
   end
 end
 
+-- A rule as hyprland.conf writes it since 0.53: `match:class kitty, float on`.
+local function rule(t)
+  t = type(t) == "table" and t or {}
+  local parts = {}
+  if type(t.match) == "table" then
+    for prop, value in pairs(t.match) do
+      parts[#parts + 1] = "match:" .. prop .. " " .. plain(value == true and "on" or value == false and "off" or value)
+    end
+  end
+  for effect, value in pairs(t) do
+    if effect ~= "name" and effect ~= "match" then
+      parts[#parts + 1] = effect .. " " .. plain(value == true and "on" or value == false and "off" or value)
+    end
+  end
+  return table.concat(parts, ", ")
+end
+
 local function handle(entry)
   return setmetatable({}, {
     __index = function(_, name)
@@ -221,18 +238,24 @@ hl = setmetatable({
     if type(t) == "table" then flatten("", t, nil) end
   end,
   window_rule = function(t)
+    return handle(note("windowrule", rule(t)))
+  end,
+  layer_rule = function(t)
+    return handle(note("layerrule", rule(t)))
+  end,
+  env = function(name, value)
+    note("env", tostring(name) .. "," .. plain(value))
+  end,
+  gesture = function(t)
     t = type(t) == "table" and t or {}
-    local match = type(t.match) == "table" and t.match or {}
-    local target = match.class and ("class:" .. tostring(match.class))
-      or match.title and ("title:" .. tostring(match.title)) or "class:.*"
-    local entries = {}
-    for effect, value in pairs(t) do
-      if effect ~= "name" and effect ~= "match" then
-        local said = value == true and effect or (effect .. " " .. plain(value))
-        entries[#entries + 1] = note("windowrulev2", said .. ", " .. target)
-      end
+    return handle(note("gesture", plain(t.fingers or 3) .. ", " .. tostring(t.direction or "")
+      .. ", " .. tostring(t.action or "")))
+  end,
+  device = function(t)
+    t = type(t) == "table" and t or {}
+    for key, value in pairs(t) do
+      if key ~= "name" then note("device:" .. tostring(t.name or "?") .. ":" .. key, plain(value)) end
     end
-    return handle(entries[1] or {})
   end,
   exec_cmd = function(command)
     note("exec-once", tostring(command))

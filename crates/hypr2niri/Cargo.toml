@@ -1,0 +1,23 @@
+[package]
+name = "hypr2niri"
+description = "Turns a Hyprland config, hyprland.conf or hyprland.lua of any version, into a niri config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository = "https://github.com/Pisosenie/apolline"
+homepage = "https://pisosenie.github.io/apolline/hyprland/"
+readme = "README.md"
+keywords = ["hyprland", "niri", "wayland", "config", "converter"]
+categories = ["command-line-utilities", "config"]
+
+[features]
+default = ["lua"]
+# Reading hyprland.lua runs it in a sandbox; without this only hyprland.conf is read.
+lua = ["dep:mlua"]
+
+[dependencies]
+mlua = { version = "=0.12.2", features = ["lua55", "vendored"], optional = true }
+
+[[bin]]
+name = "hypr2niri"
+required-features = ["lua"]

@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 // One setting of a Hyprland config, read the way Hyprland reads it: sourced files in place,
 // $variables filled in, and blocks flattened, so `input { touchpad { tap-to-click = true } }`
 // is input:touchpad:tap-to-click.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Line {
     pub key: String,
     pub value: String,
     // Where it was written, as file:line.
     pub at: String,
+    // Which top-level block it was in, counted from 1; 0 outside any. Blocks of the same name,
+    // two `monitorv2 { }` say, stay apart this way.
+    pub block: usize,
 }
 
 const DEPTH: u8 = 4;
@@ -24,21 +27,34 @@ pub fn read(path: &Path) -> Vec<Line> {
     reader.lines
 }
 
+// A config pasted in, as a file named `name` would read; files it sources are looked for beside
+// that name, and skipped where there are none (in a browser, say).
+pub fn read_text(text: &str, name: &str) -> Vec<Line> {
+    let mut reader = Reader::default();
+    reader.text(text, Path::new(name), 0);
+    reader.lines
+}
+
 #[derive(Default)]
 struct Reader {
     lines: Vec<Line>,
     variables: Vec<(String, String)>,
+    blocks: usize,
 }
 
 impl Reader {
     fn file(&mut self, path: &Path, depth: u8) {
-        let Ok(text) = fs::read_to_string(path) else {
-            return;
-        };
+        if let Ok(text) = fs::read_to_string(path) {
+            self.text(&text, path, depth);
+        }
+    }
+
+    fn text(&mut self, text: &str, path: &Path, depth: u8) {
         let name = path
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         let mut scope: Vec<String> = Vec::new();
+        let mut block = 0;
         for (number, raw) in text.lines().enumerate() {
             let line = uncomment(raw);
             let line = line.trim();
@@ -47,10 +63,17 @@ impl Reader {
             }
             if line == "}" {
                 scope.pop();
+                if scope.is_empty() {
+                    block = 0;
+                }
                 continue;
             }
-            if let Some(block) = line.strip_suffix('{') {
-                scope.push(block.trim().to_owned());
+            if let Some(name) = line.strip_suffix('{') {
+                if scope.is_empty() {
+                    self.blocks += 1;
+                    block = self.blocks;
+                }
+                scope.push(name.trim().to_owned());
                 continue;
             }
             let Some((key, value)) = line.split_once('=') else {
@@ -83,6 +106,7 @@ impl Reader {
                 key,
                 value,
                 at: format!("{name}:{}", number + 1),
+                block,
             });
         }
     }
@@ -148,6 +172,26 @@ pub fn sourced(value: &str, from: &Path) -> Vec<PathBuf> {
     files
 }
 
+// Where a block starts, and the keys and values inside it.
+pub type Block = (String, Vec<(String, String)>);
+
+// Every `keyword { }` block, by where it starts: its keys inside, `output` for monitorv2:output.
+pub fn blocks(lines: &[Line], keyword: &str) -> Vec<Block> {
+    let prefix = format!("{keyword}:");
+    let mut found: Vec<(usize, Block)> = Vec::new();
+    for line in lines.iter().filter(|l| l.block > 0) {
+        let Some(key) = line.key.strip_prefix(&prefix) else {
+            continue;
+        };
+        let said = (key.to_owned(), line.value.clone());
+        match found.iter_mut().find(|(block, _)| *block == line.block) {
+            Some((_, (_, keys))) => keys.push(said),
+            None => found.push((line.block, (line.at.clone(), vec![said]))),
+        }
+    }
+    found.into_iter().map(|(_, block)| block).collect()
+}
+
 // The last value written for a key, as Hyprland takes it.
 pub fn last<'a>(lines: &'a [Line], key: &str) -> Option<&'a str> {
     lines
@@ -163,7 +207,7 @@ mod tests {
 
     #[test]
     fn sources_variables_and_blocks_are_read_as_hyprland_does() {
-        let dir = std::env::temp_dir().join(format!("apolline-hyprconf-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hypr2niri-conf-{}", std::process::id()));
         fs::create_dir_all(dir.join("conf.d")).unwrap();
         fs::write(
             dir.join("hyprland.conf"),
