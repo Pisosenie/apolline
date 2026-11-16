@@ -26,8 +26,8 @@ At rest it wakes once a minute, for the clock; everything else arrives as an eve
 | | |
 |---|---|
 | **Bar** | workspaces, windows and pinned apps, tray, media, clock with a calendar and the weather, CPU, memory, GPU and temperature, waiting updates, who's using the microphone or the screen; as a bar, islands or one pill, on any edge |
-| **Launcher** `Mod+Space` | apps and Steam games, open windows, sums, units and currency, emoji, files, screenshots, a color picker, screen recording, timers, commands and the web |
-| **Quick settings** `Mod+A` | Wi-Fi, Bluetooth, VPN, volume per app, microphone, brightness, night light, power profile, do not disturb, the player, past notifications |
+| **Launcher** `Mod+A` | apps and Steam games, open windows, sums, units and currency, emoji, files, screenshots, a color picker, screen recording, timers, commands and the web |
+| **Quick settings** `Mod+S` | Wi-Fi, Bluetooth, VPN, volume per app, microphone, brightness, night light, power profile, do not disturb, the player, past notifications |
 | **Live wallpapers** | videos, Shadertoy shaders and Wallpaper Engine scenes from your Steam library, drawn by [apolline-wall](https://github.com/Pisosenie/apolline-wall) and paused while you're locked or playing |
 | **Lock and login** | an ext-session-lock lock screen with what's playing, the weather and the next meeting, a wallpaper of its own if you like, and a greetd greeter in the same look |
 | **Modes** | Work, Play, Evening or your own: a key, a game starting, the battery, the hour or a monitor switches wallpaper, accent, notifications, apps, performance and shortcuts |
@@ -90,7 +90,7 @@ git clone https://github.com/Pisosenie/apolline-wall && (cd apolline-wall/packag
 
 | To | Do |
 |---|---|
-| open an app | `Mod+Space`, type, Enter |
+| open an app | `Mod+A`, type, Enter |
 | change the wallpaper | Settings → Appearance; anything with ▶ is live |
 | give the lock screen its own wallpaper | Settings → Lock and sleep → Wallpaper |
 | try a whole new look | Settings → Appearance, or `apolline theme next` |

@@ -915,8 +915,8 @@ impl Shortcuts {
 impl Default for Shortcuts {
     fn default() -> Self {
         Self {
-            launcher: "Mod+Space".into(),
-            panel: "Mod+A".into(),
+            launcher: "Mod+A".into(),
+            panel: "Mod+S".into(),
             switch: "Mod+Shift+M".into(),
             lock: "Super+Alt+L".into(),
             clipboard: "Mod+Alt+V".into(),

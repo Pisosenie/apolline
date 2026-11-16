@@ -982,7 +982,7 @@ mod tests {
         }
     }
 
-    const KEYS: &str = "[keys]\n\"Mod+Return\" = \"kitty --single-instance\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width +10%\" }\n\"Mod+Shift+3\" = { niri = \"move-column-to-workspace 3 focus=false\" }\n\"Mod+Space\" = \"rofi -show drun\"\n\"Mod+P\" = \"x\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+P\" = \"y\" }\n";
+    const KEYS: &str = "[keys]\n\"Mod+Return\" = \"kitty --single-instance\"\n\"Mod+C\" = { niri = \"close-window\" }\n\"Mod+Ctrl+Right\" = { niri = \"set-column-width +10%\" }\n\"Mod+Shift+3\" = { niri = \"move-column-to-workspace 3 focus=false\" }\n\"Mod+A\" = \"rofi -show drun\"\n\"Mod+P\" = \"x\"\n\n[[mode]]\nname = \"Work\"\nkeys = { \"Mod+P\" = \"y\" }\n";
 
     #[test]
     fn your_keys_bind_everywhere_but_where_apolline_or_the_mode_has_its_own() {
@@ -998,7 +998,7 @@ mod tests {
         ] {
             assert!(text.contains(line), "{line} missing:\n{text}");
         }
-        assert!(!text.contains("rofi"), "the launcher keeps Mod+Space");
+        assert!(!text.contains("rofi"), "the launcher keeps Mod+A");
         let text = render(&look(&config, Some(0)));
         assert!(text.contains("Work: y") && !text.contains("hotkey-overlay-title=\"x\""));
         let staying = render(&Fragment {
@@ -1013,13 +1013,7 @@ mod tests {
         let config = Config::default();
         let niri = "binds {\n    Mod+1 { focus-workspace 1; }\n    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }\n    Mod+Shift+S { screenshot; }\n    XF86AudioMute { spawn \"wpctl\"; }\n    Mod+Shift+G { spawn \"x\"; }\n    Mod+Shift+Space { switch-layout \"next\"; }\n}\n";
         let held = held(niri, &config, &["Mod+F".to_owned()]);
-        for combo in [
-            "Mod+1",
-            "Mod+WheelScrollDown",
-            "Mod+Space",
-            "Alt+Tab",
-            "Mod+F",
-        ] {
+        for combo in ["Mod+1", "Mod+WheelScrollDown", "Mod+A", "Alt+Tab", "Mod+F"] {
             assert!(
                 held.iter().any(|h| h == combo),
                 "{combo} not held: {held:?}"
@@ -1108,10 +1102,9 @@ mod tests {
             !render(&look(&config, None)).contains("Mod+N"),
             "mode keys leave with the mode"
         );
-        let (clash, _) =
-            Config::parse("[[mode]]\nname = \"X\"\nkeys = { \"Mod+Space\" = \"foot\" }\n");
+        let (clash, _) = Config::parse("[[mode]]\nname = \"X\"\nkeys = { \"Mod+A\" = \"foot\" }\n");
         assert_eq!(
-            render(&look(&clash, Some(0))).matches("Mod+Space").count(),
+            render(&look(&clash, Some(0))).matches("    Mod+A ").count(),
             1,
             "a mode key never doubles an Apolline shortcut"
         );
@@ -1124,7 +1117,7 @@ mod tests {
         assert!(work.contains("border {\n        on\n"));
         assert!(!work.contains("input {"), "input stays with niri until set");
         assert!(work.contains(
-            "    Mod+Space hotkey-overlay-title=\"Search apps and games\" { spawn \"apolline\" \"launcher\"; }\n"
+            "    Mod+A hotkey-overlay-title=\"Search apps and games\" { spawn \"apolline\" \"launcher\"; }\n"
         ));
         assert!(work.contains(
             "    Super+Alt+L hotkey-overlay-title=\"Lock the screen\" { spawn \"apolline\" \"lock\"; }\n"

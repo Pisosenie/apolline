@@ -48,8 +48,8 @@ do_not_disturb = false     # hold everything but urgent, in every mode
 seconds = 5                # how long a popup stays
 
 [shortcuts]
-launcher = "Mod+Space"     # Mod is Super, or Alt when niri runs in a window
-panel = "Mod+A"
+launcher = "Mod+A"         # Mod is Super, or Alt when niri runs in a window
+panel = "Mod+S"
 switch = "Mod+Shift+M"
 lock = "Super+Alt+L"
 clipboard = "Mod+Alt+V"
