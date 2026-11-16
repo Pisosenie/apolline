@@ -2,6 +2,7 @@ use apolline_config::{Config, Display, KeyAction, Rule, Shortcut, Width};
 
 use super::binds::{self, Becomes};
 use super::conf::Line;
+pub use hypr2niri::report::{Note, Outcome};
 
 // Everything a Hyprland config says that has a place here, and a note for each line looked at.
 #[derive(Debug, Default)]
@@ -21,32 +22,6 @@ pub enum Setting {
     Number(&'static str, &'static str, i64),
     Fraction(&'static str, &'static str, f64),
     Text(&'static str, &'static str, String),
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Note {
-    pub at: String,
-    pub line: String,
-    pub outcome: Outcome,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Outcome {
-    Moved(String),
-    // Apolline or niri does this already.
-    Here(String),
-    Left(String),
-}
-
-impl Outcome {
-    // Which part of the report it goes in, and what it says.
-    pub fn group(&self) -> (usize, &str) {
-        match self {
-            Self::Moved(said) => (0, said),
-            Self::Here(why) => (1, why),
-            Self::Left(why) => (2, why),
-        }
-    }
 }
 
 // Started at login by Hyprland's users, done here by Apolline or by niri itself.
@@ -291,42 +266,50 @@ impl Plan {
         Outcome::Moved(said)
     }
 
-    // windowrulev2 = float, class:^(pavucontrol)$ ; windowrule = float, ^(pavucontrol)$
+    // A window rule of any Hyprland: v1, windowrulev2, or 0.53's `match:class …, float on`.
     fn rule(&mut self, config: &Config, value: &str) -> Outcome {
-        let Some((effect, matched)) = value.split_once(',') else {
-            return Outcome::Left("this rule has no window to match".into());
+        let read = match hypr2niri::rules::window(value) {
+            Ok(read) => read,
+            Err(why) => return Outcome::Left(why),
         };
-        let class = matched.split(',').map(str::trim).find_map(|m| {
-            m.strip_prefix("class:")
-                .or_else(|| m.strip_prefix("match:class "))
-                .or_else(|| (!m.contains(':')).then_some(m))
-        });
-        let Some(apps) = class.and_then(app_names) else {
+        let class = read
+            .matches
+            .iter()
+            .find(|(prop, _)| prop == "class")
+            .filter(|_| read.matches.len() == 1);
+        let Some(apps) = class.and_then(|(_, pattern)| app_names(pattern)) else {
             return Outcome::Left("only rules matching an app by its plain name come over".into());
         };
-        let mut words = effect.split_whitespace();
         let mut rule = Rule {
             app: String::new(),
             floating: None,
             width: None,
             opacity: None,
         };
-        match words.next().unwrap_or_default() {
-            "float" => rule.floating = Some(true),
-            "tile" => rule.floating = Some(false),
-            "opacity" => match words.next().and_then(|o| o.parse::<f32>().ok()) {
-                Some(opacity) if (0.1..=1.0).contains(&opacity) => rule.opacity = Some(opacity),
-                _ => return Outcome::Left("this opacity has no match here".into()),
-            },
-            "size" => match words.next().and_then(width) {
-                Some(width) => rule.width = Some(width),
-                None => {
-                    return Outcome::Left(
-                        "niri sizes windows by column width: a third, half, two thirds…".into(),
-                    );
-                }
-            },
-            other => return Outcome::Left(format!("“{other}” has no window rule here")),
+        // What has no place here stays behind; the rest of the rule still comes over.
+        let mut not = Vec::new();
+        for (effect, said) in &read.effects {
+            let on = hypr2niri::rules::truthy(said);
+            match effect.as_str() {
+                "float" => rule.floating = Some(on),
+                "tile" => rule.floating = Some(!on),
+                "opacity" => match said
+                    .split_whitespace()
+                    .next()
+                    .and_then(|o| o.parse::<f32>().ok())
+                {
+                    Some(opacity) if (0.1..=1.0).contains(&opacity) => rule.opacity = Some(opacity),
+                    _ => not.push("this opacity".to_owned()),
+                },
+                "size" => match said.split_whitespace().next().and_then(width) {
+                    Some(width) => rule.width = Some(width),
+                    None => not.push("a size that isn't a third, half, two thirds…".to_owned()),
+                },
+                other => not.push(format!("“{other}”")),
+            }
+        }
+        if rule.floating.is_none() && rule.width.is_none() && rule.opacity.is_none() {
+            return Outcome::Left(format!("{} has no window rule here", not.join(", ")));
         }
         let mut said = Vec::new();
         for app in apps {
@@ -350,7 +333,11 @@ impl Plan {
             merged.opacity = rule.opacity.or(merged.opacity);
             said.push(format!("into the rule for {app}"));
         }
-        Outcome::Moved(said.join(", "))
+        let mut said = said.join(", ");
+        if !not.is_empty() {
+            said.push_str(&format!(", without {}", not.join(", ")));
+        }
+        Outcome::Moved(said)
     }
 
     // `waybar & hyprpaper & firefox` is three programs: firefox comes over, the rest are here.
@@ -512,6 +499,7 @@ mod tests {
             key: key.into(),
             value: value.into(),
             at: "hyprland.conf:1".into(),
+            block: 0,
         }
     }
 

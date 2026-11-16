@@ -3,9 +3,9 @@ name: Site
 on:
   push:
     branches: [main]
-    paths: ["site/**", "CHANGELOG.md", "docs/**", "catalog/**", "assets/icons/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "CHANGELOG.md", "docs/**", "catalog/**", "assets/icons/**", "crates/hypr2niri/**", "crates/hypr2niri-web/**", ".github/workflows/site.yml"]
   pull_request:
-    paths: ["site/**", "CHANGELOG.md", "docs/**", "catalog/**", ".github/workflows/site.yml"]
+    paths: ["site/**", "CHANGELOG.md", "docs/**", "catalog/**", "crates/hypr2niri/**", "crates/hypr2niri-web/**", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,8 @@ jobs:
         run: |
           curl -fsSL "https://github.com/getzola/zola/releases/download/v${ZOLA}/zola-v${ZOLA}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin zola
           zola --version
+      - name: Rust for the browser, for the Hyprland converter
+        run: rustup target add wasm32-unknown-unknown
       - name: Fill the site from the repository
         run: python3 site/prepare.py
       - name: Build

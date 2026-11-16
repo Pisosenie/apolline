@@ -1,8 +1,8 @@
 pub mod apply;
 pub mod binds;
-pub mod conf;
-pub mod lua;
 pub mod plan;
+
+pub use hypr2niri::{conf, lua, read};
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -125,49 +125,11 @@ fn finish(done: Result<Vec<String>, String>) -> ExitCode {
 }
 
 pub fn report(plan: &plan::Plan, also: &[String]) -> String {
-    let mut out = String::new();
-    for (group, title) in ["Comes over", "Already here", "Stays behind"]
-        .into_iter()
-        .enumerate()
-    {
-        let notes: Vec<(&plan::Note, &str)> = plan
-            .notes
-            .iter()
-            .filter_map(|note| {
-                let (at, said) = note.outcome.group();
-                (at == group).then_some((note, said))
-            })
-            .collect();
-        let also: &[String] = if group == 0 { also } else { &[] };
-        let count = notes.len() + also.len();
-        if count == 0 {
-            continue;
-        }
-        out.push_str(&format!("{title} ({count})\n"));
-        for (note, said) in notes {
-            if group == 0 {
-                out.push_str(&format!("  {:<22} {said}\n", note.at));
-            } else {
-                out.push_str(&format!(
-                    "  {:<22} {}\n  {:<22} {said}\n",
-                    note.at,
-                    short(&note.line),
-                    ""
-                ));
-            }
-        }
-        for said in also {
-            out.push_str(&format!("  {:<22} {said}\n", ""));
-        }
-    }
-    out
-}
-
-fn short(line: &str) -> String {
-    match line.char_indices().nth(70) {
-        Some((cut, _)) => format!("{}…", &line[..cut]),
-        None => line.to_owned(),
-    }
+    hypr2niri::report::report(
+        &plan.notes,
+        also,
+        ["Comes over", "Already here", "Stays behind"],
+    )
 }
 
 // The picture hyprpaper, swww or HyDE showed last, if it's still there.
@@ -210,19 +172,6 @@ pub fn wallpaper(lines: &[conf::Line], config_home: &Path) -> Option<String> {
 pub struct Keyboard {
     pub layouts: Vec<String>,
     pub toggle: Option<String>,
-}
-
-// Hyprland reads hyprland.lua when there is one, else hyprland.conf. The Lua one is run in a
-// sandbox, which says why if it stopped partway.
-pub fn read(config_home: &Path) -> (PathBuf, Vec<conf::Line>, Option<String>) {
-    let lua = lua::file(config_home);
-    if lua.is_file() {
-        let (lines, stopped) = lua::read(&lua);
-        return (lua, lines, stopped);
-    }
-    let file = conf::file(config_home);
-    let lines = conf::read(&file);
-    (file, lines, None)
 }
 
 pub fn keyboard(home: &Path) -> Keyboard {

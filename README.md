@@ -108,6 +108,8 @@ Settings opens from quick settings, the launcher or `apolline settings`, and eve
 
 ## Coming from Hyprland
 
+Only want niri's config out of it? [hypr2niri](https://pisosenie.github.io/apolline/hyprland/) turns a Hyprland config of any version into a niri `config.kdl`, right in the browser.
+
 ```sh
 apolline import hyprland --dry-run   # what would come over, line by line
 apolline import hyprland             # bring it over

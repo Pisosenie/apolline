@@ -188,6 +188,7 @@ mod tests {
             key: key.into(),
             value: value.into(),
             at: "hyprland.conf:1".into(),
+            block: 0,
         };
         let lines = [
             line("bind", "SUPER, R, exec, rofi -show drun"),

@@ -4,6 +4,7 @@ the catalog, screenshots, fonts and the logo. Run before `zola build`; what it w
 
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -93,12 +94,31 @@ def static():
     shutil.copy(ROOT / "assets" / "apolline.svg", out / "logo.svg")
 
 
+def hypr2niri():
+    """The converter as WebAssembly, its Lua sandbox and the example configs, for /hyprland/."""
+    out = SITE / "static" / "hypr2niri"
+    shutil.rmtree(out, ignore_errors=True)
+    (out / "examples").mkdir(parents=True)
+    subprocess.run(
+        ["cargo", "build", "-q", "-p", "hypr2niri-web", "--release",
+         "--target", "wasm32-unknown-unknown"],
+        cwd=ROOT, check=True,
+    )
+    target = Path(__import__("os").environ.get("CARGO_TARGET_DIR", ROOT / "target"))
+    shutil.copy(target / "wasm32-unknown-unknown" / "release" / "hypr2niri_web.wasm",
+                out / "hypr2niri.wasm")
+    shutil.copy(ROOT / "crates" / "hypr2niri" / "src" / "sandbox.lua", out)
+    for example in (ROOT / "crates" / "hypr2niri" / "tests" / "configs").iterdir():
+        shutil.copy(example, out / "examples")
+
+
 def main():
     count = releases()
     if count == 0:
         sys.exit("no releases read from CHANGELOG.md")
     docs()
     static()
+    hypr2niri()
     print("site: %d releases, docs and pictures in place" % count)
 
 

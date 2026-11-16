@@ -40,14 +40,14 @@ fn run(path: &Path) -> mlua::Result<(Vec<Line>, Option<String>)> {
     )?;
     let dir = path.parent().unwrap_or(Path::new("."));
     lua.globals()
-        .set("__apolline_dir", dir.to_string_lossy().into_owned())?;
-    lua.load(SANDBOX).set_name("=apolline-sandbox").exec()?;
+        .set("__import_dir", dir.to_string_lossy().into_owned())?;
+    lua.load(SANDBOX).set_name("=import-sandbox").exec()?;
     let stopped = lua
         .load(path)
         .exec()
         .err()
         .map(|err| first_line(&err.to_string()));
-    let notes: Table = lua.globals().get("__apolline_notes")?;
+    let notes: Table = lua.globals().get("__import_notes")?;
     let mut lines = Vec::new();
     for note in notes.sequence_values::<Table>() {
         let note = note?;
@@ -58,6 +58,7 @@ fn run(path: &Path) -> mlua::Result<(Vec<Line>, Option<String>)> {
             key: note.get("key")?,
             value: note.get("value")?,
             at: note.get("at")?,
+            block: note.get::<Option<usize>>("block")?.unwrap_or(0),
         });
     }
     Ok((lines, stopped))
@@ -73,7 +74,7 @@ mod tests {
 
     fn read_text(text: &str) -> (Vec<Line>, Option<String>) {
         let dir = std::env::temp_dir().join(format!(
-            "apolline-hyprlua-{}-{}",
+            "hypr2niri-lua-{}-{}",
             std::process::id(),
             text.len()
         ));
@@ -112,9 +113,11 @@ end
 hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(), { mouse = true })
 hl.bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
 hl.window_rule({ name = "pv", match = { class = "^(pavucontrol)$" }, float = true })
+hl.env("XCURSOR_SIZE", 24)
+hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 hl.curve("easy", { type = "spring" })
 require("missing.module").anything.at.all()
-os.execute("touch /tmp/apolline-should-not-exist")
+os.execute("touch /tmp/hypr2niri-should-not-exist")
 "#,
         );
         assert_eq!(stopped, None);
@@ -137,7 +140,9 @@ os.execute("touch /tmp/apolline-should-not-exist")
                 "bindl",
                 ", XF86AudioMute, exec, wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
             ),
-            ("windowrulev2", "float, class:^(pavucontrol)$"),
+            ("windowrule", "match:class ^(pavucontrol)$, float on"),
+            ("env", "XCURSOR_SIZE,24"),
+            ("gesture", "3, horizontal, workspace"),
         ] {
             assert!(pairs.contains(&wanted), "{wanted:?} missing: {pairs:#?}");
         }
@@ -163,7 +168,7 @@ os.execute("touch /tmp/apolline-should-not-exist")
         );
         assert_eq!(lines[1].at, "hyprland.lua:4");
         assert_eq!(lines[0].at, "extra.lua:1");
-        assert!(!Path::new("/tmp/apolline-should-not-exist").exists());
+        assert!(!Path::new("/tmp/hypr2niri-should-not-exist").exists());
     }
 
     #[test]

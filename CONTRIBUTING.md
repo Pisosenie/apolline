@@ -35,6 +35,8 @@ python3 site/prepare.py && zola --root site serve
 | `crates/theme` | colors and sizes, the accent picked from a wallpaper, contrast-checked in tests |
 | `crates/config` | config model and its parser |
 | `crates/niri` | niri IPC protocol and the state it describes, no I/O |
+| `crates/hypr2niri` | Hyprland configs of every version read and said again as niri's; the `hypr2niri` command |
+| `crates/hypr2niri-web` | hypr2niri as WebAssembly for the site's converter page |
 | `crates/shell` | the `apolline` binary: shared core, preview window, layer-shell session |
 | `assets/` | wallpapers, Geist fonts (OFL), the default config, the niri fragment |
 | `assets/themes` | the six bundled themes; `catalog/` has the rest, one folder each |

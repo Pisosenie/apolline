@@ -11,6 +11,7 @@ license = "MIT OR Apache-2.0"
 apolline-theme = { path = "crates/theme" }
 apolline-config = { path = "crates/config" }
 apolline-niri = { path = "crates/niri" }
+hypr2niri = { path = "crates/hypr2niri", version = "0.5.0" }
 iced = { version = "0.14", features = ["image", "svg", "tokio", "canvas", "advanced"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
