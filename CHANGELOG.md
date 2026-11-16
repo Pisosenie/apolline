@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-16
 
 - **The launcher is on `Mod+A` and quick settings on `Mod+S`**: `Mod+Space` is where Linux switches the keyboard layout, so it's left for that. A config still on the old keys as they came moves to the new ones once; keys you chose yourself stay, and Settings → Input changes them.
+- **A new icon**: Apollo's lyre over the sunset, in the launcher, the dock and the app menu.
+- **A website**, [pisosenie.github.io/apolline](https://pisosenie.github.io/apolline/): what it is, the themes in the catalog, every release with a feed, and the docs, all made from this repository.
 
 ## 0.4.1 — 2026-11-13
 
