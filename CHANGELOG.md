@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `apolline update` leaves Apolline or apolline-wall alone when it's already at the newest commit or release, and skips the tests CI already ran, so an update takes about half the time and no update takes seconds.
 - **hypr2niri**, the Hyprland import on its own: a `hyprland.conf` or `hyprland.lua` of any Hyprland since 0.30 becomes a niri `config.kdl`, read the way that version wrote it (v1 rules, `windowrulev2`, 0.53's `match:` rules and rule blocks, old and new shadows, `device:NAME` and `device { }`, `monitorv2`, `gesture`, submaps), with a note for every line. A command (`crates/hypr2niri`) and a page that does it in the browser, [pisosenie.github.io/apolline/hyprland](https://pisosenie.github.io/apolline/hyprland/). `apolline import hyprland` reads 0.53's rules now too.
 
 ## 0.5.0 — 2026-11-16
