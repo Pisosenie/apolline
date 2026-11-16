@@ -10,6 +10,45 @@ fn run_flag(program: &str) -> &'static str {
     }
 }
 
+// How to edit a text file when the editor lives in a terminal: $VISUAL or $EDITOR, else the
+// default app for text when its entry says it needs a terminal (nvim, vim, nano, helix…). None
+// leaves the file to xdg-open, which can start a graphical editor on its own but not these.
+pub fn editor_for(file: &std::path::Path) -> Option<String> {
+    let file = quote(&file.to_string_lossy());
+    let set = ["VISUAL", "EDITOR"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .find(|editor| !editor.trim().is_empty());
+    if let Some(editor) = set {
+        return Some(format!("{editor} {file}"));
+    }
+    let id = std::process::Command::new("xdg-mime")
+        .args(["query", "default", "text/plain"])
+        .output()
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        .filter(|id| id.ends_with(".desktop") && !id.contains('/'))?;
+    let entry = crate::apps::data_dirs()
+        .into_iter()
+        .find_map(|dir| std::fs::read_to_string(dir.join("applications").join(&id)).ok())?;
+    let field = |key: &str| {
+        entry
+            .lines()
+            .skip_while(|line| line.trim() != "[Desktop Entry]")
+            .take_while(|line| !line.starts_with('[') || line.trim() == "[Desktop Entry]")
+            .find_map(|line| {
+                line.strip_prefix(key)
+                    .and_then(|rest| rest.strip_prefix('='))
+            })
+            .map(str::trim)
+    };
+    if field("Terminal") != Some("true") {
+        return None;
+    }
+    let program = field("Exec")?.split_whitespace().next()?;
+    Some(format!("{program} {file}"))
+}
+
 fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }

@@ -63,13 +63,19 @@ pub(super) fn accent_picker<'a>(
     } else {
         ("Low contrast", style::WARN)
     };
+    // The badge on the line under the swatches: beside them it has no room once a mode adds
+    // Desktop's in front, and wraps a word to a line past the card.
     column![
-        swatches
-            .push(space::horizontal())
-            .push(text(badge).size(12).color(style::color(tint))),
-        text("The color is taken from the picture and lightened until it reads on glass.")
-            .size(12)
-            .color(style::color(style::faint())),
+        swatches.wrap(),
+        row![
+            text("The color is taken from the picture and lightened until it reads on glass.")
+                .size(12)
+                .color(style::color(style::faint()))
+                .width(Fill),
+            text(badge).size(12).color(style::color(tint)),
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
     ]
     .spacing(10)
     .into()

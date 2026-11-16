@@ -210,7 +210,7 @@ fn clean_exec(exec: &str) -> String {
         .replace("%%", "%")
 }
 
-fn data_dirs() -> Vec<PathBuf> {
+pub fn data_dirs() -> Vec<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let mut dirs: Vec<PathBuf> = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)

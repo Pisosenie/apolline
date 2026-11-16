@@ -498,6 +498,18 @@ impl Settings {
             }
             Message::Finish => return iced::exit(),
             Message::OpenFile => {
+                // An editor that needs a terminal gets one; started by xdg-open it has none and
+                // waits unseen.
+                if let Some(edit) = crate::terminal::editor_for(&self.path) {
+                    let line = crate::terminal::running(&self.config.terminal, &edit);
+                    return Task::future(async move {
+                        let _ = tokio::process::Command::new("sh")
+                            .args(["-c", &format!("{line} &")])
+                            .status()
+                            .await;
+                    })
+                    .discard();
+                }
                 let opener = if cfg!(target_os = "macos") {
                     "open"
                 } else {
