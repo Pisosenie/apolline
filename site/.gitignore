@@ -1,0 +1,9 @@
+/public/
+/content/news/*.md
+!/content/news/_index.md
+/content/docs/
+/static/shots/
+/static/fonts/
+/static/catalog/
+/static/logo.svg
+/static/icons/

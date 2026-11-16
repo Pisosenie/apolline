@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block kind %}home{% endblock kind %}
+{% block content %}
+{%- set news = get_section(path="news/_index.md") -%}
+{%- set latest = news.pages | first -%}
+{%- set catalog = load_data(path="static/catalog/index.toml") -%}
+
+<section class="hero">
+  <div class="sky" aria-hidden="true">
+    <div class="sun"></div>
+    <div class="ridge one"></div>
+    <div class="ridge two"></div>
+  </div>
+  <div class="wrap hero-text">
+    <a class="pill" href="{{ latest.permalink | safe }}"><span class="dot"></span>{{ latest.extra.version }} is out<span class="muted">· what's new</span>{{<arrow/>}}</a>
+    <h1>A desktop shell for niri that looks <em>finished</em> on the first login.</h1>
+    <p class="lede">Bar, launcher, quick settings, notifications, clipboard, lock and login screens, live wallpapers and a settings window, in one Rust binary. Modes switch the whole desktop with a key, a game or the clock.</p>
+    <div class="actions">
+      <a class="button primary" href="#install">Install on Arch</a>
+      <a class="button" href="{{ get_url(path='@/themes/_index.md') }}">Browse themes</a>
+    </div>
+  </div>
+  <figure class="wrap hero-shot">
+    <div class="frame">
+      <img src="{{ get_url(path='shots/panel.jpg') }}" width="1600" height="1000" alt="Apolline in the Ember look: the bar along the top and quick settings open over a sunset wallpaper">
+    </div>
+  </figure>
+</section>
+
+<section class="replaces wrap" aria-label="What it replaces">
+  <p>One thing instead of ten. It replaces</p>
+  <ul>
+    {%- for tool in ["waybar", "rofi", "fuzzel", "mako", "swaylock", "swww", "a polkit agent", "a clipboard manager"] %}
+    <li>{{ tool }}</li>
+    {%- endfor %}
+  </ul>
+  <dl class="numbers">
+    <div><dt>0.2%</dt><dd>CPU at rest, it wakes once a minute for the clock</dd></div>
+    <div><dt>~100 MB</dt><dd>of memory for the whole desktop</dd></div>
+    <div><dt>1</dt><dd>binary, falling back to the CPU when the GPU can't start</dd></div>
+  </dl>
+</section>
+
+<section class="wrap block" id="features">
+  <div class="heading">
+    <span class="eyebrow">Everything around your windows</span>
+    <h2>niri tiles them. Apolline does the rest.</h2>
+    <p>It draws the bar, the wallpaper and the clock, opens apps, shows notifications, locks the screen and greets you at login, and gives you a settings window for all of it.</p>
+  </div>
+  <div class="bento">
+    {%- set tiles = [
+      ["launcher", "wide", "search", "Launcher", "Mod+A", "Apps and Steam games, open windows, sums, units and currency, emoji, files, a color picker, screen recording, timers and the web."],
+      ["lock", "", "lock", "Lock and login", "", "A lock screen with what's playing, the weather and the next meeting, and a greetd greeter in the same look."],
+      ["notifications", "", "bell", "Notifications", "", "Replies, pictures, progress bars and the app's own buttons. Do not disturb follows your modes."],
+      ["calendar", "", "calendar", "Calendar and weather", "", "Under the clock: the month, the forecast and the day's events."],
+      ["bluetooth", "", "bluetooth", "Quick settings", "Mod+S", "Wi-Fi, Bluetooth with the headphones' battery, VPN, volume per app, brightness, night light, the player."],
+      ["machine", "wide", "cpu", "A system monitor", "", "Processor, memory and network as they go, and what's busiest, in the shell's own look."],
+      ["greet", "", "fingerprint", "Login screen", "", "Centered, blurred, your accent and your font. PAM's extra questions are asked right in the field."]
+    ] %}
+    {%- for tile in tiles %}
+    <article class="tile {{ tile[1] }}">
+      <div class="tile-text">
+        <h3><span class="ico">{{<icon name={tile[2]}/>}}</span>{{ tile[3] }}{% if tile[4] %}<kbd>{{ tile[4] }}</kbd>{% endif %}</h3>
+        <p>{{ tile[5] }}</p>
+      </div>
+      <img src="{{ get_url(path='shots/' ~ tile[0] ~ '.jpg') }}" alt="{{ tile[3] }}" loading="lazy">
+    </article>
+    {%- endfor %}
+  </div>
+</section>
+
+<section class="wrap block split" id="modes">
+  <div class="split-text">
+    <span class="eyebrow">Modes</span>
+    <h2>One key changes the whole desktop.</h2>
+    <p>Work, Play, Evening or your own. A mode swaps the wallpaper and accent, holds back notifications, opens its apps, adds shortcuts that exist only while it's on, and turns performance on for games.</p>
+    <p>It can come on by itself when a game starts, at an hour, on battery or with a monitor, and puts your windows back on their screen, workspace and column.</p>
+<pre class="code"><code><span class="k">[[mode]]</span>
+name = <span class="s">"Play"</span>
+when = [<span class="s">"game"</span>]   <span class="c"># Steam, Proton, Wine</span>
+
+<span class="k">[[mode]]</span>
+name = <span class="s">"Evening"</span>
+when = [<span class="s">"20:00-07:00"</span>, <span class="s">"battery"</span>]
+theme = <span class="s">"Night"</span></code></pre>
+  </div>
+  <div class="split-media stack">
+    <img src="{{ get_url(path='shots/switch.jpg') }}" alt="Switching modes from the bar" loading="lazy">
+    <img src="{{ get_url(path='shots/modes.jpg') }}" alt="Settings → Modes, beside the lines it writes" loading="lazy">
+  </div>
+</section>
+
+<section class="block themes-band" id="themes">
+  <div class="wrap heading">
+    <span class="eyebrow">Themes</span>
+    <h2>Try a look on for a minute.</h2>
+    <p>Six come in the box, more wait in the catalog. Try on wears one for sixty seconds: keep it, or it goes back by itself, even if the shell goes down wearing it. A theme can carry a whole rice: the bar's layout, the dock and a Wallpaper Engine scene.</p>
+  </div>
+  <div class="reel" tabindex="0" aria-label="Themes from the catalog">
+    {%- for theme in catalog.theme %}
+    <a class="reel-item" href="{{ get_url(path='@/themes/_index.md') }}#{{ theme.folder }}">
+      <img src="{{ get_url(path='catalog/' ~ theme.folder ~ '/' ~ theme.preview) }}" alt="{{ theme.name }}" loading="lazy">
+      <span><strong>{{ theme.name }}</strong>{{ theme.about }}</span>
+    </a>
+    {%- endfor %}
+  </div>
+  <div class="wrap center">
+    <a class="button" href="{{ get_url(path='@/themes/_index.md') }}">All themes {{<arrow/>}}</a>
+  </div>
+</section>
+
+<section class="wrap block split reverse" id="hyprland">
+  <div class="split-text">
+    <span class="eyebrow">Coming from Hyprland</span>
+    <h2>Bring your config with you.</h2>
+    <p>It reads <code>hyprland.lua</code> in a sandbox where nothing runs, or <code>hyprland.conf</code> with the files it sources. Binds, screens, window rules, keyboard, touchpad, gaps, corners, the accent and autostart come over, with a note for every line.</p>
+    <p>What niri has no place for, like split layouts or submaps, is listed with why instead of quietly dropped.</p>
+  </div>
+  <div class="terminal" role="img" aria-label="A terminal running apolline import hyprland">
+    <div class="term-bar"><i></i><i></i><i></i><span>vif</span></div>
+<pre><span class="p">❯</span> apolline import hyprland --dry-run
+<span class="h">Comes over (4)</span>
+  <span class="dim">hyprland.conf:3 </span>   monitor DP-1 <span class="ok">→ [[display]] at 165 Hz</span>
+  <span class="dim">hyprland.conf:14</span>   bind SUPER, Q <span class="ok">→ close-window</span>
+  <span class="dim">hyprland.conf:40</span>   windowrule <span class="ok">→ pavucontrol floats</span>
+  <span class="dim">hyprland.conf:52</span>   exec-once <span class="ok">→ autostart</span>
+<span class="h">Stays behind (1)</span>
+  <span class="dim">hyprland.conf:21</span>   bind SUPER, J, togglesplit
+                     <span class="no">niri has no split layouts</span>
+
+<span class="dim">Nothing written: run it without --dry-run to bring this over.</span></pre>
+  </div>
+</section>
+
+<section class="wrap block" id="family">
+  <div class="heading">
+    <span class="eyebrow">The rest of the family</span>
+    <h2>Live wallpapers, drawn natively.</h2>
+    <p>Videos, Shadertoy shaders and Wallpaper Engine scenes from your Steam library, paused while you're locked or playing. Apolline runs them as its child, so decoding never lands inside the shell.</p>
+  </div>
+  <div class="family">
+    <a class="kin" href="https://github.com/Pisosenie/apolline-wall">
+      <span class="ico">{{<icon name="image"/>}}</span>
+      <h3>apolline-wall</h3>
+      <p>The wallpaper daemon: pictures, videos, shaders and Workshop scenes on every monitor, audio-reactive scenes, folders as playlists. Runs on niri, Hyprland, sway and others.</p>
+      <span class="more">github.com/Pisosenie/apolline-wall {{<arrow/>}}</span>
+    </a>
+    <a class="kin" href="https://github.com/Pisosenie/apolline-scene">
+      <span class="ico">{{<icon name="layers"/>}}</span>
+      <h3>apolline-scene</h3>
+      <p>A clean-room renderer for Wallpaper Engine scenes in Rust: textures, materials, particles, effects and SceneScript in a sandbox, into any GL context.</p>
+      <span class="more">github.com/Pisosenie/apolline-scene {{<arrow/>}}</span>
+    </a>
+    <a class="kin" href="https://github.com/Pisosenie/vif">
+      <span class="ico">{{<icon name="square-terminal"/>}}</span>
+      <h3>vif</h3>
+      <p>The terminal Apolline opens: a fast GPU terminal in Rust, commands as blocks, shells that outlive their window and a drop-down quick terminal.</p>
+      <span class="more">github.com/Pisosenie/vif {{<arrow/>}}</span>
+    </a>
+  </div>
+</section>
+
+<section class="wrap block install" id="install">
+  <div class="install-card">
+    <div class="sun small" aria-hidden="true"></div>
+    <span class="eyebrow">Install</span>
+    <h2>One line on a fresh Arch.</h2>
+    <p>It builds and sets up the whole desktop: niri, Apolline, vif, live wallpapers, sound, network, Bluetooth, the login screen, a file manager and fonts. Reboot and log in to niri.</p>
+    {{<command text={config.extra.install}/>}}
+    <p class="small">The script is short and worth a read first: <a href="{{ config.extra.repo }}/blob/main/install.sh">install.sh</a>. Already on Arch with niri? <a href="{{ config.extra.repo }}#installing">Install by hand</a> with makepkg and <code>apolline setup</code>. Other distributions aren't packaged yet, but it builds with stable Rust.</p>
+    <p class="small">Later on, <code>apolline update</code> brings the new release, and the bar tells you when there is one.</p>
+  </div>
+</section>
+
+<section class="wrap block" id="latest">
+  <div class="heading row">
+    <div>
+      <span class="eyebrow">What's new</span>
+      <h2>Apolline {{ latest.extra.version }}</h2>
+    </div>
+    <a class="button" href="{{ get_url(path='@/news/_index.md') }}">Every release {{<arrow/>}}</a>
+  </div>
+  {%- set previous = news.pages[1:2] | first %}
+  <div class="latest">
+    {{<release version={latest.extra.version} date={latest.date} link={latest.permalink} content={latest.content}/>}}
+    {%- if previous %}{{<release version={previous.extra.version} date={previous.date} link={previous.permalink} content={previous.content}/>}}{% endif %}
+  </div>
+</section>
+{% endblock content %}
