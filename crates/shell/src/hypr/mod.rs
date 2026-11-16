@@ -385,8 +385,20 @@ hl.window_rule({ name = "run", match = { class = "hyprland-run" }, move = "20 mo
             layouts: vec!["us".into(), "ru".into()],
             toggle: Some("win_space_toggle".into()),
         };
-        let mut editor = Editor::parse("").unwrap();
-        let done = take_keyboard(&Config::default(), &found, &mut editor);
+        let mut fresh = Editor::parse("").unwrap();
+        assert_eq!(
+            take_keyboard(&Config::default(), &found, &mut fresh).len(),
+            2
+        );
+        let (fresh, _) = Config::parse(&fresh.text());
+        assert_eq!(
+            fresh.shortcuts.launcher, "Mod+A",
+            "the launcher is off Super+Space already"
+        );
+
+        let (before, _) = Config::parse("[shortcuts]\nlauncher = \"Mod+Space\"\n");
+        let mut editor = Editor::parse("[shortcuts]\nlauncher = \"Mod+Space\"\n").unwrap();
+        let done = take_keyboard(&before, &found, &mut editor);
         assert_eq!(done.len(), 3);
         let (config, problems) = Config::parse(&editor.text());
         assert!(problems.is_empty(), "{problems:?}");

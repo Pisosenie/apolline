@@ -428,7 +428,8 @@ mod tests {
     fn the_list_puts_apolline_first_and_skips_what_it_replaces() {
         let (config, _) =
             Config::parse("[[mode]]\nname = \"Play\"\nkeys = { \"Mod+G\" = \"steam\" }\n");
-        let niri = "binds {\n    Mod+Space { spawn \"fuzzel\"; }\n    Mod+Left { focus-column-left; }\n}\n";
+        let niri =
+            "binds {\n    Mod+A { spawn \"fuzzel\"; }\n    Mod+Left { focus-column-left; }\n}\n";
         let list = entries(&config, Some(0), niri);
         assert_eq!(list[0].group, Group::Apolline);
         assert!(
@@ -436,9 +437,7 @@ mod tests {
                 .any(|e| e.group == Group::Mode && e.what == "Run steam")
         );
         assert_eq!(
-            list.iter()
-                .filter(|e| keys::same(&e.keys, "Mod+Space"))
-                .count(),
+            list.iter().filter(|e| keys::same(&e.keys, "Mod+A")).count(),
             1
         );
         let left = list.iter().find(|e| e.keys == "Mod+Left").unwrap();

@@ -594,7 +594,7 @@ mod tests {
             Config::parse("[keys]\n\"Mod+C\" = \"mine\"\n[shortcuts]\nlauncher = \"Mod+D\"\n");
         let lines = [
             line("bind", "SUPER, C, killactive"),
-            line("bind", "SUPER, A, exec, foot"),
+            line("bind", "SUPER, S, exec, foot"),
             line("bind", "SUPER, R, exec, wofi --show drun"),
         ];
         let plan = plan(&lines, &[], &config, &[]);

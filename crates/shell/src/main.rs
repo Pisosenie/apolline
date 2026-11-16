@@ -54,6 +54,7 @@ mod marks;
 mod media;
 mod modules;
 mod motion;
+mod moved_keys;
 mod night;
 mod niri;
 mod notify;

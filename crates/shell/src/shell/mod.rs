@@ -410,6 +410,13 @@ impl Shell {
         {
             eprintln!("apolline: could not put the tried theme back: {err}");
         }
+        if !demo
+            && !safe
+            && let Some(mark) = crate::moved_keys::mark()
+            && let Err(err) = crate::moved_keys::once(&config_path, &mark)
+        {
+            eprintln!("apolline: could not move the launcher off Mod+Space: {err}");
+        }
         let (config, diagnostics) = if safe {
             (Config::default(), Vec::new())
         } else {

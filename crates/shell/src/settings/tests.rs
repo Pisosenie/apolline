@@ -232,7 +232,7 @@ fn a_shortcut_cannot_take_keys_another_one_uses() {
     let path = dir.join("config.toml");
 
     let (mut settings, _) = Settings::open(path.clone(), None);
-    settings.record(Shortcut::Panel, "Super+Space".into());
+    settings.record(Shortcut::Panel, "Super+A".into());
     assert!(
         settings
             .shortcut_error
