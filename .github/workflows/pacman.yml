@@ -1,0 +1,60 @@
+name: Pacman repository
+
+# Apolline's own pacman repository, signed: the shell's latest release, apolline-desktop,
+# apolline-wall and vif, prebuilt. It lives in the assets of the `pacman` release, which pacman
+# reads from https://github.com/Pisosenie/apolline/releases/download/pacman. Needs the secret
+# PACMAN_KEY, an armored private key with no passphrase.
+on:
+  push:
+    tags: ["v*"]
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: pacman
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Git, for the checkout
+        run: pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v4
+      - name: Build and sign the packages and the database
+        env:
+          PACMAN_KEY: ${{ secrets.PACMAN_KEY }}
+          OUT: repo
+        run: tools/pacman-repo.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repo
+          path: repo
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: repo
+          path: repo
+      - name: Put it in the pacman release, dropping what the new database no longer lists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view pacman >/dev/null 2>&1; then
+            gh release create pacman --target main --prerelease --latest=false \
+              --title "pacman repository" \
+              --notes "Apolline's signed pacman repository. How to add it: https://github.com/Pisosenie/apolline#installing"
+          fi
+          gh release upload pacman repo/* --clobber
+          keep=$(ls repo)
+          gh release view pacman --json assets --jq '.assets[].name' | while read -r asset; do
+            grep -qxF "$asset" <<< "$keep" || gh release delete-asset pacman "$asset" --yes
+          done
