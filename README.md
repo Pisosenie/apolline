@@ -68,6 +68,18 @@ curl -fsSL https://raw.githubusercontent.com/Pisosenie/apolline/main/install.sh 
 
 To update, run `apolline update`: it builds Apolline and apolline-wall again from here, whichever you have, and starts the new shell, leaving the rest of the system alone. Apolline looks once a day for a newer release and says so once, with a quiet card and on the bar's updates button; `[general] check_updates = false` stops it. Everything the installer pulls in from the Arch repos is the `apolline-desktop` package in [`packaging/arch`](packaging/arch).
 
+**Prebuilt, from Apolline's own pacman repository**: the shell's latest release, apolline-desktop, apolline-wall and vif, built by CI and signed (x86_64). Trust the key once, add the repository, and pacman installs and updates them like anything else:
+
+```sh
+curl -fsSLO https://github.com/Pisosenie/apolline/releases/download/pacman/apolline.gpg
+sudo pacman-key --add apolline.gpg
+sudo pacman-key --lsign-key "$(curl -fsSL https://github.com/Pisosenie/apolline/releases/download/pacman/apolline.fingerprint)"
+printf '\n[apolline]\nServer = https://github.com/Pisosenie/apolline/releases/download/pacman\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu apolline apolline-wall-git vif-bin
+```
+
+Then `apolline setup` once, as you. The packages are rebuilt every Monday and on each release.
+
 **An Arch you already use**, with niri on it, by hand. vif goes first, because Apolline opens it as the terminal (`vif-bin` is prebuilt):
 
 ```sh

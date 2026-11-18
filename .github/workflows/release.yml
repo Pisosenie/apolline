@@ -1,0 +1,39 @@
+name: Release
+
+# A GitHub release for each version tag, its notes from CHANGELOG.md. Run by hand, it makes the
+# releases older tags never got.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Release what has no release yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            tags="$GITHUB_REF_NAME"
+          else
+            tags=$(git tag --list 'v*' --sort=version:refname)
+          fi
+          latest=$(git tag --list 'v*' --sort=-version:refname | head -1)
+          for tag in $tags; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "$tag has its release"
+              continue
+            fi
+            python3 tools/release-notes.py "$tag" > notes.md
+            flag=--latest=false
+            [ "$tag" = "$latest" ] && flag=--latest
+            gh release create "$tag" --verify-tag --title "Apolline ${tag#v}" --notes-file notes.md "$flag"
+          done
